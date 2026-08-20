@@ -1,0 +1,43 @@
+---
+- name: SSH service Enable for RedHat
+  ansible.builtin.service:
+    name: sshd
+    enabled: yes
+  when: ansible_os_family == 'RedHat'
+
+- name: SSH service Enable for Debian
+  ansible.builtin.service:
+    name: ssh
+    enabled: yes
+  when: ansible_os_family == 'Debian'
+
+- name: Remove Containerd Directory
+  ansible.builtin.file:
+    path: /opt/containerd
+    state: absent
+
+- block:
+    - name: Reboot - purgecompute | Reboot node after purge
+      ansible.builtin.reboot:
+        msg: "Reboot initiated by purge-compute on {{ inventory_hostname }}"
+        connect_timeout: 10
+        reboot_timeout: 1200
+        test_command: whoami
+    
+    - name: Reboot - purgecompute | Report reboot success
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} : reboot success"
+
+  when: purge_reboot_enabled | default(false) | bool
+
+- name: Find all files in /root/.ssh for Purgecompute
+  ansible.builtin.find:
+    paths: /root/.ssh
+    file_type: file
+  register: ssh_files
+
+- name: Remove all files in /root/.ssh for Purgecompute
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ ssh_files.files }}"

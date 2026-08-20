@@ -1,0 +1,63 @@
+---
+- name: Gather Debian Purgecluster Controller service facts
+  ansible.builtin.service_facts:
+
+- name: Disable Debian Purgecluster Controller OpenStack services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ debian_purgecluster_controller_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable Debian Purgecluster Controller Middleware services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ debian_purgecluster_controller_middleware_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable Debian Purgecluster Controller monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ purgecluster_controller_monitoring_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Unmount Debian Purgecluster monitoring-store 
+  ansible.posix.mount:
+    path: /mnt/monitoring-store
+    state: absent
+
+- name: Wipe filesystem on Debian Purgecluster minio device
+  community.general.filesystem:
+    dev: "{{ minio_device }}"
+    state: absent
+
+- name: Debian Purgecluster epmd user running process check
+  shell: ps -u epmd | grep -i epmd | awk '{print $1}' || true
+  register: epmd_output
+  changed_when: false
+
+- name: Debian Purgecluster kill epmd process
+  command: kill -9 {{ item.split()[0] }}
+  loop: "{{ epmd_output.stdout_lines }}"
+  when: epmd_output.stdout != ""
+
+- name: Purge Debian Purgecluster Controller packages
+  ansible.builtin.apt:
+    name: "{{ debian_purgecluster_controller_packages }}"
+    state: absent
+    purge: true
+

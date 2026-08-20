@@ -1,0 +1,17 @@
+---
+- name: Disable Masakari Process Monitor
+  service:
+    name: masakari-process-monitor
+    enabled: no
+    state: stopped
+  when: 
+    - enable_process_monitor == false
+
+- name: Disable Masakari Instance Monitor
+  service:
+    name: masakari-instance-monitor
+    enabled: no
+    state: stopped
+  when:
+    - enable_instance_monitor == false
+

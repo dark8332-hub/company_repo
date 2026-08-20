@@ -1,0 +1,137 @@
+---
+- name: Nova Package Install
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - "{{ pac_libvirt_daemon }}"
+    - "{{ pac_nova_compute }}"
+    - "{{ pac_openvswitch }}"
+    - "{{ pac_neutron_openvswitch }}"
+
+- name: Compute package install RedHat
+  dnf:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - qemu-kvm
+    - librdmacm
+    - rdma-core
+    - libibverbs
+  when: ansible_os_family == 'RedHat'
+
+- name: Neutron agent pacakge installation
+  ansible.builtin.package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - "{{ pac_neutron_dhcp_agent }}"
+    - "{{ pac_neutron_l3_agent }}"
+    - "{{ pac_neutron_metadata_agent }}"
+  when:
+    - inventory_hostname in groups["neutron_agent"]
+
+- name: Disable virtqemud
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+  loop:
+    - virtqemud
+    - virtproxyd
+    - virtnetworkd
+    - virtinterfaced
+    - virtstoraged
+    - virtnodedevd
+    - virtnwfilterd
+    - virtsecretd
+    - virtproxyd.socket
+    - virtnetworkd.socket
+    - virtinterfaced.socket
+    - virtstoraged.socket
+    - virtnodedevd.socket
+    - virtsecretd.socket
+    - virtnwfilterd.socket
+  when: ansible_os_family == "RedHat"
+
+- name: Enable virtlogd and virtlockd
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - virtlogd
+    - virtlockd
+  when: ansible_os_family == "RedHat"
+
+- name: Nova-compute file Settings
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: 0644
+    backup: true
+  with_items:
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/nova.conf.j2,dest: "{{ nova_dir }}/{{ nova_config }}",owner: nova,group: nova }
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/nova-compute.conf.j2,dest: "{{ nova_dir }}/{{ nova_compute_config }}",owner: nova,group: nova }
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/neutron.conf.j2,dest: "{{ neutron_dir }}/{{ neutron_config }}",owner: neutron,group: neutron }
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/openvswitch_agent.ini.j2,dest: "{{ neutron_plugin_dir }}/{{ ovs_config }}", owner: neutron,group: neutron }
+
+- name: Neutron agent file settings
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: neutron
+    group: neutron
+    mode: 0644
+    backup: true
+  with_items:
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/dhcp_agent.ini.j2, dest: "{{ neutron_dir }}/{{ dhcp_config }}" }
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/metadata_agent.ini.j2, dest: "{{ neutron_dir }}/{{ metadta_config }}" }
+    - { src: /root/okestro/okestro-openstack/roles/compute/templates/l3_agent.ini.j2, dest: "{{ neutron_dir }}/{{ l3_config }}" }
+  when:
+    - inventory_hostname in groups["neutron_agent"]
+
+- name: Enable services
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  with_items:
+    - "{{ pac_openvswitch }}"
+    - "{{ pac_nova_compute }}"
+    - neutron-openvswitch-agent
+    - libvirtd
+
+- name: external bridge create
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "br-{{ item.name }}"
+    state: present
+    fail_mode: secure
+  loop: "{{ bridges }}"
+
+- name: external bridge port mapping
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "br-{{ item.name }}"
+    port: "{{ item.port }}"
+    state: present
+    tag: "{{ item.vlan | default(omit) }}"
+  loop: "{{ bridges }}"
+
+- name: Restart Nova / Neutron Service
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - "{{ pac_nova_compute }}"
+    - neutron-openvswitch-agent
+
+- name: Restart Neutron agent
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - neutron-metatdata-agent
+    - neutron-l3-agent
+    - neutron-dhcp-agent
+  when:
+    - inventory_hostname in groups["neutron_agent"]

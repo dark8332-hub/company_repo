@@ -1,0 +1,9 @@
+type: S3
+config:
+  bucket: "{{ monitoring_bucket }}"
+  endpoint: "{{ monitoring_vip_address }}:{{ minio_bind_port }}"
+  access_key: "{{ s3_access_key }}"
+  secret_key: "{{ s3_secret_key }}"
+  insecure: true 
+  http_config:
+    insecure_skip_verify: true

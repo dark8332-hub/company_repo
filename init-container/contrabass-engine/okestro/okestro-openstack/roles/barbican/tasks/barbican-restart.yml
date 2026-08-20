@@ -1,0 +1,9 @@
+---
+- import_tasks: barbican-config-set.yml
+- name: barbican Service restart
+  service: 
+    name: "{{ item }}"
+    state: restarted
+  with_items: 
+    - apache2 
+  when: barbican_conf is changed

@@ -1,0 +1,46 @@
+---
+- block:
+    - name: Preflight - purgecompute | Show target host for purge
+      ansible.builtin.debug:
+        msg: "Starting preflight checks on {{ inventory_hostname }} (purge_compute node)"
+    
+    - name: Preflight - purgecompute | Check libvirt domains (virsh list --all)
+      ansible.builtin.command: virsh list --all --name
+      register: virsh_list
+      changed_when: false
+      failed_when: false
+    
+    - name: Preflight - purgecompute | Fail if any libvirt domain still exists
+      ansible.builtin.fail:
+        msg: |
+          libvirt domains still exist on {{ "purge-compute" }}.
+          Please evacuate / delete all instances before purge.
+    
+          {{ virsh_list.stdout }}
+      vars:
+        libvirt_domains: "{{ virsh_list.stdout_lines | reject('equalto', '') | list }}"
+      when: libvirt_domains | length > 0
+
+  when: inventory_hostname in groups["purge-compute"]
+
+- block:
+    - name: Find enabled nova-compute hosts in purge-compute
+      ansible.builtin.shell: |
+        . /root/contrabass-openrc && openstack compute service list -c Binary -c Host -c Status -f value | awk '$1=="nova-compute" && $2=="{{ item }}" && tolower($3)=="enabled" {print $2}'
+      args:
+        executable: /bin/bash
+      loop: "{{ groups['purge-compute'] }}"
+      register: enabled_nova_compute_hosts
+      changed_when: false
+    
+    - name: Disable nova-compute services (only if enabled)
+      ansible.builtin.shell: |
+        . /root/contrabass-openrc && openstack compute service set --disable {{ item.stdout }} nova-compute
+      args:
+        executable: /bin/bash
+      loop: "{{ enabled_nova_compute_hosts.results }}"
+      when:
+        - item.stdout is defined
+        - item.stdout | length > 0
+    
+  when: inventory_hostname == groups['controller'][0]

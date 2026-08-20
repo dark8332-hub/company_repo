@@ -1,0 +1,57 @@
+---
+- import_tasks: neutron-config-set.yml
+
+# Handlers for neutron
+# restart
+- name: restart neutron-server
+  service: name=neutron-server state=restarted
+  when: neutron_conf is changed
+
+- name: restart neutron-dhcp-agent
+  service: name=neutron-dhcp-agent state=restarted
+  when: neutron_conf is changed
+
+- name: restart neutron-metadata-agent
+  service: name=neutron-metadata-agent state=restarted
+  when: neutron_conf is changed
+
+- name: restart neutron-l3-agent
+  service: name=neutron-l3-agent state=restarted
+  when: neutron_conf is changed
+
+- name: restart neutron-openvswitch-agent
+  service: name=neutron-openvswitch-agent state=restarted
+  when: neutron_conf is changed
+
+# start
+- name: start neutron-server
+  service: name=neutron-server state=started
+
+- name: start neutron-dhcp-agent
+  service: name=neutron-dhcp-agent state=started
+
+- name: start neutron-metadata-agent
+  service: name=neutron-metadata-agent state=started
+
+- name: start neutron-l3-agent
+  service: name=neutron-l3-agent state=started
+
+- name: start neutron-openvswitch-agent
+  service: name=neutron-openvswitch-agent state=started
+
+
+# stop
+- name: stop neutron-server
+  service: name=neutron-server state=stopped
+
+- name: stop neutron-dhcp-agent
+  service: name=neutron-dhcp-agent state=stopped
+
+- name: stop neutron-metadata-agent
+  service: name=neutron-metadata-agent state=stopped
+
+- name: stop neutron-l3-agent
+  service: name=neutron-l3-agent state=stopped
+
+- name: stop neutron-openvswitch-agent
+  service: name=neutron-openvswitch-agent state=stopped

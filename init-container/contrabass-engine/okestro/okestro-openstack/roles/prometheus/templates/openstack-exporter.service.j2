@@ -1,0 +1,46 @@
+[Unit]
+Description=OpenStack Exporter
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=on-failure
+ExecStart={{ exe_path }}/openstack-exporter \
+    --os-client-config={{ openstack_exporter_config_dir }}/clouds.yaml \
+{% if monitoring_enable_tls %}
+    --web.config.file={{ openstack_exporter_config_dir }}/web-config.yml \
+{% endif %}
+    --endpoint-type=internal \
+    --web.listen-address=0.0.0.0:{{ openstack_exporter_port }} \
+    --disable-service.container-infra \
+    --disable-service.dns \
+    --disable-service.baremetal \
+    --disable-service.gnocchi \
+    --disable-service.database \
+    --disable-service.orchestration \
+    --disable-metric=cinder-snapshots \
+    --disable-metric=cinder-limits_volume_max_gb \
+    --disable-metric=glance-images \
+    --disable-metric=identity-users \
+    --disable-metric=identity-groups \
+    --disable-metric=identity-regions \
+    --disable-metric=nova-flavors \
+    --disable-metric=nova-flavor \
+    --disable-metric=nova-availability_zones \
+    --disable-metric=nova-security_groups \
+    --disable-metric=nova-limits_vcpus_max \
+    --disable-metric=nova-server_local_gb \
+    --disable-metric=nova-running_vms \
+    --disable-metric=loadbalancer-total_loadbalancers \
+    --disable-metric=loadbalancer-total_amphorae \
+    --disable-metric=loadbalancer-total_pools \
+    --disable-metric=neutron-security_groups \
+    --disable-metric=neutron-networks \
+    --web.telemetry-path=/metrics {{ cloud }} 
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

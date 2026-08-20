@@ -1,0 +1,29 @@
+[Unit]
+Description=Thanos Query Front
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=on-failure
+Type=simple
+ExecStart={{ exe_path }}/thanos query-frontend \
+    --http-address=0.0.0.0:{{ thanos_query_front_http_port }} \
+{% if monitoring_enable_tls %}
+    --http.config={{ thanos_config_dir }}/config/thanos-http-server-config.yml \
+    --query-frontend.downstream-url=https://{{ monitoring_vip_address }}:{{ thanos_query_http_loadbalance_port }} \
+    --query-frontend.downstream-tripper-config-file={{ thanos_config_dir }}/config/thanos-http-client-config.yml \
+{% else %}
+    --query-frontend.downstream-url=http://{{ monitoring_vip_address }}:{{ thanos_query_http_loadbalance_port }} \
+{% endif %}
+    --query-range.split-interval=24h \
+    --query-range.max-retries-per-request=5 \
+    --query-frontend.log-queries-longer-than=60s \
+    --cache-compression-type=snappy \
+    --query-range.response-cache-config-file=/etc/thanos/config/thanos-query-front-response-cache.yml \
+    --query-range.response-cache-max-freshness=1m \
+    --query-range.align-range-with-step
+
+[Install]
+WantedBy=multi-user.target

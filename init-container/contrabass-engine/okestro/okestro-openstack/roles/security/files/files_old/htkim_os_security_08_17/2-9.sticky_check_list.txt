@@ -1,0 +1,14 @@
+/sbin/dump
+/usr/bin/lpq-lpd 
+/usr/bin/newgrp 
+/sbin/restore
+/usr/bin/lpr 
+/usr/sbin/lpc 
+/sbin/unix_chkpwd
+/usr/bin/lpr-lpd 
+/usr/sbin/lpc-lpd 
+/usr/bin/at
+/usr/bin/lprm 
+/usr/sbin/traceroute 
+/usr/bin/lpq
+/usr/bin/lprm-lpd 

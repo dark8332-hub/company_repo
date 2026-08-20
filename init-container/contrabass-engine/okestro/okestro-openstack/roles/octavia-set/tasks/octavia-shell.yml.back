@@ -1,0 +1,35 @@
+---
+#- name: veth shell init
+#  ansible.builtin.script: /root/okestro-openstack_deploy/roles/octavia-set/files/sub-create.sh
+
+- name: Copy scripts
+  ansible.builtin.template:
+    src: sub-create.sh.j2 
+    dest: /root/sub-create.sh
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Run Script
+  shell: /root/sub-create.sh
+
+- name: Delete Script
+  file:
+    path: /root/sub-create.sh
+    state: absent
+
+- name: Copy octavia conf scripts
+  copy:
+    src: octavia.conf.sh
+    dest: /root/octavia.conf.sh
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Run Script
+  shell: /root/octavia.conf.sh
+
+- name: Delete Script
+  file:
+    path: /root/octavia.conf.sh
+    state: absent

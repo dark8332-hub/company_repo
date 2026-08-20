@@ -1,0 +1,43 @@
+---
+- name: Gather purgecluster facts 
+  ansible.builtin.setup:
+
+- name: Load monitoring vars for purgecluster
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/purgecluster-monitoring.yml"
+
+- name: Load OS-specific vars for purgecluster
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/{{ 'purgecluster-debian.yml' if ansible_os_family == 'Debian' else 'purgecluster-redhat.yml' }}"
+
+- include_tasks: purgecluster-preflight.yml
+  when: inventory_hostname in groups["purge-compute"]
+
+- include_tasks: purgecluster-ceph.yml
+  when:
+    - purgecluster_backend_ceph | default(false) | bool
+    - group_names | intersect(['osds', 'mons', 'rgws', 'mdss']) | length > 0
+
+
+- block:
+    - include_tasks: purgecluster-debian-common.yml
+
+    - include_tasks: purgecluster-debian-controller.yml
+      when: inventory_hostname in groups["purge-controller"]
+
+    - include_tasks: purgecluster-debian-all.yml
+  when: ansible_os_family == "Debian"
+
+
+- block:
+    - include_tasks: purgecluster-redhat-common.yml
+
+    - include_tasks: purgecluster-redhat-controller.yml
+      when: inventory_hostname in groups["purge-controller"]
+
+    - include_tasks: purgecluster-redhat-all.yml
+  when: ansible_os_family == "RedHat"
+
+
+- include_tasks: purgecluster-post-purge.yml
+

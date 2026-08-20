@@ -1,0 +1,9 @@
+- name: Create corosync log directory
+  ansible.builtin.file:
+    path: /var/log/corosync
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when:
+    - ansible_os_family == "RedHat"

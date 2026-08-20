@@ -1,0 +1,129 @@
+---
+purgecluster_common_monitoring_services:
+  ### Compute & ALL Monitoring service ###
+  - contrabass-exporter.service
+  - ipmi-exporter.service
+  - node-exporter.socket
+  - node-exporter.service
+  - contrabass-mole.service
+  - ovs-exporter.service
+  - promtail.service
+  - snmpd.service
+  - lldpd.service
+  - freeipmi.service
+
+purgecluster_controller_monitoring_services:
+  ### Controller Monitoring service ###
+  - openstack-exporter.service
+  - ha_cluster-exporter.service
+  - haproxy-exporter.service
+  - memcached-exporter.service
+  - mysqld-exporter.service
+  - rabbitmq-exporter.service
+  - prometheus.service
+  - prometheus-am-executor.service
+  - alertmanager.service
+  - thanos-query.service
+  - thanos-rule.service
+  - thanos-store.service
+  - thanos-query-front.service
+  - thanos-sidecar.service
+  - thanos-compact.service
+  - loki.service
+
+
+purgecluster_common_monitoring_files:
+  ### Compute & ALL Monitoring files ###
+
+  # /usr/local/bin
+  - /usr/local/bin/ipmi-exporter
+  - /usr/local/bin/contrabass-exporter
+  - /usr/local/bin/node_exporter
+  - /usr/local/bin/ovs-exporter
+  - /usr/local/bin/promtail
+
+  # /etc/systemd/system
+  - /etc/systemd/system/contrabass-exporter.service
+  - /etc/systemd/system/ipmi-exporter.service
+  - /etc/systemd/system/node-exporter.service
+  - /etc/systemd/system/node-exporter.socket
+  - /etc/systemd/system/ovs-exporter.service
+  - /etc/systemd/system/promtail.service
+  - /etc/systemd/system/contrabass-mole.service
+  - /etc/systemd/system/sockets.target.wants/node-exporter.socket
+
+  # /etc
+  - /etc/prometheus
+  - /etc/node-exporter
+  - /etc/promtail
+  - /etc/contrabass
+  - /etc/freeipmi
+
+  # /var/lib
+  - /var/lib/node-exporter
+  - /var/lib/contrabass
+
+  #/var/log
+  - /var/log/freeipmi
+  - /var/log/ipmiconsole
+  - /var/log/contrabass
+
+  # Extras
+  - /opt/certificate
+  - /opt/monitoring-certs
+  - /tmp/contrabass-mole
+  - /root/.freeipmi
+
+purgecluster_controller_monitoring_files:
+  ### Controller Monitoring files ###
+
+  # /usr/local/bin
+  - /usr/local/bin/openstack-exporter
+  - /usr/local/bin/haproxy-exporter
+  - /usr/local/bin/memcached-exporter
+  - /usr/local/bin/mysqld-exporter
+  - /usr/local/bin/rabbitmq-exporter
+  - /usr/local/bin/prometheus
+  - /usr/local/bin/alertmanager
+  - /usr/local/bin/thanos
+  - /usr/local/bin/loki
+  - /usr/local/bin/amtool
+  - /usr/local/bin/ha_cluster-exporter
+  - /usr/local/bin/promtool
+
+  # /etc/systemd/system
+  - /etc/systemd/system/openstack-exporter.service
+  - /etc/systemd/system/haproxy-exporter.service
+  - /etc/systemd/system/memcached-exporter.service
+  - /etc/systemd/system/mysqld-exporter.service
+  - /etc/systemd/system/rabbitmq-exporter.service
+  - /etc/systemd/system/prometheus.service
+  - /etc/systemd/system/prometheus-am-executor.service
+  - /etc/systemd/system/alertmanager.service
+  - /etc/systemd/system/thanos-query.service
+  - /etc/systemd/system/thanos-rule.service
+  - /etc/systemd/system/thanos-store.service
+  - /etc/systemd/system/thanos-query-front.service
+  - /etc/systemd/system/thanos-sidecar.service
+  - /etc/systemd/system/loki.service
+  - /etc/systemd/system/minio.service
+  - /etc/systemd/system/ha_cluster-exporter.service
+
+  # /etc
+  - /etc/openstack
+  - /etc/prometheus-am-executor
+  - /etc/alertmanager/
+  - /etc/thanos/
+  - /etc/loki/loki-s3-config.yaml
+  - /etc/default/minio
+
+  # /var/lib
+  - /var/lib/prometheus
+  - /var/lib/thanos-rule
+  - /var/lib/thanos-store
+  - /var/lib/alertmanager
+  - /var/lib/loki
+
+  # Extras
+  - /root/.my.cnf
+

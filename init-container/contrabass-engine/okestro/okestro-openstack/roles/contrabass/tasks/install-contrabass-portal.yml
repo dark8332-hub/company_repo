@@ -1,0 +1,28 @@
+- name: Check contrabass portal dir exists
+  stat:
+    path: "/cao"
+  register: portal_dir
+
+- name: Create portal directory
+  file:
+    path: "/cao"
+    state: directory
+  when: not portal_dir.stat.exists
+
+- name: Copy contrabass portal sources
+  copy:
+    src: /root/init-container/cao/
+    dest: "/cao"
+    remote_src: yes
+  when: not portal_dir.stat.exists
+
+- name: Check contrabass portal container exists
+  shell: "nerdctl ps | grep -q 'contrabass-api'"
+  register: contrabass_api
+  ignore_errors: yes
+
+- name: Deploy contrabass portal containers
+  shell: "bash /cao/install.sh"
+  args:
+    chdir: /cao
+  when: contrabass_api.rc != 0

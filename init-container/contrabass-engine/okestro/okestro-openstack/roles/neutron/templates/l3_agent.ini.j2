@@ -1,0 +1,9 @@
+[DEFAULT]
+interface_driver = openvswitch
+external_network_bridge =
+
+[agent]
+extensions=port_forwarding
+
+[ovs]
+ovsdb_connection = tcp:127.0.0.1:6640

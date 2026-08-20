@@ -1,0 +1,11 @@
+[Unit]
+Description=Run contrabass textfile collectors every 30 seconds
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:*:0/30
+AccuracySec=10s
+Unit=textfile_collector.service
+
+[Install]
+WantedBy=timers.target

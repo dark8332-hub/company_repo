@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenStack Cinder Backup
+After=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service network-online.target local-fs.target remote-fs.target
+Wants=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service network-online.target
+
+Documentation=man:cinder-backup(1)
+
+[Service]
+User=cinder
+Group=cinder
+Type=simple
+WorkingDirectory=~
+RuntimeDirectory=cinder lock/cinder
+CacheDirectory=cinder
+ExecStart=/usr/local/bin/cinder-backup --config-file=/etc/cinder/cinder.conf --log-file=/var/log/cinder/cinder-backup.log
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

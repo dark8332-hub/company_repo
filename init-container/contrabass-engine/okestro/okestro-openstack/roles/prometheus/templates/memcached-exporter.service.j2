@@ -1,0 +1,23 @@
+[Unit]
+Description=Prometheus Memcached Exporter
+After=network.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/memcached-exporter \
+                   --memcached.address="{{ ansible_facts[int_api_interface].ipv4.address }}:{{ memcached_port }}" \
+                   --memcached.timeout="1s" \
+                   --web.listen-address=":{{ memcached_exporter_port }}" \
+{% if monitoring_enable_tls %}
+                   --web.config.file="/etc/prometheus/web-config.yml" \
+{% endif %}
+                   --web.telemetry-path="/metrics" \
+                   --web.scrape-path="/scrape" \
+                   --log.level=info \
+                   --log.format=logfmt
+
+[Install]
+WantedBy=multi-user.target

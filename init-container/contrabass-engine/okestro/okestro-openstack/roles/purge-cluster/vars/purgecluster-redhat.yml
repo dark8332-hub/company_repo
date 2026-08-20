@@ -1,0 +1,342 @@
+---
+redhat_purgecluster_common_services:
+  ### Compute-service & ALL service ###
+  - openstack-nova-compute.service
+  - openvswitch.service
+  - libvirtd.socket
+  - libvirtd-tcp.socket
+  - libvirtd.service
+  - virtlogd.socket
+  - virtlockd.service
+  - virtlockd.socket
+  - virtlockd-admin.socket
+  - libvirt-guests.service
+  - ovsdb-server.service
+  - neutron-openvswitch-agent.service
+  - ovs-vswitchd.service
+  - nfs-client.target
+  - rpc-statd-notify.service
+  - rpcbind.socket
+  - rpc_pipefs.target
+  - var-lib-nfs-rpc_pipefs.mount
+
+redhat_purgecluster_controller_services:
+  ### Controller service ###
+
+  #Nova & Compute
+  - openstack-nova-api.service
+  - openstack-nova-metadata-api.service
+  - openstack-nova-conductor.service
+  - openstack-nova-novncproxy.service
+  - openstack-nova-scheduler.service
+
+  # Networking
+  - neutron-dhcp-agent.service
+  - neutron-l3-agent.service
+  - neutron-metadata-agent.service
+  - neutron-server.service
+
+  #Cinder
+  - openstack-cinder-api.service
+  - openstack-cinder-scheduler.service
+  - openstack-cinder-volume.service
+  - openstack-cinder-backup.service
+
+  #Glance
+  - openstack-glance-api.service
+
+  #Manila
+  - openstack-manila-api.service
+  - openstack-manila-scheduler.service
+  - openstack-manila-share.service
+
+  #Masakari
+  - masakari-api.service
+  - masakari-engine.service
+
+  #Barbican
+  - openstack-barbican-api.service
+  - openstack-barbican-keystone-listener.service
+  - openstack-barbican-worker.service
+
+  #Octavia
+  - octavia-api.service
+  - octavia-health-manager.service
+  - octavia-housekeeping.service
+  - octavia-worker.service
+  - octavia-interface.service
+
+
+redhat_purgecluster_controller_middleware_services:
+  ### Controller Middleware Service ###
+  - httpd.service
+  - rabbitmq-server.service
+  - haproxy.service
+  - memcached.service
+  - pacemaker.service
+  - pcsd.service
+  - pcsd-ruby.service
+  - mysql.service
+  - mysql@bootstrap.service
+  - percona-telemetry-agent.service
+  - minio.service
+  - corosync.service
+
+redhat_purgecluster_common_packages:
+  ### Compute-service & ALL Packages ###
+  - openstack-nova-compute
+  - openstack-neutron-openvswitch
+  - openvswitch
+  - libvirt-daemon-kvm
+  - python3-openstackclient
+  - iperf3
+  - dnsmasq
+  - python3-rbd
+  - librbd1
+  - librados2
+  - qemu-kvm
+  - percona-xtradb-cluster-server
+  - ceph-common
+  - free-ipmi
+
+redhat_purgecluster_controller_packages:
+  ### Controller Packages ###
+
+  #Middleware Packages
+  - corosync
+  - pacemaker
+  - pcs
+  - httpd
+  - httpd-core
+  - python3-memcached
+  - memcached
+  - python3-PyMySQL
+  - percona-xtradb-cluster
+  - percona-xtrabackup-80
+  - rabbitmq-server
+  - haproxy
+  - python3-mod_wsgi
+  - resource-agents
+  - erlang
+
+  #Openstack Packages
+  - openstack-keystone
+  - openstack-glance
+  - openstack-placement-api
+  - openstack-nova-api
+  - openstack-nova-conductor
+  - openstack-nova-scheduler
+  - openstack-nova-novncproxy
+  - openstack-neutron
+  - openstack-neutron-ml2
+  - openstack-cinder
+  - targetcli
+  - openstack-manila
+  - openstack-manila-share
+  - openstack-manila-ui
+  - openstack-octavia-api
+  - openstack-octavia-health-manager
+  - openstack-octavia-housekeeping
+  - openstack-octavia-worker
+  - openstack-octavia-ui
+  - dhclient
+  - openstack-barbican-api
+  - openstack-barbican-worker
+  - openstack-barbican-keystone-listener
+  - openstack-dashboard
+  - python3-manilaclient
+  - python3-octavia
+  - python3-octaviaclient
+  - python3-osc-placement
+
+
+redhat_purgecluster_common_openstack_files:
+  ### Compute & ALL Openstack files ###
+
+  # /etc
+  - /etc/nova
+  - /etc/neutron
+  - /etc/castellan
+  - /etc/libvirt
+  - /etc/openvswitch
+  - /etc/pycadf
+  - /etc/swtpm-localca.conf
+  - /etc/swtpm-localca.options
+  - /etc/swtpm_setup.conf
+  - /etc/qemu-kvm
+  - /etc/ceph
+
+  # /var/lib
+  - /var/lib/nova
+  - /var/lib/neutron
+  - /var/lib/libvirt
+  - /var/lib/openvswitch
+  - /var/lib/swtpm-localca
+  - /var/lib/ceph
+
+  # /var/log
+  - /var/log/nova
+  - /var/log/neutron
+  - /var/log/libvirt
+  - /var/log/openvswitch
+  - /var/log/ceph
+
+  # Extras
+  - /var/run/openvswitch
+  - /var/run/libvirt
+  - /root/.mysql_history
+  - /root/.gitconfig
+  - /var/run/ceph
+
+
+redhat_purgecluster_controller_openstack_files:
+  ### Controller Openstack files ###
+
+  # /etc
+  - /etc/glance
+  - /etc/cinder
+  - /etc/barbican
+  - /etc/manila
+  - /etc/octavia
+  - /etc/placement
+  - /etc/masakari
+  - /etc/openstack
+  - /etc/openstack-dashboard
+  - /etc/os-brick
+  - /etc/systemd/system/masakari-api.service
+  - /etc/systemd/system/masakari-engine.service
+  - /etc/systemd/system/octavia-interface.service
+
+  # /var/lib
+  - /var/lib/glance
+  - /var/lib/cinder
+  - /var/lib/barbican
+  - /var/lib/manila
+  - /var/lib/octavia
+  - /var/lib/placement
+  - /var/lib/masakari
+  - /var/lib/openstack-dashboard
+
+  # /var/log
+  - /var/log/glance
+  - /var/log/cinder
+  - /var/log/barbican
+  - /var/log/manila
+  - /var/log/octavia
+  - /var/log/placement
+  - /var/log/masakari
+
+  # /usr/local/bin
+  - /usr/local/bin/octavia-interface.sh
+  - /usr/local/bin/masakari-api
+  - /usr/local/bin/masakari-engine
+  - /usr/local/bin/masakari-manage
+  - /usr/local/bin/masakari-status
+  - /usr/local/bin/masakari-wsgi
+
+  #ETC
+  - /root/contrabass-openrc
+  - /root/.targetcli
+
+redhat_purgecluster_controller_middleware_files:
+  ### Controller Middleware files ###
+
+  # /etc
+  - /etc/apache2
+  - /etc/loki
+  - /etc/corosync
+  - /etc/pacemaker
+  - /etc/ha.d
+  - /etc/keepalived
+  - /etc/tgt
+  - /etc/stunnel
+  - /etc/mysql
+  - /etc/haproxy
+  - /etc/my.cnf
+  - /etc/my.cnf.d
+  - /etc/my.cnf.rpmnew
+  - /etc/systemd/system/multi-user.target.wants
+
+  # /var/lib
+  - /var/lib/mysql
+  - /var/lib/mysql-files
+  - /var/lib/mysql-keyring
+  - /var/lib/rabbitmq
+  - /var/lib/corosync
+  - /var/lib/pacemaker
+  - /var/lib/pcsd
+  - /var/lib/haproxy
+  - /var/lib/stunnel4
+  - /var/lib/httpd
+
+  # /var/log
+  - /var/log/apache2
+  - /var/log/mysql
+  - /var/log/percona
+  - /var/log/rabbitmq
+  - /var/log/corosync
+  - /var/log/pacemaker
+  - /var/log/pcsd
+  - /var/log/stunnel4
+  - /var/log/mysqld.log
+  - /var/log/haproxy.log
+  - /var/log/cluster
+  - /var/log/keystone
+  - /var/log/httpd
+
+  # /usr/local/bin/
+  - /usr/local/bin/mc
+  - /usr/local/bin/minio
+
+  # /root
+  - /root/.mc
+  - /root/.minio
+  - /root/.my.cnf
+  - /root/dashboard_password.yml
+
+
+redhat_purgecluster_common_users:
+  ### Compute & ALL Users ###
+  - nova
+  - neutron
+  - openvswitch
+  - mysql
+  - lldpd
+  - unbound
+  - rpc
+  - dnsmasq
+  - stapunpriv
+  - memcached
+  - qemu
+  - rpcuser
+  - ceph
+
+  ### Group ###
+  - percona-telemetry
+  - libvirt
+  - hugetlbfs
+  - stapusr
+  - stapsys
+  - stapdev
+
+redhat_purgecluster_controller_users:
+  ### Controller Users ###
+  - haproxy
+  - hacluster
+  - rabbitmq
+  - apache
+  - keystone
+  - rtkit
+  - pipewire
+  - geoclue
+  - flatpak
+  - glance
+  - placement
+  - radvd
+  - cinder
+  - octavia
+  - barbican
+  - nfast
+  - manila
+
+

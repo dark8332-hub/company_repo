@@ -1,0 +1,91 @@
+- name: Marked Docker and Containerd Package
+  ansible.builtin.command: apt-mark hold docker.io containerd
+  become: true
+  when:
+    - ansible_os_family == 'Debian'
+
+- name: Podman package installation
+  ansible.builtin.package:
+    name: podman
+    state: present
+
+- name: Cephadm package installation
+  ansible.builtin.apt:
+    name: 
+      - cephadm
+      - ceph-common
+    state: present
+  when: 
+    - inventory_hostname in groups['mons']
+    - ansible_os_family == 'Debian'
+
+- name: Cephadm package installation
+  ansible.builtin.dnf:
+    name:
+      - cephadm
+      - ceph-common
+    state: present
+    enablerepo: epel
+  when:
+    - inventory_hostname in groups['mons']
+    - ansible_distribution == 'RedHat'
+    - ansible_distribution_major_version == '9'
+
+- name: Set local registry domain
+  blockinfile:
+    path: '/etc/hosts'
+    marker: '### {mark} Cephadm local registry domain ###'
+    block: |
+      {{ hostvars[groups['mons'][0]].monitor_addresses }} {{ registry_domain }}
+
+- name: Set podman refer to local registry
+  blockinfile:
+    path: '/etc/containers/registries.conf'
+    marker: '### {mark} Set podman refer to local registry ###'
+    block: |
+      [[registry]]
+      location = "{{ registry_domain }}:{{ registry_port }}"
+      insecure = true
+  register: registry_config
+
+- name: Apply podman refer local registry
+  service:
+    name: podman
+    state: restarted
+  when: registry_config is changed
+
+- name: SSH Key initailization
+  block:
+    - name: Create ssh key
+      community.crypto.openssh_keypair:
+        path: '/root/.ssh/id_rsa'
+
+    - name: Create config files
+      file:
+        path: "{{ item }}"
+        state: touch
+        owner: 'root'
+        group: 'root'
+        mode: '0600'
+      with_items:
+        - '/root/.ssh/config'
+        - '/root/.ssh/ansible-user-password.txt'
+
+    - name: Configure ssh environment files
+      lineinfile:
+        path: "{{ item.path }}"
+        line: "{{ item.line }}"
+      with_items:
+        - { path: '/root/.ssh/config', line: 'StrictHostKeyChecking no' }
+        - { path: '/root/.ssh/ansible-user-password.txt', line: "{{ server_password }}" }
+
+    - name: Install sshpass for copy ssh key without password
+      ansible.builtin.package:
+        name: sshpass
+        state: present
+
+    - name: Copy ssh key to authenticate passwordless for mon host to other hosts
+      shell: "sshpass -f '/root/.ssh/ansible-user-password.txt' ssh-copy-id root@{{ hostvars[item].ansible_host }}"
+      loop: "{{ (groups['mons'] | default([]) + groups['rgws'] | default([]) + groups['mdss'] | default([]) + groups['osds'] | default([])) | unique }}"
+      delegate_to: "{{ groups['mons'][0] }}"
+  when: inventory_hostname in groups['mons'][0]

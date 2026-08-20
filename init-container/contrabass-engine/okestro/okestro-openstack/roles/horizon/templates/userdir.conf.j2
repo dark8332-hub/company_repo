@@ -1,0 +1,20 @@
+{% if ansible_os_family == "RedHat" %}
+<IfModule mod_userdir.c>
+    UserDir disabled
+</IfModule>
+<Directory "/home/*/public_html">
+    Options -Indexes -FollowSymLinks
+    AllowOverride FileInfo AuthConfig Limit Indexes
+    Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
+    Require method GET POST OPTIONS
+</Directory>
+{% elif ansible_os_family == "Debian" %}
+UserDir public_html
+UserDir disabled root
+
+<Directory /home/*/public_html>
+        AllowOverride FileInfo AuthConfig Limit Indexes
+        Options MultiViews Indexes SymLinksIfOwnerMatch IncludesNoExec
+        Require method GET POST OPTIONS
+</Directory>
+{% endif %}

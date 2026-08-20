@@ -1,0 +1,53 @@
+---
+- name: Create HAProxy chroot dev directory on RedHat
+  ansible.builtin.file:
+    path: /var/lib/haproxy/dev
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ansible_os_family == "RedHat"
+
+- name: Configure rsyslog for HAProxy logging on RedHat
+  ansible.builtin.copy:
+    dest: /etc/rsyslog.d/49-haproxy.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Create an additional socket in haproxy's chroot in order to allow logging via
+      # /dev/log to chroot'ed HAProxy processes
+      $AddUnixListenSocket /var/lib/haproxy/dev/log
+
+      # Send HAProxy messages to a dedicated logfile
+      :programname, startswith, "haproxy" {
+        /var/log/haproxy.log
+        stop
+      }
+  when: ansible_os_family == "RedHat"
+
+- name: Restart rsyslog on RedHat
+  ansible.builtin.service:
+    name: rsyslog
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- name: Restart haproxy on RedHat
+  ansible.builtin.service:
+    name: haproxy
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- name: Check HAProxy configuration for OpenStack components
+  shell: "grep -iq 'percona' {{ haproxy_dir }}/{{ haproxy_file }}"
+  register: haproxy_cfg
+  ignore_errors: true
+
+- name: Copy configuration files
+  template:
+    src: "{{ haproxy_file }}.j2"
+    dest: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    owner: root
+    group: root
+    mode: 0644
+  when: haproxy_cfg.rc == 1

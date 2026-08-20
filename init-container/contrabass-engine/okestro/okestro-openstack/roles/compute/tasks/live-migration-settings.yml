@@ -1,0 +1,44 @@
+---
+- name: Copy libvirt config file
+  template:
+    src: "{{ libvirt_config }}.j2" 
+    dest: "{{ libvirt_dir }}/{{ libvirt_config }}"
+    owner: root
+    group: libvirt
+    mode: 0644
+    backup: true
+
+- name: qemu.conf file setting
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ libvirt_dir }}/{{ item }}"
+    owner: root
+    group: libvirt
+    mode: 0644
+  with_items:
+    - qemu.conf
+
+- name: Stop nova-compute for libvirt-tls.socket enable
+  service:
+    name: "{{ pac_nova_compute }}"
+    state: stopped
+
+- name: Stop Libvirtd daemon and enable live migration socket
+  service:
+    name: "{{ item.service }}"
+    state: "{{ item.state }}"
+    enabled: yes
+  with_items:
+    - { service: 'libvirtd', state: stopped }
+    - { service: "{{ 'libvirtd-tls.socket' if enable_live_migration_tls else 'libvirtd-tcp.socket' }}", state: started }
+
+- name: Start libvirtd daemon
+  service:
+    name: 'libvirtd'
+    state: started
+    enabled: yes
+
+- name: Restart nova-compute
+  service:
+    name: "{{ pac_nova_compute }}"
+    state: restarted

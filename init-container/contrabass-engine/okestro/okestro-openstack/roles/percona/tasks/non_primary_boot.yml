@@ -1,0 +1,9 @@
+---
+- name: restart pxc non primary
+  service:
+    name: mysql
+    state: started
+  register: percona_up
+  until: percona_up is not failed
+  retries: 5
+  delay: 5

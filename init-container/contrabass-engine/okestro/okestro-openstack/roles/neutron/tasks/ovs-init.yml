@@ -1,0 +1,14 @@
+- name: external bridge create
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "br-{{ item.name }}"
+    state: present
+    fail_mode: secure
+  loop: "{{ bridges }}"
+
+- name: external bridge port mapping
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "br-{{ item.name }}"
+    port: "{{ item.port }}"
+    state: present
+    tag: "{{ item.vlan | default(omit) }}"
+  loop: "{{ bridges }}"

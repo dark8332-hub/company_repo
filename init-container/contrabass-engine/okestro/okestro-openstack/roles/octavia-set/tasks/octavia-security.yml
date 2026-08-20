@@ -1,0 +1,53 @@
+---
+- name: Create Octavia Security Group
+  openstack.cloud.security_group:
+    cloud: contrabass-octavia
+    state: present
+    name: "{{ SECURITY_GROUP_NAME }}"
+    interface: internal
+    description: Octavia Internal Security Group
+
+- name: Create Octavia Health Security Group
+  openstack.cloud.security_group:
+    cloud: contrabass-octavia
+    state: present
+    name: "{{ H_SECURITY_GROUP_NAME }}"
+    interface: internal
+    description: Octavia Internal Security Group
+
+- name: Create Octavia Security role
+  openstack.cloud.security_group_rule:
+    cloud: contrabass-octavia
+    project: service
+    security_group: "{{ SECURITY_GROUP_NAME }}"
+    protocol: "{{ item.protocol }}"
+    port_range_min: "{{ item.port_range_min }}"
+    port_range_max: "{{ item.port_range_max }}"
+    interface: internal
+  with_items:
+    - { protocol: 'tcp',port_range_min: '22',port_range_max: '22' }
+    - { protocol: 'tcp',port_range_min: '9443',port_range_max: '9443' }
+
+    ##--------------test code-----------------
+
+- name: Add Octavia Security ICMP role
+  openstack.cloud.security_group_rule:
+    cloud: contrabass-octavia
+    project: service
+    security_group: "{{ SECURITY_GROUP_NAME }}"
+    protocol: icmp
+    interface: internal
+
+    ##--------------test code-----------------
+    
+- name: Create Octavia Health Security role
+  openstack.cloud.security_group_rule:
+    cloud: contrabass-octavia
+    project: service
+    security_group: "{{ H_SECURITY_GROUP_NAME }}" 
+    protocol: "{{ item.protocol }}"
+    port_range_min: "{{ item.port_range_min }}"
+    port_range_max: "{{ item.port_range_max }}"
+    interface: internal
+  with_items:
+    - { protocol: 'udp',port_range_min: '5555',port_range_max: '5555' }

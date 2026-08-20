@@ -1,0 +1,8 @@
+---
+- include_tasks: copy-repository-and-upgrade.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: db-sync-and-modify.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: component-restart.yml

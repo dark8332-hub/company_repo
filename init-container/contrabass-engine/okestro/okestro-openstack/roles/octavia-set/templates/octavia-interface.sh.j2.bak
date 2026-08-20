@@ -1,0 +1,37 @@
+#!/bin/bash
+
+set -ex
+source /root/contrabass-openrc
+OCTAVIA_MGMT_PORT_IP=172.16.0.2
+OCTAVIA_HEALTH_MANAGER_PORT_NAME=octavia-health-manager-listen-port-con1
+MGMT_PORT_ID=$(openstack port show -c id -f value $OCTAVIA_HEALTH_MANAGER_PORT_NAME)
+MGMT_PORT_MAC=$(openstack port show -c mac_address -f value $MGMT_PORT_ID)
+
+if [ "$1" == "start" ]; then
+    sudo ip addr flush dev o-hm0
+    sudo ovs-vsctl -- --may-exist add-port br-int o-hm0 \
+        -- set Interface o-hm0 type=internal \
+        -- set Interface o-hm0 external-ids:iface-status=active \
+        -- set Interface o-hm0 external-ids:attached-mac=$MGMT_PORT_MAC \
+        -- set Interface o-hm0 external-ids:iface-id=$MGMT_PORT_ID
+    ip link set dev o-hm0 address $MGMT_PORT_MAC
+    ip link set o-hm0 up
+    if [ -n "$(pgrep -f 'dhclient -v o-hm0')" ]; then
+        pkill -f "dhclient -v o-hm0"
+    fi
+    sleep 2
+    dhclient -v o-hm0
+    if [ -n "$(ip route show default | grep 172.16.0.1)" ]; then
+        sudo ip route del default via 172.16.0.1 dev o-hm0
+    else
+        sleep 1
+    fi
+elif [ "$1" == "stop" ]; then
+    ovs-vsctl del-port o-hm0
+else
+    ovs-vsctl list-ports br-int
+    ovs-vsctl list interface o-hm0
+    ip a s dev o-hm0
+fi
+
+

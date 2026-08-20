@@ -1,0 +1,180 @@
+[DEFAULT]
+log_dir = /var/log/nova
+lock_path = /var/lock/nova
+state_path = /var/lib/nova
+my_ip = {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+use_neutron = True
+firewall_driver = nova.virt.firewall.NoopFirewallDriver
+allow_resize_to_same_host = true
+resize_confirm_window = 1
+{% if ansible_os_family == "RedHat" %}
+enabled_apis = osapi_compute,metadata
+{% endif %}
+
+rpc_backend = rabbit
+block_device_allocate_retries = 600
+block_device_allocate_retries_interval = 3
+vif_plugging_timeout = 1800
+vif_plugging_is_fatal = false
+metadata_workers = 6
+osapi_compute_workers = 6
+
+[api_database]
+connection = mysql+pymysql://nova:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/nova_api
+max_pool_size = 20
+[database]
+connection = mysql+pymysql://nova:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/nova
+max_overflow = 1000
+max_pool_size = 20
+
+[api]
+auth_strategy = keystone
+
+[cache]
+enabled = true
+backend = oslo_cache.memcache_pool
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_roles_required = true
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = nova
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[cells]
+enable=False
+
+[oslo_concurrency]
+lock_path= /var/lib/nova/tmp
+
+[wsgi]
+api_paste_config=/etc/nova/api-paste.ini
+
+[vnc]
+enabled = True
+server_listen = $my_ip
+server_proxyclient_address = $my_ip
+novncproxy_host = 0.0.0.0
+novncproxy_base_url = {{ "https" if monitoring_enable_tls else "http" }}://{{ monitoring_vip_address }}:{{ novnc_bind_port }}/vnc_auto.html
+
+[oslo_messaging_rabbit]
+rabbit_quorum_queue = true
+rabbit_transient_quorum_queue = True
+#use_queue_manager = True
+#rabbit_stream_fanout = True
+rabbit_qos_prefetch_count = 10
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+kombu_missing_consumer_retry_timeout = 60
+heartbeat_timeout_threshold = 60
+heartbeat_rate = 2
+kombu_failover_strategy = round-robin
+
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+[glance]
+api_servers = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:19292
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+[cinder]
+catalog_info = volumev3:cinder:internalURL	
+os_region_name = RegionOne
+endpoint_type = internal
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+[placement]
+os_region_name = RegionOne
+project_domain_name = Default
+project_name = service
+auth_type = password
+user_domain_name = Default
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+username = placement
+password = {{ keystone_pass }} 
+endpoint_type = internal
+
+[neutron]
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+auth_type = password
+project_domain_name = default
+user_domain_name = default
+region_name = RegionOne
+project_name = service
+username = neutron
+password = {{ keystone_pass }}
+service_metadata_proxy = true
+metadata_proxy_shared_secret = {{ keystone_pass }}
+
+[service_user]
+send_service_user_token = true
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = nova
+password = {{ keystone_pass }}
+
+[conductor]
+workers = 6
+
+[scheduler]
+discover_hosts_in_cells_interval = 300
+workers = 6
+
+[filter_scheduler]
+available_filters = nova.scheduler.filters.all_filters
+enabled_filters = ComputeFilter,ServerGroupAntiAffinityFilter,ServerGroupAffinityFilter,PciPassthroughFilter

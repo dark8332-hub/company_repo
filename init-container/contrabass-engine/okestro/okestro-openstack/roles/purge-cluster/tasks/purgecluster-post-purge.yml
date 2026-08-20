@@ -1,0 +1,84 @@
+---
+- name: SSH service Enable for RedHat
+  ansible.builtin.service:
+    name: sshd
+    enabled: yes
+  when: ansible_os_family == 'RedHat'
+
+- name: SSH service Enable for Debian
+  ansible.builtin.service:
+    name: ssh
+    enabled: yes
+  when: ansible_os_family == 'Debian'
+
+- name: Check if nerdctl exists
+  ansible.builtin.command: bash -lc 'command -v nerdctl'
+  register: nerdctl_check
+  changed_when: false
+  failed_when: false
+
+- name: List nerdctl containers (table output)
+  ansible.builtin.command: nerdctl ps -a --no-trunc
+  register: nerdctl_ps
+  changed_when: false
+  failed_when: false
+  when: nerdctl_check.rc == 0
+
+- name: Decide whether to skip reboot on this node
+  ansible.builtin.set_fact:
+    purgecluster_skip_reboot: >-
+      {{
+        (nerdctl_check.rc == 0)
+        and (nerdctl_ps is defined)
+        and (nerdctl_ps.rc == 0)
+        and ('okestro-os-ansible' in (nerdctl_ps.stdout | default('')))
+      }}
+  changed_when: false
+
+- name: Copy Container Purge Script
+  ansible.builtin.copy:
+    src: purge_okestro_container.sh
+    dest: /root/purge_okestro_container.sh
+    mode: '0755'
+  when: purgecluster_skip_reboot | default(false) | bool
+
+- name: Remove Containerd Directory 
+  ansible.builtin.file:
+    path: /opt/containerd
+    state: absent
+  when: not (purgecluster_skip_reboot | default(false) | bool)
+
+- block:
+    - name: Reboot - purgecluster | Reboot node after purge
+      ansible.builtin.reboot:
+        msg: "Reboot initiated by purge-cluster on {{ inventory_hostname }}"
+        connect_timeout: 10
+        reboot_timeout: 1200
+        test_command: whoami
+      register: reboot_result
+      when: not (purgecluster_skip_reboot | default(false) | bool)
+    
+    - name: Reboot - purgecluster | Report reboot success
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} : reboot success"
+      when:
+        - reboot_result is defined
+        - reboot_result.rebooted | default(false)
+
+  when: purge_reboot_enabled | default(false) | bool
+
+
+- name: Find all files in /root/.ssh for Purgecluster
+  ansible.builtin.find:
+    paths: /root/.ssh
+    file_type: file
+  register: ssh_files
+  when: not (purgecluster_skip_reboot | default(false) | bool)
+
+- name: Remove all files in /root/.ssh for Purgecluster
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ ssh_files.files | default([]) }}"
+  when: not (purgecluster_skip_reboot | default(false) | bool)
+

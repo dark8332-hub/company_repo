@@ -1,0 +1,8 @@
+- name: manila restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - "{{ serv_manila_api }}"
+    - "{{ serv_manila_scheduler }}"
+    - "{{ serv_manila_share }}"

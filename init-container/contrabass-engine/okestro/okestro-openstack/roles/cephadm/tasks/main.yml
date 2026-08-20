@@ -1,0 +1,19 @@
+- name: Setup server for cephadm
+  setup:
+
+- include_tasks: cephadm-installation.yml
+
+- include_tasks: create-private-registry.yml
+  when: inventory_hostname in groups['mons'][0]
+
+- include_tasks: cephadm-bootstrap.yml
+  when: inventory_hostname in groups['mons'][0]
+    
+- include_tasks: ceph-cluster-apply.yml
+   
+- include_tasks: ceph-custom-container-install.yml
+  when: inventory_hostname in groups['mons'][0]  
+        
+- include_tasks: ceph-haproxy-config.yml
+  when: inventory_hostname in groups['controller']
+    

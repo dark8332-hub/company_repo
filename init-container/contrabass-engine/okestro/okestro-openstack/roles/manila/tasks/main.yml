@@ -1,0 +1,17 @@
+- name: Setup Server For Manila 
+  setup:
+
+- include_tasks: manila-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: manila-install.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: manila-config-set.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: manila-init.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: sub-main.yml
+  when: cinder_backend == "ceph"

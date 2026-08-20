@@ -1,0 +1,20 @@
+- name: Create cinder DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+     - db: cinder 
+
+- name: Update mysql cinder password for all cinder accounts
+  no_log: true
+  mysql_user:
+     name: cinder
+     host: "{{ item }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: cinder.*:ALL,GRANT
+     state: present
+     update_password: on_create
+  with_items:
+     - localhost
+     - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}" 

@@ -1,0 +1,173 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+{% if monitoring_ha_enable %}
+  external_labels:
+    prometheus: monitoring-cluster
+    prometheus_replica: prometheus-{{ hostvars[inventory_hostname]['ansible_hostname'] }}
+{% endif %}
+
+alerting:
+{% if monitoring_ha_enable %}
+  alert_relabel_configs:
+    - regex: prometheus_replica
+      action: labeldrop
+{% endif %}
+
+  alertmanagers:
+{% if monitoring_enable_tls %}
+    - scheme: https
+      tls_config:
+        cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+        key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+        ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+        insecure_skip_verify: false
+{% else %}
+    - scheme: http
+{% endif %}
+{% if monitoring_ha_enable %}
+      static_configs:
+        - targets:
+{% for item in groups['controller'] %}
+          - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+{% else %}
+      static_configs:
+        - targets:
+          - "{{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endif %}
+
+rule_files:
+  - "./rules/alert_rules.yml"
+
+scrape_configs:
+  - job_name: "prometheus"
+    # scrape_interval: 15s
+    # scrape_timeout: 10s
+    # metrics_path: /metrics
+{% if monitoring_enable_tls %}
+    scheme: https
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+{% else %}
+    scheme: http
+{% endif %}
+{% if monitoring_ha_enable %}
+    static_configs:
+      - targets:
+{% for item in groups['controller'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ prometheus_port }}"
+{% endfor %}
+{% else %}
+    static_configs:
+      - targets:
+        - "{{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ prometheus_port }}"
+{% endif %}
+
+  - job_name: "alertmanager"
+    # scrape_interval: 15s
+    # scrape_timeout: 10s
+    # metrics_path: /metrics
+{% if monitoring_enable_tls %}
+    scheme: https
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+{% else %}
+    scheme: http
+{% endif %}
+{% if monitoring_ha_enable %}
+    static_configs:
+      - targets:
+{% for item in groups['controller'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+{% else %}
+    static_configs:
+      - targets:
+        - "{{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endif %}
+
+  - job_name: "node_exporter"
+    # scrape_interval: 15s
+    # scrape_timeout: 10s
+    # metrics_path: /metrics
+{% if monitoring_enable_tls %}
+    scheme: https
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+{% else %}
+    scheme: http
+{% endif %}
+    static_configs:
+      - targets:
+{% for item in groups['openstack'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ node_exporter_port }}"
+{% endfor %}
+{% for item in groups['new-compute'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ node_exporter_port }}"
+{% endfor %}
+
+  - job_name: "contrabass_exporter"
+    # scrape_interval: 15s
+    # scrape_timeout: 10s
+    # metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets:
+{% for item in groups['compute'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ contrabass_exporter_port }}"
+{% endfor %}
+{% for item in groups['new-compute'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ contrabass_exporter_port }}"
+{% endfor %}
+
+  - job_name: "openstack_exporter"
+    scrape_interval: 30s
+    scrape_timeout: 20s
+    # metrics_path: /metrics
+{% if monitoring_enable_tls %}
+    scheme: https
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+{% else %}
+    scheme: http
+{% endif %}
+    static_configs:
+      - targets:
+        - "{{ internal_vip_address }}:{{ openstack_exporter_loadbalance_port }}"
+
+{% if monitoring_ha_enable %}
+  - job_name: "thanos-sidecar"
+    # scrape_interval: 15s
+    # scrape_timeout: 10s
+    # metrics_path: /metrics
+{% if monitoring_enable_tls %}
+    scheme: https
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+{% else %}
+    scheme: http
+{% endif %}
+    static_configs:
+      - targets:
+{% for item in groups['controller'] %}
+        - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ thanos_sidecar_http_port }}"
+{% endfor %}
+
+{% endif %}

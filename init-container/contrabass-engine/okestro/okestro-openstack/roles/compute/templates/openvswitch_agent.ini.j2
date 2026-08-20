@@ -1,0 +1,17 @@
+[DEFAULT]
+
+[ovs]
+bridge_mappings= {% for item in bridges %}{{ item.name }}:br-{{ item.name }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+integration_bridge=br-int
+igmp_snooping_enable=False
+local_ip = {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+
+[agent]
+l2_population = true
+extensions=qos
+tunnel_csum=False
+tunnel_types = {{ neutron_tenant_type | default(vxlan) }}
+
+[securitygroup]
+firewall_driver=iptables_hybrid

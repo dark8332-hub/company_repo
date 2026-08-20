@@ -1,0 +1,96 @@
+---
+- name: Barbican User Create
+  no_log: true
+  openstack.cloud.identity_user:
+    cloud: contrabass
+    cacert: "{{ internal_fqdn_cert }}"
+    state: present
+    name: barbican 
+    password: "{{ keystone_pass }}"
+    domain: default
+    interface: internal
+    default_project: service
+
+- name: Barbican Role Create
+  openstack.cloud.identity_role:
+    cloud: contrabass
+    cacert: "{{ internal_fqdn_cert }}"
+    state: present
+    name: creator 
+    #password: "{{ keystone_pass }}"
+    #domain: default
+    interface: internal
+
+- name: Barbican user role assignment 
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: barbican
+    role: admin
+    project: service
+    interface: internal
+    cacert: "{{ internal_fqdn_cert }}"
+
+- name: Barbican user Creator role assignment 
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: barbican
+    role: creator
+    project: service
+    interface: internal
+    cacert: "{{ internal_fqdn_cert }}"
+
+- name: Create Service Project
+  openstack.cloud.catalog_service:
+    cacert: "{{ internal_fqdn_cert }}"
+    cloud: contrabass
+    state: present
+    name: barbican
+    description: OpenStack Barbican
+    enabled: True
+    service_type: key-manager 
+    interface: internal
+
+- name: Barbican endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    cacert: "{{ internal_fqdn_cert }}"
+    service: barbican
+    endpoint_interface: "{{ item }}"
+    url: https://{{ internal_fqdn }}:19311
+    region: RegionOne
+    state: present
+    interface: internal
+  with_items:
+   -  admin
+   -  public
+   -  internal
+  when: internal_fqdn == external_fqdn 
+
+- name: Barbican endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    cacert: "{{ internal_fqdn_cert }}"
+    service: barbican
+    endpoint_interface: "{{ item }}"
+    url: https://{{ internal_fqdn }}:19311
+    region: RegionOne
+    state: present
+    interface: internal
+  with_items:
+  -  admin
+  -  internal
+  when: internal_fqdn != external_fqdn
+
+- name: Barbican public endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    cacert: "{{ internal_fqdn_cert }}"
+    service: barbican
+    endpoint_interface: "{{ item }}"
+    url: https://{{ external_fqdn }}:19311
+    region: RegionOne
+    state: present
+    interface: internal
+  with_items:
+  -  public
+  when: internal_fqdn != external_fqdn

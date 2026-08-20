@@ -1,0 +1,16 @@
+[default]
+access_key = {{ s3_access_key }}
+secret_key = {{ s3_secret_key }}
+host_base = {{ internal_endpoint }}:{{ s3_bind_port }}
+host_bucket = {{ internal_endpoint }}:{{ s3_bind_port }}
+{% if enable_tls_internal %}
+use_https = True
+{% else %}
+use_https = False
+{% endif %}
+check_ssl_certificate = False
+check_ssl_hostname = False
+enable_multipart = True
+multipart_chunk_size_mb = 20
+encoding = UTF-8
+guess_mime_type = True

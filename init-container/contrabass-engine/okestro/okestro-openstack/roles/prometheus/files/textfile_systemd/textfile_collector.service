@@ -1,0 +1,8 @@
+[Unit]
+Description=Run contrabass textfile collector scripts
+
+[Service]
+Type=oneshot
+ExecStart=/var/lib/textfile_collector/textfile_collect_start.sh
+User=root
+Group=root

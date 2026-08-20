@@ -1,0 +1,72 @@
+---
+- import_tasks: masakari-con-config-set.yml
+- import_tasks: masakari-com-config-set.yml
+
+# Handlers for masakari controller
+
+- name: restart apache2
+  service: name=apache2 state=restarted
+  when: ansible_os_family == "Debian"
+
+- name: restart apache2
+  service: name=httpd state=restarted
+  when: ansible_os_family == "RedHat"
+
+- name: restart masakari-api
+  service: name=apache2 state=restarted
+  when: 
+    - masakari_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart masakari-api
+  service: name=httpd state=restarted
+  when: 
+    - masakari_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart masakari-engine
+  service: name= state=restarted
+  when: masakari_conf is changed
+
+- name: start masakari-api
+  service: name=apache2 state=started
+
+- name: start masakari-engine
+  service: name=masakari-engine state=started
+
+- name: stop masakari-api
+  service: name=apache2 state=stoped
+
+- name: stop masakari-engine
+  service: name=masakari-engine state=stoped
+
+# Handlers for masakari compute
+- name: restart masakari-host
+  service: name=masakari-host-monitor state=restarted
+
+- name: restart masakari-instance
+  service: name=masakari-instance-monitor state=restarted
+  when: masakari_com_conf is changed
+
+- name: restart masakari-process
+  service: name=masakari-process-monitor state=restarted
+  when: masakari_com_conf is changed
+
+- name: start masakari-host
+  service: name=masakari-host-monitor state=started
+
+- name: start masakari-instance
+  service: name=masakari-instance-monitor state=started
+
+- name: start masakari-process
+  service: name=masakari-instance-monitor state=started
+
+- name: stop masakari-host
+  service: name=masakari-host-monitor state=stoped
+
+- name: stop masakari-instance
+  service: name=masakari-instance-monitor state=stoped
+
+- name: stop masakari-process
+  service: name=masakari-process-monitor state=stoped
+

@@ -1,0 +1,72 @@
+---
+- import_tasks: nova-config-set.yml
+
+# Handlers for nova
+# restart
+- name: restart nova-api
+  service: name=nova-api state=restarted
+  when: 
+    - nova_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart nova-api
+  service: name=openstack-nova-api state=restarted
+  when:
+    - nova_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart nova-scheduler
+  service: name=nova-scheduler state=restarted
+  when: 
+    - nova_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart nova-scheduler
+  service: name=opensteack-nova-scheduler state=restarted
+  when:
+    - nova_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart nova-conductor
+  service: name=nova-scheduler state=restarted
+  when: 
+    - nova_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart nova-novncproxy
+  service: name=nova-novncproxy state=restarted
+  when: 
+    - nova_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart nova-novncproxy
+  service: name=openstack-nova-novncproxy state=restarted
+  when: 
+    - nova_conf is changed
+    - ansible_os_family == "RedHat"
+
+# start
+- name: start nova-api
+  service: name=nova-api state=started
+
+- name: start nova-scheduler
+  service: name=nova-scheduler state=started
+
+- name: start nova-conductor
+  service: name=nova-conductor state=started
+
+- name: restart nova-novncproxy
+  service: name=nova-novncproxy state=started
+
+# stop
+- name: stop nova-api
+  service: name=nova-api state=stopped
+
+- name: stop nova-scheduler
+  service: name=nova-scheduler state=stopped
+
+- name: start nova-conductor
+  service: name=nova-conductor state=stopped
+
+- name: start nova-novncproxy
+  service: name=nova-novncproxy state=stopped

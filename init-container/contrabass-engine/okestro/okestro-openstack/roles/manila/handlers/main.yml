@@ -1,0 +1,60 @@
+---
+- import_tasks: manila-config-set.yml
+
+# Handlers for manila
+- name: restart manila-api
+  service: name=manila-api state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart manila-api
+  service: name=openstack-manila-api state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart manila-scheduler
+  service: name=manila-scheduler state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart manila-scheduler
+  service: name=openstack-manila-scheduler state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart manila-share
+  service: name=manila-share state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart manila-share
+  service: name=openstack-manila-share state=restarted
+  when: 
+    - manila_conf is changed
+    - ansible_os_family == "RedHat"
+
+
+- name: start manila-api
+  service: name=manila-api state=started
+
+- name: start manila-scheduler
+  service: name=manila-scheduler state=started
+
+- name: start manila-share
+  service: name=manila-share state=started
+
+
+- name: stop manila-api
+  service: name=manila-api state=stopped
+
+- name: stop manila-scheduler
+  service: name=manila-scheduler state=stopped
+
+- name: start manila-share
+  service: name=manila-share state=stopped
+

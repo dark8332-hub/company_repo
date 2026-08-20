@@ -1,0 +1,10 @@
+[DEFAULT]
+metadata_workers = 6
+nova_metadata_host = {{ internal_endpoint }} 
+nova_metadata_port = {{ nova_metadata_bind_port }} 
+metadata_proxy_shared_secret = {{ keystone_pass }}
+nova_metadata_protocol = {{ internal_endpoint_protocol }}
+{% if internal_endpoint_protocol == "https" %}
+nova_client_cert = {{ internal_fqdn_cert }}
+nova_client_priv_key = {{ internal_fqdn_cert }}
+{% endif %}

@@ -1,0 +1,9 @@
+---
+- name: Instance-env
+  template:
+    src: "cloud.yml.j2"
+    dest: "{{ cloud_dir }}/clouds.yaml"
+    owner: root
+    group: root
+    mode: 0644
+

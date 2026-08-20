@@ -1,0 +1,66 @@
+- name: masakari monitor package install
+  apt:
+    update-cache: yes
+    name:
+      - masakari-host-monitor
+      - masakari-instance-monitor
+      - masakari-process-monitor
+    state: present
+  when: 
+    - ansible_os_family == "Debian"
+
+- include_tasks: masakari-com-install-redhat.yml
+  when: ansible_os_family == "RedHat"
+
+- name: masakari agent package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_resource_agent }}"
+      - pacemaker-remote
+      - pcs
+    state: present
+  when: 
+    - remote_process == "remote"
+    - inventory_hostname not in groups["controller"]
+
+- name: masakari agent package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - pacemaker
+      - corosync
+      - pcs
+    state: present
+  when: 
+    - remote_process == "cluster"
+    - inventory_hostname not in groups["controller"]
+
+- name: Enable Daemon
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - pacemaker
+    - corosync
+    - pcsd
+  when:
+    - remote_process == "cluster"
+    - inventory_hostname not in groups["controller"]
+
+- name: Enable Daemon
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - "{{ serv_pacemaker_remote }}"
+    - pcsd
+  when: 
+    - remote_process == "remote"
+    - inventory_hostname not in groups["controller"]
+
+- name: Enable Masakari Monitor
+  service:
+    name: masakari-host-monitor
+    enabled: true
+    state: restarted 

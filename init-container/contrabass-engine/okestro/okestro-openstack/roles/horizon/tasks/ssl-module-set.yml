@@ -1,0 +1,60 @@
+
+- name: apache2 module set 
+  community.general.apache2_module:
+    name: "{{ item }}"
+  with_items:
+  - ssl
+  - headers
+  - rewrite
+  when: 
+    - enable_horizon_tls | bool
+    - ansible_os_family == "Debian"
+
+- name: mod_ssl install
+  dnf:
+    update_cache: yes
+    name: mod_ssl
+    state: present
+  when: 
+    - enable_horizon_tls | bool
+    - ansible_os_family == "RedHat"
+
+- name: Remove welcome.conf
+  file:
+    path: /etc/httpd/conf.d/welcome.conf
+    state: absent
+  when:
+    - enable_horizon_tls | bool
+    - ansible_os_family == "RedHat"
+
+- name: Remove ssl.conf
+  file:
+    path: /etc/httpd/conf.d/ssl.conf
+    state: absent
+  when:
+    - enable_horizon_tls | bool
+    - ansible_os_family == "RedHat"
+
+- name: Copy ssl.conf
+  template:
+    src: 'ssl.conf.j2'
+    dest: '/etc/httpd/conf.d/ssl.conf'
+    owner: root
+    group: root
+    mode: 0644
+  when:
+    - enable_horizon_tls | bool
+    - ansible_os_family == "RedHat"
+
+- name: Set ssl modules
+  lineinfile:
+    path: /etc/httpd/conf.modules.d/00-base.conf
+    regexp: '^LoadModule {{ item }}_module modules/mod_{{ item }}\.so$'
+    line: 'LoadModule {{ item }}_module modules/mod_{{ item }}.so'
+  with_items:
+    - ssl
+    - headers
+    - rewrite
+  when:
+    - enable_horizon_tls | bool
+    - ansible_os_family == "RedHat"

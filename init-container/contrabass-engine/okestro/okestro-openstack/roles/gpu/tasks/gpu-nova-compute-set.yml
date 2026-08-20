@@ -1,0 +1,21 @@
+---
+- name: nova-compute config set using gpu passthrough
+  ini_file:
+    dest: /etc/nova/nova.conf
+    section: pci
+    option: passthrough_whitelist
+    value: { "vendor_id": "{{ vendor_id }}", "product_id": "{{ product_id }}" }
+
+- name: Reconfigure
+  lineinfile:
+    path: /etc/nova/nova.conf
+    regexp: '^passthrough_whitelist'
+    line: 'passthrough_whitelist: { "vendor_id": "{{ vendor_id }}", "product_id": "{{ product_id }}" }'
+
+- name: Configure Nova Compute
+  service:
+    name: nova-compute
+    state: restarted
+
+- name: Reboot to Apply Configuration
+  ansible.builtin.reboot:

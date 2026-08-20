@@ -1,0 +1,4 @@
+- targets:
+{% for host in groups['controller'] %}
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ memcached_exporter_port }}
+{% endfor %}

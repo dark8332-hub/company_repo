@@ -1,0 +1,75 @@
+- name: Ensure /var/lock/masakari exists on RedHat
+  file:
+    path: /var/lock/masakari
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ansible_os_family == "RedHat"
+
+- name: masakari config file setting
+  template:
+    src: "{{ masakari_config }}.j2"
+    dest: "{{ masakari_dir }}/{{ masakari_config }}"
+    owner: "{{ masakari_owner }}"
+    group: root
+    mode: 0644
+
+- include_tasks: masakari-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Masakari to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_masakari ##"
+    insertbefore: "# public"
+    block: |
+      listen int_masakari
+        bind {{ internal_vip_address }}:{{ masakari_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ masakari_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External Masakari to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_masakari ##"
+    insertbefore: "# monitoring" 
+    block: |
+      listen pub_masakari
+        bind {{ external_vip_address }}:{{ masakari_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ masakari_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Change Masakari WSGI processes 6
+  ansible.builtin.replace:
+    path: /etc/apache2/sites-available/masakari-api.conf
+    regexp: 'WSGIDaemonProcess\s+masakari\s+processes=5'
+    replace: 'WSGIDaemonProcess masakari processes=6'
+    backup: yes
+  when: ansible_os_family == "Debian"
+
+- name: Restart masakari service
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - "{{ serv_masakari_api }}"
+    - masakari-engine

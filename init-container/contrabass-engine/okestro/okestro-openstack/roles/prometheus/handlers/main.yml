@@ -1,0 +1,14 @@
+---
+- name: Restart Haproxy
+  service: name=haproxy state=restarted
+  when: haproxy_conf is changed
+
+- name: daemon-reload
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: restart textfile_collector timer
+  ansible.builtin.systemd:
+    name: textfile_collector.timer
+    state: restarted
+    enabled: true

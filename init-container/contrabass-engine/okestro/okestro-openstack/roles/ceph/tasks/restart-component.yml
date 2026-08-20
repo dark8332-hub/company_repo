@@ -1,0 +1,43 @@
+---
+- name: controller service restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - "{{ pac_apache }}"
+    - "{{ serv_cinder_volume }}"
+    - "{{ serv_cinder_scheduler }}"
+    - "{{ serv_cinder_backup }}"
+    - "{{ serv_glance }}"
+  when: inventory_hostname in groups["controller"]   
+
+- name: compute service restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - "{{ pac_nova_compute }}"
+  when: inventory_hostname in groups["compute"]   
+
+- name: Remove cinder down services
+  block:
+   - name: Run cinder service-list
+     shell: |
+       source /root/{{ cloud }}-openrc && cinder service-list
+     args:
+       executable: /bin/bash
+     register: cinder_service_output
+
+   - name: Parse cinder service-list output
+     set_fact:
+       down_services: "{{ cinder_service_output.stdout_lines | select('search', 'down') | map('regex_replace', '^\\|\\s*([^\\s]+)\\s*\\|\\s*([^\\s]+)\\s*\\|.*$', '\\1 \\2') | list }}"
+
+   - name: remove down services
+     shell: |
+       source /root/contrabass-openrc && cinder-manage service remove {{ item.split()[0] }} {{ item.split()[1] }}
+     loop: "{{ down_services }}"
+     args:
+       executable: /bin/bash
+     when: down_services | length >0
+  when: inventory_hostname in groups['controller'][0]
+

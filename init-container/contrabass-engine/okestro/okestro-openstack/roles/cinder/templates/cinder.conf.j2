@@ -1,0 +1,127 @@
+[DEFAULT]
+rootwrap_config = {{ cinder_dir }}/rootwrap.conf
+api_paste_confg = {{ cinder_dir }}/api-paste.ini
+iscsi_helper = tgtadm
+volume_name_template = volume-%s
+volume_group = cinder-volumes
+auth_strategy = keystone
+state_path = /var/lib/cinder
+lock_path = /var/lock/cinder
+volumes_dir = /var/lib/cinder/volumes
+my_ip = {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+glance_api_servers = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ glance_bind_port }}
+{% if internal_endpoint_protocol == "https"  %}
+#glance_ca_certificates_file = {{ internal_fqdn_cert }}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+glance_catalog_info = image:glance:internalURL
+glance_api_insecure = false
+
+enabled_backends = {{ cinder_backend_name }}
+rpc_backend = rabbit
+verify_glance_signatures = disabled
+backup_workers = 6
+
+{% if ansible_os_family == 'RedHat' -%}
+osapi_volume_workers = 6
+{%- endif %}
+
+
+[database]
+connection = mysql+pymysql://cinder:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/cinder
+
+{% if enable_cinder_backend_nfs | bool %}
+[{{ cinder_backend_name }}]
+volume_driver = cinder.volume.drivers.nfs.NfsDriver
+volume_backend_name = {{ cinder_backend_name }}
+nfs_shares_config = {{ cinder_dir }}/nfs_shares
+nfs_snapshot_support = True
+nas_secure_file_permissions = False
+nas_secure_file_operations = False
+{% endif %}
+
+[oslo_messaging_rabbit]
+rabbit_quorum_queue = true
+rabbit_transient_quorum_queue = True
+#use_queue_manager = True
+#rabbit_stream_fanout = True
+rabbit_qos_prefetch_count = 10
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+kombu_missing_consumer_retry_timeout = 60
+heartbeat_timeout_threshold = 60
+heartbeat_rate = 2
+kombu_failover_strategy = round-robin
+
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_required = true
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = cinder
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[oslo_concurrency]
+lock_path = /var/lib/cinder/tmp
+
+{% if enable_cinder_custom_backend %}
+[{{ cinder_backend_name }}]
+{{ cinder_custom_conf}}
+{% endif %}
+
+[service_user]
+send_service_user_token = true
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = cinder
+password = {{ keystone_pass }}
+
+[nova]
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+region_name = RegionOne
+project_name = service
+username = nova
+password = {{ keystone_pass }}

@@ -1,0 +1,13 @@
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }} main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/prel/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/tools/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/pxc-80/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/telemetry/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/rabbitmq-4.1.2/rabbitmq-erlang/ubuntu {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/rabbitmq-4.1.2/rabbitmq-server/ubuntu {{ ansible_distribution_release }} main
+deb [arch=amd64 trusted=yes allow-insecure=yes] http://{{ package_ip }}/nova-29.2.0 306 main
+{% if openstack_version == 'epoxy' %}
+deb [arch=amd64] http://{{ package_ip }}/epoxy {{ ansible_distribution_release }}-updates/{{ openstack_version }} main
+{% endif %}

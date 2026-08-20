@@ -1,0 +1,23 @@
+---
+- name: Keystone DB sync
+  changed_when: no
+  command: /bin/sh -c "keystone-manage db_sync" keystone
+
+- name: Glance DB sync
+  changed_when: no
+  command: /bin/sh -c "glance-manage db_sync" glance
+
+- name: Placement DB sync
+  changed_when: no
+  command: /bin/sh -c "placement-manage db sync" placement
+
+- name: Cinder DB sync
+  changed_when: no
+  command: /bin/sh -c "cinder-manage db sync" cinder
+
+- name: Neutron DB sync
+  changed_when: no
+  command: /bin/sh -c "neutron-db-manage --config-file /etc/neutron/neutron.conf --config-file /etc/neutron/plugins/ml2/ml2_conf.ini upgrade head" neutron
+
+- name: Edit DB nova version
+  command: mysql -u root -p"{{ db_password }}" mysql -e "UPDATE nova.services SET version = 61 WHERE version = 56;"

@@ -1,0 +1,68 @@
+---
+- name: Create Thanos compact data dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ thanos_compact_data_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Copy Thanos compact service file 
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-compact.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-compact.service',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-compact.timer.j2',dest: '{{ thanos_service_daemon_path }}/thanos-compact.timer',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Copy Thanos compact alert rule files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-compact-rules.yml', dest: '/etc/prometheus/rules/thanos-compact-rules.yml', owner: 'root', group: 'root', mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Stop and disable thanos-compact and thanos-compact.timer services
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - thanos-compact
+    - thanos-compact.timer
+
+- name: Configure thanos-compact-timer pacemaker resource
+  block:
+    - name: Create thanos-compact-timer pacemaker resource
+      command: >
+        pcs resource create thanos-compact-timer systemd:thanos-compact.timer
+        op start interval=0 timeout=60s
+        op stop interval=0 timeout=1900s
+        op monitor interval=30s timeout=20s on-fail=restart
+      register: pcs_result
+      failed_when:
+        - pcs_result.rc != 0
+        - "'already exists' not in pcs_result.stderr"
+      changed_when: pcs_result.rc == 0
+
+    - name: pcs thanos-compact-timer resource ban
+      command: pcs resource ban thanos-compact-timer "{{ item }}"
+      with_items:
+        - "{{ groups.compute }}"
+      when: item not in groups["controller"]
+
+    - name: pcs resource clean
+      command: pcs resource cleanup
+
+  when: inventory_hostname == groups["controller"][0]

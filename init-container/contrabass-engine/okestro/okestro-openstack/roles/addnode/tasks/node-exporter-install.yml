@@ -1,0 +1,82 @@
+---
+- name: Register Node-exporter data dir exists
+  stat:
+    path: '{{ node_exporter_data_dir }}'
+  register: node_exporter_data_dir_svc
+  ignore_errors: true
+
+- name: Create Node-exporter data dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ node_exporter_data_dir }}/textfile_collector',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not node_exporter_data_dir_svc.stat.exists
+
+- name: Register Node-exporter config dir exists
+  stat:
+    path: '{{ node_exporter_config_dir }}'
+  register: node_exporter_config_dir_svc
+  ignore_errors: true
+
+- name: Create Node-exporter config dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ node_exporter_config_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not node_exporter_config_dir_svc.stat.exists
+
+- name: Copy Node-exporter binary file
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/files/node_exporter',dest: '{{ exe_path }}',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Copy Node-exporter web config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'node-exporter-web-config.yml.j2',dest: '{{ node_exporter_config_dir }}/web-config.yml',owner: 'root',group: 'root',mode: '0644' }
+  when: monitoring_enable_tls == true
+
+- name: Copy Node-exporter env, socket, service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'node-exporter-env.j2',dest: '{{ node_exporter_config_dir }}/node_exporter',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'node-exporter.socket.j2',dest: '{{ node_exporter_service_daemon_path }}/node-exporter.socket',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'node-exporter.service.j2',dest: '{{ node_exporter_service_daemon_path }}/node-exporter.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Node-exporter socket
+  service:
+    name: node-exporter.socket
+    state: restarted
+    enabled: true
+
+- name: Start Node-exporter service
+  service:
+    name: node-exporter.service
+    state: restarted
+    enabled: true

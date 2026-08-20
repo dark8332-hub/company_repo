@@ -1,0 +1,12 @@
+- name: Setup Server For Barbican
+  ansible.builtin.setup:
+
+- include_tasks: barbican-database-create.yml
+  when: groups['controller'] is defined and inventory_hostname == groups['controller'][0] 
+
+- include_tasks: barbican-install.yml
+
+- include_tasks: barbican-config-set.yml
+
+- include_tasks: barbican-init.yml
+  when: groups['controller'] is defined and inventory_hostname == groups['controller'][0]

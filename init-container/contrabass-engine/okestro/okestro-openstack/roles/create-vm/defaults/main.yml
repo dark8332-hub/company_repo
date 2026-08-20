@@ -1,0 +1,48 @@
+##########################################
+# API-Network Subnet & Intance setting   #
+##########################################
+#
+Contrabass_instances_list:                     # define Contrabass-Manager Instance Name
+  - name: Contrabass01
+    flavor: "2C_2G"
+  - name: Contrabass02
+    flavor: "4C_8G"
+  - name: Contrabass03
+    flavor: "2C_2G"
+# - name: [ Define Instance Name ]
+#   flavor: [ Flavor Name ]
+
+### Contrabass Flavor ###
+Contrabass_vcpu: 2       # define Contrabass-Manager Instance cpu&memory spec
+Contrabass_memory: 4096
+
+Viola_instances_list:    # define Viola-Manager Instance Name
+  - name: Bastion
+    flavor: "2C_2G"
+  - name: Master01
+    flavor: "4C_8G"
+  - name: Master02
+    flavor: "4C_8G"
+  - name: Master03
+    flavor: "4C_8G"
+  - name: Mgmt01
+    flavor: "2C_2G"
+  - name: Mgmt02
+    flavor: "2C_2G"
+    #  - name: Mgmt03
+    #  - name: Worker01
+    #  - name: Worker02
+    #  - name: Worker03
+
+### Define Viola Flavor ###
+Viola_vcpu: 4       # define Viola-Manager Instance cpu&memory spec
+Viola_memory: 8192
+
+Viola_Master_vcpu: 4
+Viola_Master_memroy: 8192
+
+Viola_Mgmt_vcpu: 4
+Viola_Mgmt_memroy: 8192
+
+Viola_Worker_vcpu: 4
+Viola_Worker_memory: 8192

@@ -1,0 +1,38 @@
+[default]
+debug = true
+rate_limit_except_level = DEBUG
+[api]
+region = RegionOne
+service_type = instance-ha
+auth_url = https://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+{% endif %}
+user_domain_id = default
+project_name = service
+project_domain_name = Default
+api_interface = internal
+username = masakari
+password = {{ keystone_pass }}
+[callback]
+[consul]
+[cors]
+[healthcheck]
+[host]
+monitoring_driver = default
+monitoring_interval = 10
+disable_ipmi_check = True
+ipmi_timeout = 5
+ipmi_retry_max = 3
+ipmi_retry_interval = 10
+stonith_wait = 30
+tcpdump_timeout = 5
+corosync_multicast_interfaces = {{ int_api_interface }}
+corosync_multicast_ports = 5405
+pacemaker_node_type = cluster
+restrict_to_remotes = False
+[introspectiveinstancemonitor]
+[libvirt]
+connection_uri = qemu+tcp://{{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}/system
+[oslo_middleware]
+[process]

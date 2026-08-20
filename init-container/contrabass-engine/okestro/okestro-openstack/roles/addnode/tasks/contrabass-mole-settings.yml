@@ -1,0 +1,72 @@
+- name: Fetch mole config
+  fetch:
+    src: '/etc/contrabass/mole/agent.local.yml'
+    dest: '/root/okestro/okestro-openstack/roles/addnode/files/agent.local.yml'
+    flat: true
+  run_once: true
+  when: inventory_hostname in groups['controller']
+
+- name: Contrabass Mole installation
+  block:
+    - name: Create mole directory for mole files
+      file:
+        path: "{{ mole_install_dir }}"
+        state: directory
+        mode: '0755'
+        owner: 'root'
+        group: 'root'
+
+    - name: Check mole file exists
+      stat:
+        path: "{{ mole_install_dir }}/{{ mole_tar_file }}"
+      register: mole_tar
+
+    - name: Check mole installer exists
+      stat:
+        path: "{{ mole_install_dir }}/{{ mole_installer }}"
+      register: mole_inst
+
+    - name: Copy mole files
+      copy:
+        src: "/root/okestro/okestro-openstack/roles/contrabass/files/{{ mole_tar_file }}"
+        dest: "{{ mole_install_dir }}/{{ mole_tar_file }}"
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+      when: not mole_tar.stat.exists
+
+    - name: Copy mole installer
+      copy:
+        src: "/root/okestro/okestro-openstack/roles/contrabass/files/{{ mole_installer }}"
+        dest: "{{ mole_install_dir }}/{{ mole_installer }}"
+        mode: '0755'
+        owner: 'root'
+        group: 'root'
+      when: not mole_inst.stat.exists
+
+    - name: Check contrabass-mole service file exists
+      stat:
+        path: /etc/systemd/system/contrabass-mole.service
+      register: mole_service
+
+    - name: Install contrabass-mole compute nodes
+      shell: "{{ mole_install_dir }}/contrabass-mole-install.sh compute"
+      args:
+        chdir: "{{ mole_install_dir }}"
+      when:
+        - not mole_service.stat.exists
+
+    - name: Copy mole config file
+      copy:
+        src: 'agent.local.yml'
+        dest: '/etc/contrabass/mole/agent.local.yml'
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+
+    - name: Restart contrabass-mole agent
+      service:
+        name: contrabass-mole
+        state: restarted
+        enabled: true
+  when: inventory_hostname in groups['new-compute']

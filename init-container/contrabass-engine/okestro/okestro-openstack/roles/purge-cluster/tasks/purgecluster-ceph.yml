@@ -1,0 +1,141 @@
+---
+- name: Check Ceph fsid
+  block:
+    - name: Check /var/lib/ceph exists
+      ansible.builtin.stat:
+        path: /var/lib/ceph
+      register: ceph_lib_dir
+      changed_when: false
+
+    - name: Find FSID directory under /var/lib/ceph
+      ansible.builtin.find:
+        paths: /var/lib/ceph
+        file_type: directory
+        recurse: false
+        patterns: "????????-????-????-????-????????????"
+      register: ceph_fsid_dirs
+      changed_when: false
+      when: ceph_lib_dir.stat.exists
+
+    - name: Set ceph_fsid fact from directory name
+      ansible.builtin.set_fact:
+        ceph_fsid: "{{ ceph_fsid_dirs.files[0].path | basename }}"
+      changed_when: false
+      when:
+        - ceph_fsid_dirs is defined
+        - (ceph_fsid_dirs.matched | default(0) | int) == 1
+
+- name: Ensure OSD node cephadm installed
+  block:
+    - name: Ensure OSD node cephadm installed (Debian)
+      ansible.builtin.apt:
+        name: cephadm
+        state: present
+      when:
+        - ansible_os_family == 'Debian'
+    
+    - name: Ensure OSD node cephadm installed (RedHat)
+      ansible.builtin.dnf:
+        name: 
+          - cephadm
+          - python3-jinja2
+        state: present
+      when: 
+        - ansible_os_family == 'RedHat'
+  when:
+     - ceph_fsid is defined
+     - inventory_hostname in groups['osds']
+
+- name: Disable cephadm mgr module
+  ansible.builtin.command: ceph mgr module disable cephadm
+  changed_when: false
+  ignore_errors: true
+  when: inventory_hostname == groups['mons'][0]
+
+- name: Ceph cluster purge on this host
+  ansible.builtin.command:
+    argv:
+      - cephadm
+      - --image
+      - "{{ registry_domain }}:{{ registry_port }}/ceph/ceph:v19.2.3"
+      - rm-cluster
+      - --fsid
+      - "{{ ceph_fsid }}"
+      - --force
+      - --zap-osds
+  when: ceph_fsid is defined
+
+- name: Registry Container Remove
+  block:
+    - name: Check podman is available (mon0)
+      ansible.builtin.command: podman --version
+      register: podman_version
+      changed_when: false
+      failed_when: false
+    
+    - name: Gather container facts (registry) (mon0)
+      containers.podman.podman_container_info:
+        name: registry
+      register: registry_info
+      changed_when: false
+      when: 
+        - podman_version.rc == 0
+    
+    - name: Remove registry container
+      containers.podman.podman_container:
+        name: registry
+        state: absent
+      when:
+        - podman_version.rc == 0
+        - (registry_info.containers | length) > 0
+
+  when: inventory_hostname == groups['mons'][0]
+
+- name: Remove Debian Cpeh/Podman
+  block:
+    - name: Remove Ceph/Podman packages (Debian family)
+      ansible.builtin.apt:
+        name:
+          - cephadm
+          - ceph-common
+          - podman
+        state: absent
+        purge: true
+    
+    - name: Remove Containers&Cephadm Dir
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/cephadm
+        - /var/lib/registry
+        - /etc/containers
+        - /var/lib/containers
+
+  when: ansible_os_family == 'Debian'
+
+- name: Remove RedHat Cpeh/Podman
+  block:
+    - name: Remove Ceph/Podman packages (RedHat family)
+      ansible.builtin.dnf:
+        name:
+          - cephadm
+          - ceph-common
+        state: absent
+    
+    - name: Remove Cephadm Dir
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/cephadm
+        - /var/lib/registry
+
+  when: ansible_os_family == 'RedHat'
+
+- name: Remove local registry domain block from /etc/hosts
+  ansible.builtin.blockinfile:
+    path: /etc/hosts
+    marker: '### {mark} Cephadm local registry domain ###'
+    state: absent
+

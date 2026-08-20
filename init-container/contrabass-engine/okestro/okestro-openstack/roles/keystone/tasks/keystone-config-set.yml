@@ -1,0 +1,90 @@
+---
+- name: Keystone Config file Setting
+  template:
+    src: "{{ keystone_config }}.j2"
+    dest: "{{ keystone_dir }}/{{ keystone_config }}"
+    owner: keystone
+    group: keystone
+    mode: 0644
+
+- name: Deploy wsgi keystone security vulnerabilities fixed file
+  template:
+    src: 'wsgi-keystone.conf.j2'
+    dest: "{{ item }}"
+    owner: 'root'
+    group: 'root'
+    mode: '0640'
+  with_items:
+    - "{{ '/etc/httpd/conf.d/wsgi-keystone.conf' if ansible_os_family == 'RedHat' else '/etc/apache2/sites-available/keystone.conf' }}"
+  register: keystone_wsgi_conf
+
+- name: Configure Keystone DB access
+  ini_file:
+    dest: "{{ keystone_dir }}/{{ keystone_config }}" 
+    section: database
+    option: connection
+    value: 'mysql+pymysql://keystone:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/keystone'
+  register: keystone_db_conf
+
+- name: Configure Fernet token provider. 
+  ini_file:
+    dest: "{{ keystone_dir }}/{{ keystone_config }}" 
+    section: token
+    option: provider
+    value: fernet 
+  register: keystone_token_conf
+
+- include_tasks: keystone-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Keystone to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_keystone ##"
+    insertbefore: "# public"
+    block: |
+      listen int_keystone
+        bind {{ internal_vip_address }}:{{ keystone_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode http 
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ keystone_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: keystone_int_haproxy
+
+- name: Configure External Keystone to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_keystone ##"
+    insertbefore: "# monitoring"
+    block: |
+      listen pub_keystone
+        bind {{ external_vip_address }}:{{ keystone_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode http
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ keystone_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: 
+    - external_vip_address != internal_vip_address
+  register: keystone_pub_haproxy
+
+- name: Restart Keystone
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted
+    enabled: yes
+  when: keystone_db_conf.changed or keystone_token_conf.changed
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted

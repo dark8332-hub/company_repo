@@ -1,0 +1,13 @@
+---
+- name: Setup Server For Cinder 
+  setup:
+
+- include_tasks: cinder-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: cinder-install.yml
+
+- include_tasks: cinder-config-set.yml
+
+- include_tasks: cinder-init.yml
+  when: inventory_hostname in groups["controller"][0]

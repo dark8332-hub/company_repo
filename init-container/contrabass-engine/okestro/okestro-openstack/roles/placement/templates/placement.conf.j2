@@ -1,0 +1,24 @@
+[DEFAULT]
+debug = False
+
+[api]
+auth_strategy = keystone
+
+[keystone_authtoken]
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = placement
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[placement_database]
+connection = mysql+pymysql://placement:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/placement

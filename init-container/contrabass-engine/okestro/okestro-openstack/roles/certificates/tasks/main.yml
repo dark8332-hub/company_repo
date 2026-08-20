@@ -1,0 +1,8 @@
+- name: Setup Server For Certification 
+  setup:
+
+- include_tasks: create_cert.yml
+  when: enable_openstack_tls
+
+- include_tasks: create_monitoring_cert.yml
+  when: monitoring_enable_tls

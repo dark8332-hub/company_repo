@@ -1,0 +1,6 @@
+- name: GPU Node Settings
+  become: true
+  hosts: alls
+  roles:
+    - { role: gpu }
+  tags: gpu

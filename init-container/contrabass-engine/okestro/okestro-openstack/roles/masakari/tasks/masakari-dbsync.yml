@@ -1,0 +1,3 @@
+- name: masakari DB sync
+  command: masakari-manage db sync
+  ignore_errors: true

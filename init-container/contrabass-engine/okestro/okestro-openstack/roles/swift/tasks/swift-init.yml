@@ -1,0 +1,42 @@
+---
+- name: Create Swift Service
+  openstack.cloud.catalog_service:
+    cloud: contrabass
+    state: present
+    name: swift
+    service_type: object-store
+    description: OpenStack Object Storage through RGW
+    interface: internal
+
+- name: Create Swift User
+  openstack.cloud.identity_user:
+    auth:
+    cloud: contrabass
+    state: present
+    name: swift
+    password: "{{ keystone_pass }}"
+    domain: default
+    default_project: service
+    interface: internal
+
+- name: Swift user role assignment
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: swift
+    role: admin
+    project: service
+    interface: internal
+
+- name: Swift endpoint create
+  openstack.cloud.endpoint:
+    cloud: "{{ cloud }}"
+    service: swift 
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ swift_bind_port }}/swift/v1"
+    region: "{{ region_one }}"
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }

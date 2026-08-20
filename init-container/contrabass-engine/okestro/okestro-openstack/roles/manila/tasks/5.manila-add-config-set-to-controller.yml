@@ -1,0 +1,27 @@
+---
+- name: Change share protocol & backaend confing
+  ansible.builtin.replace:
+    path: /etc/manila/manila.conf
+    regexp: "{{ item.before }}"
+    replace: "{{ item.after }}"
+  with_items:
+    - { before: enabled_share_protocols = NFS,after: enabled_share_protocols = CEPHFS }
+    - { before: enabled_share_backends = NFS,after: enabled_share_backends = ceph }
+
+
+- name: Add ceph info to manila.conf
+  blockinfile:
+    path: "{{ manila_dir }}/{{ manila_config }}"
+    insertafter: EOF
+    block: |
+      [ceph]
+      driver_handles_share_servers = false
+      share_driver = manila.share.drivers.cephfs.driver.CephFSDriver
+      share_backend_name = ceph
+      ceph_conf_path = /etc/ceph/ceph.conf
+      cephfs_protocol_helper_type = CEPHFS
+      cephfs_conf_path = /etc/ceph/ceph.conf
+      cephfs_auth_id = manila
+      cephfs_cluster_name = ceph
+      cephfs_filesystem_name = cephfs
+      cephfs_enable_snapshots = True

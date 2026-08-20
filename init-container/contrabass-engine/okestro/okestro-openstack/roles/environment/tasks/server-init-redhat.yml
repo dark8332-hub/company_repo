@@ -1,0 +1,105 @@
+---
+#- name: Before Copy Repository configuration files RedHat
+#  become: true
+#  file:
+#    path: "{{ repo_dir }}"/backup
+#    state: directory
+#    mode: 0755
+#  when: ansible_os_family == "RedHat"
+#
+#- name: Backup Repository configuration files RedHat
+#  become: true
+#  shell: "mv {{ repo_dir }}/*.repo {{ repo_dir }}/backup/"
+#  when: ansible_os_family == "RedHat"
+#  ignore_errors: true
+#
+- name: Copy Repository configuration files RedHat
+  become: true
+  template:
+    src: "{{ repo_file }}.j2"
+    dest: "{{ repo_dir }}/{{ repo_file }}"
+    owner: root
+    group: root
+    mode: 0644
+  when: ansible_os_family == "RedHat"
+
+- name: copy gpg_key RedHat
+  become: true
+  copy:
+    src: "{{ item }}"
+    dest: "{{ repo_key_dir }}"
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - PERCONA-PACKAGING-KEY
+    - RPM-GPG-KEY-CentOS-SIG-Cloud
+    - RPM-GPG-KEY-CentOS-SIG-NFV
+    - RPM-GPG-KEY-CentOS-SIG-Virtualization-RDO
+    - RPM-GPG-KEY-oracle
+    - RPM-GPG-KEY
+    - RPM-GPG-KEY-CentOS-SIG-Messaging
+    - RPM-GPG-KEY-CentOS-SIG-Storage
+    - RPM-GPG-KEY-Percona
+  when: ansible_os_family == "RedHat"
+  
+- name: dnf update
+  become: true
+  dnf:
+    update_cache: yes
+  when: ansible_os_family == "RedHat"
+
+
+- name: Package Installation RedHat
+  dnf:
+    name:
+      - curl
+      - telnet
+      - tree
+      - tcpdump
+      - iperf3
+      - net-tools
+      - net-snmp
+      - lldpd
+      - ipmitool
+      - freeipmi
+      - sysfsutils
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Stop & Disable Firewall RedHat
+  service:
+    name: firewalld
+    state: stopped
+    enabled: no
+  when: ansible_os_family == "RedHat"
+  failed_when: false
+
+- name: Disable SELINUX
+  ansible.posix.selinux:
+    state: disabled
+
+- name: Crate Journal Log directory
+  file:
+    path: /var/log/journal
+    state: directory
+    owner: root
+    group: systemd-journal
+    mode: '2755'
+
+- name: Set journal.conf
+  ini_file:
+    path: /etc/systemd/journald.conf
+    section: Journal
+    option: Storage
+    value: persistent
+    no_extra_spaces: yes
+  notify: Restart systemd-journald
+
+- name: Set DefaultLimitNOFILE in systemd system.conf
+  lineinfile:
+    path: /etc/systemd/system.conf
+    regexp: '^#?DefaultLimitNOFILE=.*'
+    line: 'DefaultLimitNOFILE=65536'
+    backrefs: yes
+  notify: reload systemd daemon

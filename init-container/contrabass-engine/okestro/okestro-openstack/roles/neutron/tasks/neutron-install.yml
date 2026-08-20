@@ -1,0 +1,45 @@
+---
+- name: neutron package install  
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_neutron }}"
+      - "{{ pac_neutron_openvswitch }}"
+      - "{{ pac_openvswitch }}"
+      - "{{ pac_iptables }}"
+    state: present
+
+- name: neutron agent package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_neutron_dhcp_agent }}"
+      - "{{ pac_neutron_l3_agent }}"
+      - "{{ pac_neutron_metadata_agent }}"
+    state: present
+  when:
+    - inventory_hostname in groups["neutron_agent"]
+
+- name: Neutron service start
+  service:
+    name: "{{ pac_openvswitch }}"
+    state: started
+
+- name: neutron service enable
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - neutron-server
+    - neutron-openvswitch-agent
+    - "{{ pac_openvswitch }}"
+
+- name: neutron agent service enable
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - neutron-dhcp-agent
+    - neutron-l3-agent
+    - neutron-metadata-agent
+  when: inventory_hostname in groups["neutron_agent"]

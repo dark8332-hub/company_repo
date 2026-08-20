@@ -1,0 +1,50 @@
+---
+- name: Create Masakari Service
+  openstack.cloud.catalog_service:
+    cloud: contrabass
+    state: present
+    name: masakari
+    service_type: instance-ha
+    description: masakari high availability
+    interface: internal
+
+- name: Create Masakari User
+  no_log: true
+  openstack.cloud.identity_user:
+    cloud: contrabass
+    state: present
+    name: masakari
+    password: "{{ keystone_pass }}"
+    domain: default
+    default_project: service
+    interface: internal
+
+- name: Masakari user role assignment
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: masakari
+    role: admin
+    project: service
+    interface: internal
+
+- name: Masakari user role assignment service
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: masakari
+    role: service
+    project: service
+    interface: internal
+
+- name: Masakari endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    service: masakari
+    endpoint_interface: "{{ item.interface }}"
+    url:  "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ masakari_bind_port }}/v1/%(tenant_id)s"
+    region: "{{ region_one }}"
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }

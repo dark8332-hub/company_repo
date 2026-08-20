@@ -1,0 +1,5 @@
+---
+- name: Restart OpenStack-exporter service
+  service:
+    name: openstack-exporter
+    state: restarted

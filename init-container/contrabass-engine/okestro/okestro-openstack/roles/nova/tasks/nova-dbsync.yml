@@ -1,0 +1,12 @@
+- name: nova-api DB sync
+  command: /bin/sh -c "EVENTLET_NO_GREENDNS=yes nova-manage api_db sync"
+
+- name: Register nova_cell DB sync
+  command: /bin/sh -c "EVENTLET_NO_GREENDNS=yes nova-manage cell_v2 map_cell0"
+
+- name: cell DB sync
+  command: /bin/sh -c "EVENTLET_NO_GREENDNS=yes nova-manage cell_v2 create_cell --name=cell1 --verbose"
+  ignore_errors: yes
+
+- name: nova DB sync
+  command: /bin/sh -c "EVENTLET_NO_GREENDNS=yes nova-manage db sync"

@@ -1,0 +1,35 @@
+---
+- name: make textfile_collector directory
+  ansible.builtin.file:
+    state: directory
+    path: "{{ textfile_base_dir }}"
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: copy textfile collector scripts
+  ansible.builtin.copy:
+    src: "textfile_scripts/{{ item }}"
+    dest: "{{ textfile_base_dir }}/{{ item }}"
+    mode: '0755'
+    owner: root
+    group: root
+  loop: "{{ textfile_scripts }}"
+
+- name: copy systemd unit files
+  ansible.builtin.copy:
+    src: "textfile_systemd/{{ item }}"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: '0644'
+    owner: root
+    group: root
+  loop: "{{ textfile_units }}"
+  notify:
+    - daemon-reload
+    - restart textfile_collector timer
+
+- name: ensure textfile_collector timer is enabled and started
+  ansible.builtin.systemd:
+    name: textfile_collector.timer
+    enabled: true
+    state: started

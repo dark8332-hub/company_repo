@@ -1,0 +1,15 @@
+# Files larger than GitHub's 100 MB per-file limit
+/init-container/contrabass-engine/okestro/okestro-openstack/opentofu/openstack/image/noble-qemu-okestro2018.qcow2
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/cephadm/files/ceph.tar
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/cephadm/files/grafana.tar
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/cephadm/files/nvmeof-cli.tar
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/cephadm/files/nvmeof.tar
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/cephadm/files/prometheus.tar
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/create-vm/files/ubuntu-22.04-qemu.qcow2
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/minio/files/minio
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/octavia-set/files/octavia-amphora-haproxy-2024.1-qemu.qcow2
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/prometheus/files/alloy
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/prometheus/files/loki-linux-amd64
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/prometheus/files/prometheus_dir/prometheus
+/init-container/contrabass-engine/okestro/okestro-openstack/roles/prometheus/files/prometheus_dir/promtool
+/init-container/contrabass-engine/openstack-ansible.tar

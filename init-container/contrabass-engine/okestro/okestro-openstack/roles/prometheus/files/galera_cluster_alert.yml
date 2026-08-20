@@ -1,0 +1,17 @@
+groups:
+  - name: galera_cluster_alerts
+    rules:
+      - alert: GaleraClusterPartitioned
+        expr: mysql_global_status_wsrep_cluster_status == 0
+        for: 5s
+        labels:
+          severity: critical
+          team: db
+          environment: production
+          cause: network_partition
+          component: mysql_galera
+        annotations:
+          summary: "Galera cluster node {{ $labels.instance }} is in Non-Primary state"
+          description: |
+            The Galera node at {{ $labels.instance }} has lost quorum (wsrep_cluster_status=Non-Primary).
+            This typically indicates a network partition or member failure.

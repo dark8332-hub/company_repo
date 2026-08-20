@@ -1,0 +1,61 @@
+---
+purgecompute_monitoring_services:
+  ### Compute & ALL Monitoring service ###
+  - contrabass-exporter.service
+  - ipmi-exporter.service
+  - node-exporter.socket
+  - node-exporter.service
+  - contrabass-mole.service
+  - ovs-exporter.service
+  - promtail.service
+  - snmpd.service
+  - lldpd.service
+
+
+purgecompute_monitoring_files:
+  ### Compute & ALL Monitoring files ###
+
+  # /usr/local/bin
+  - /usr/local/bin/ipmi-exporter
+  - /usr/local/bin/contrabass-exporter
+  - /usr/local/bin/node_exporter
+  - /usr/local/bin/ovs-exporter
+  - /usr/local/bin/promtail
+
+  # /etc/systemd/system
+  - /etc/systemd/system/contrabass-exporter.service
+  - /etc/systemd/system/ipmi-exporter.service
+  - /etc/systemd/system/node-exporter.service
+  - /etc/systemd/system/node-exporter.socket
+  - /etc/systemd/system/ovs-exporter.service
+  - /etc/systemd/system/promtail.service
+  - /etc/systemd/system/contrabass-mole.service
+  - /etc/systemd/system/sockets.target.wants/node-exporter.socket
+
+  # /etc
+  - /etc/prometheus
+  - /etc/node-exporter
+  - /etc/promtail
+  - /etc/contrabass
+  - /etc/freeipmi
+
+  # /var/lib
+  - /var/lib/node-exporter
+  - /var/lib/contrabass
+
+  #/var/log
+  - /var/log/freeipmi
+  - /var/log/ipmiconsole
+  - /var/log/contrabass
+
+  # Extras
+  - /opt/certificate
+  - /opt/monitoring-certs
+  - /tmp/contrabass-mole
+  - /root/.freeipmi
+
+purgecompute_exporter_sd_files:
+  ### Compute & ALL Users ###
+  - contrabass-mole-exporter.yaml
+  - ipmi-exporter.yaml
+  - ovs-exporter.yaml

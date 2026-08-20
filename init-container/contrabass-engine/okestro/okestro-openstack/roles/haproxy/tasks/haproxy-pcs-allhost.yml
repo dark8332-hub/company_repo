@@ -1,0 +1,48 @@
+---
+- name: pcs && pacemaker install
+  ansible.builtin.package: 
+    name:
+      - pacemaker
+      - pcs
+      - corosync
+    state: present
+
+- name: enable pcs && pacemaker
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - pacemaker
+    - corosync
+    - pcsd
+
+- name: all service stop
+  service: 
+    name: "{{ item }}"
+    state: stopped
+  with_items:
+  - pcsd
+  - pacemaker
+  - corosync
+       
+- name: hauser password change
+  user: 
+    name: hacluster
+    password: "{{ haproxy_pwd | password_hash('sha512')}}"
+    update_password: always
+
+- name: pcsd started
+  service: 
+    name: "{{ item }}"
+    state: started
+  with_items:
+  - pcsd
+
+- name: corosync conf copy
+  template:
+    src: "{{ corosync_config }}.j2"
+    dest: "{{ corosync_config_dir }}/{{ corosync_config }}"
+    owner: root
+    group: root
+    mode: 0644
+  register: corosync_conf

@@ -1,0 +1,87 @@
+---
+redhat_purgecompute_openstack_services:
+  ### Compute-service & ALL service ###
+  - openstack-nova-compute.service
+  - openvswitch.service
+  - libvirtd.socket
+  - libvirtd.service
+  - virtlogd.socket
+  - virtlockd.service
+  - virtlockd.socket
+  - virtlockd-admin.socket
+  - libvirt-guests.service
+  - ovsdb-server.service
+  - neutron-openvswitch-agent.service
+  - ovs-vswitchd.service
+  - nfs-client.target
+  - rpc-statd-notify.service
+  - rpcbind.socket
+  - rpc_pipefs.target
+  - var-lib-nfs-rpc_pipefs.mount
+
+redhat_purgecompute_packages:
+  ### Compute-service & ALL Packages ###
+  - openstack-nova-compute
+  - openstack-neutron-openvswitch
+  - openvswitch
+  - libvirt-daemon-kvm
+  - iperf3
+  - percona-xtradb-cluster-server
+  - freeipmi
+
+redhat_purgecompute_openstack_files:
+  ### Compute & ALL Openstack files ###
+
+  # /etc
+  - /etc/nova
+  - /etc/neutron
+  - /etc/castellan
+  - /etc/libvirt
+  - /etc/openvswitch
+  - /etc/ceph/ceph.client.cinder.keyring
+  - /etc/ceph/client.cinder.key
+  - /etc/ceph/secret.xml
+  - /etc/ceph/uuid-secret.txt
+  - /etc/pycadf
+  - /etc/swtpm-localca.conf
+  - /etc/swtpm-localca.options
+  - /etc/swtpm_setup.conf
+
+  # /var/lib
+  - /var/lib/nova
+  - /var/lib/neutron
+  - /var/lib/libvirt
+  - /var/lib/openvswitch
+  - /var/lib/swtpm-localca
+
+  # /var/log
+  - /var/log/nova
+  - /var/log/neutron
+  - /var/log/libvirt
+  - /var/log/openvswitch
+  - /etc/qemu-kvm
+  - /etc/systemd/system/sockets.target.wants/libvirtd-tcp.socket
+
+
+redhat_purgecompute_users:
+  ### Compute & ALL Users ###
+  - nova
+  - neutron
+  - openvswitch
+  - mysql
+  - lldpd
+  - unbound
+  - rpc
+  - dnsmasq
+  - stapunpriv
+  - memcached
+  - qemu
+  - rpcuser
+
+  ### Group ###
+  - percona-telemetry
+  - libvirt
+  - hugetlbfs
+  - stapusr
+  - stapsys
+  - stapdev

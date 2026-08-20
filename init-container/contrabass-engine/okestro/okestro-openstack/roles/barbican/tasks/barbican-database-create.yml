@@ -1,0 +1,21 @@
+- name: Create Barbican DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+    - db: barbican
+
+- name: Update mysql barbican password for all barbican accounts
+  no_log: true
+  mysql_user:
+    name: barbican
+    host: "{{ item }}"
+    plugin: caching_sha2_password
+    plugin_auth_string: "{{ db_password }}"
+    priv: 'barbican.*:ALL'
+    state: present
+    append_privs: yes
+    update_password: on_create
+  with_items:
+    - localhost
+    - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}"

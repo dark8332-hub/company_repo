@@ -1,0 +1,17 @@
+---
+- name: external ping check test
+  shell: /usr/bin/ping -c 3 "{{ external_vip_address }}"
+  register: external_vip_check
+  ignore_errors: true
+  when: external_fqdn is defined
+  #failed_when: "'100% packet loss' ping_check.stderr"
+
+- name: internal ping check test
+  shell: /usr/bin/ping -c 3 "{{ internal_vip_address }}"
+  register: internal_vip_check
+  ignore_errors: true
+
+- name: monitoring ping check test
+  shell: /usr/bin/ping -c 3 "{{ monitoring_vip_address }}"
+  register: monitoring_vip_check
+  ignore_errors: true

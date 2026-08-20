@@ -1,0 +1,9 @@
+- name: Set notification queue TTL policy
+  community.rabbitmq.rabbitmq_policy:
+    name: notifications-guardrail
+    pattern: notifications.*
+    apply_to: queues
+    tags:
+      message-ttl: 300000
+      max-length: 5000
+      overflow: drop-head

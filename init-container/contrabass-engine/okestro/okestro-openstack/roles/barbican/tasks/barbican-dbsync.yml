@@ -1,0 +1,4 @@
+---
+- name: barbican DB sync
+  command: /bin/sh -c "EVENTLET_NO_GREENDNS=yes barbican-manage db upgrade"
+

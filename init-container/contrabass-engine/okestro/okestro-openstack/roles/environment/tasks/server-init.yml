@@ -1,0 +1,56 @@
+---
+- include_tasks: server-init-ubuntu.yml
+  when: ansible_os_family == "Debian"
+
+- include_tasks: server-init-redhat.yml
+  when: ansible_os_family == "RedHat"
+
+- name: Generate /etc/hosts for all of the nodes
+  template:
+    src: hosts.j2
+    dest: "{{ host_file }}"
+    owner: root
+    group: root
+    mode: 0644
+    backup: yes
+
+- name: Add or modify * nofile limits for wildcard domain
+  pam_limits:
+    domain: '*'
+    limit_type: '-'
+    limit_item: nofile
+    value: '65536'
+    use_max: yes
+
+- name: Add or modify root nofile limits for wildcard domain
+  pam_limits:
+    domain: root
+    limit_type: '-'
+    limit_item: nofile
+    value: '65536'
+    use_max: yes
+
+- name: sysctl tunning 
+  blockinfile: 
+    state: present
+    insertafter: EOF
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+    content: |
+      fs.file-max = 1000000
+      net.ipv4.ip_nonlocal_bind = 1
+      net.ipv4.ip_forward = 1
+      net.ipv4.conf.all.rp_filter = 0
+      net.ipv4.conf.default.rp_filter = 0
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.core.somaxconn = 1024
+      net.core.netdev_max_backlog = 5000
+      net.core.rmem_max = 16777216
+      net.core.wmem_max = 16777216
+
+- name : sysctl -p
+  command: sysctl -p
+
+- name: Server Hostname Setting
+  hostname:
+    name: "{{ inventory_hostname }}"

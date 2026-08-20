@@ -1,0 +1,81 @@
+- name: Create alloy directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+  with_items:
+    - '/etc/alloy'
+    - '/var/lib/alloy/data'
+
+- name: Create prometheus directory for ipmi-exporter
+  file:
+    path: '/etc/prometheus'
+    state: directory
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy prometheus web config file
+  template:
+    src: '/root/okestro/okestro-openstack/roles/prometheus/templates/prometheus-web-config.yml.j2'
+    dest: '/etc/prometheus/web-config.yml'
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy alloy environment file
+  copy:
+    src: '/root/okestro/okestro-openstack/roles/prometheus/files/alloy.env'
+    dest: '/etc/default/alloy'
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy alloy config file
+  template:
+    src: '/root/okestro/okestro-openstack/roles/prometheus/templates/config.alloy.j2'
+    dest: '/etc/alloy/config.alloy'
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy exporter binaries
+  copy:
+    src: "{{ item }}"
+    dest: '/usr/local/bin/'
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+  with_items:
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/alloy'
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/ovs-exporter'
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/ipmi-exporter'
+
+- name: Copy exporter revelant files
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items:
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/alloy.service.j2', dest: '/etc/systemd/system/alloy.service' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/ovs-exporter.service.j2', dest: '/etc/systemd/system/ovs-exporter.service' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/ipmi-exporter.service.j2', dest: '/etc/systemd/system/ipmi-exporter.service' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/files/ipmi-exporter.yml', dest: '/etc/prometheus/ipmi-exporter.yml' }
+
+- name: Daemon-reload
+  command: systemctl daemon-reload
+
+- name: Start exporters
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  with_items:
+    - 'alloy'
+    - 'ovs-exporter'
+    - 'ipmi-exporter'
+

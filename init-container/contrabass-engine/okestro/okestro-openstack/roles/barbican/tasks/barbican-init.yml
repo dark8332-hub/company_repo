@@ -1,0 +1,57 @@
+---
+- name: Create Barbican Service
+  openstack.cloud.catalog_service:
+    cloud: "{{ cloud }}"
+    state: present
+    name: barbican
+    service_type: key-manager 
+    description: OpenStack KeyManger Service
+    interface: internal
+
+- name: Create Barbican User
+  openstack.cloud.identity_user:
+    cloud: "{{ cloud }}"
+    state: present
+    name: barbican 
+    password: "{{ keystone_pass }}"
+    domain: default
+    interface: internal
+    default_project: service
+
+- name: Barbican creator Role Create
+  openstack.cloud.identity_role:
+    cloud: contrabass
+    state: present
+    name: creator
+    interface: internal
+
+- name: Barbican user role assignment 
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: barbican
+    role: admin
+    project: service
+    interface: internal
+
+- name: Barbican user role assignment service
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: barbican
+    role: creator
+    project: service
+    interface: internal
+
+- name: Barbican endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    service: barbican
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ barbican_bind_port }}"
+    region: "{{ region_one }}"
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }
+

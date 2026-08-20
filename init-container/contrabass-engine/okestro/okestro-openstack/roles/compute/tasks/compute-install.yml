@@ -1,0 +1,112 @@
+---
+- name: sqlalchemy install
+  shell: dnf module disable python36 -y
+  ignore_errors: true
+  when: 
+    - ansible_os_family == "RedHat"
+    - ansible_facts['distribution_major_version'] is version('9','<')
+
+- name: sqlalchemy install
+  dnf:
+    name: python3-sqlalchemy
+    state: present
+  when: 
+    - ansible_os_family == "RedHat"
+    - ansible_facts['distribution_major_version'] is version('9','<')
+
+- name: enable
+  shell: dnf module enable python36 -y
+  when: 
+    - ansible_os_family == "RedHat"
+    - ansible_facts['distribution_major_version'] is version('9','<')
+
+- name: compute package install  
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_nova_compute }}"
+      - "{{ pac_libvirt_daemon }}"
+      - "{{ pac_neutron_openvswitch }}"
+      - "{{ pac_openvswitch }}"
+    state: present
+
+- name: compute neutron agent package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_neutron_dhcp_agent }}"
+      - "{{ pac_neutron_l3_agent }}"
+      - "{{ pac_neutron_metadata_agent }}"
+    state: present
+  when:
+    - inventory_hostname in groups["neutron_agent"]
+
+- name: compute package install
+  dnf:
+    update_cache: yes
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - qemu-kvm
+    - librdmacm
+    - rdma-core
+    - libibverbs
+  when: ansible_os_family == "RedHat"
+
+- name: Disable virtqemud
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+  loop:
+    - virtqemud
+    - virtproxyd
+    - virtnetworkd
+    - virtinterfaced
+    - virtstoraged
+    - virtnodedevd
+    - virtnwfilterd
+    - virtsecretd
+    - virtproxyd.socket
+    - virtnetworkd.socket
+    - virtinterfaced.socket
+    - virtstoraged.socket
+    - virtnodedevd.socket
+    - virtsecretd.socket
+    - virtnwfilterd.socket
+  when: ansible_os_family == "RedHat"
+
+- name: Enable virtlogd and virtlockd
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+  loop:
+    - virtlogd
+    - virtlockd
+  when: ansible_os_family == "RedHat"
+
+- name: Enable Compute Service
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - "{{ pac_nova_compute }}"
+    - libvirtd
+    - neutron-openvswitch-agent
+    - "{{ pac_openvswitch }}"
+
+- name: Enable Neutron Agent
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - neutron-dhcp-agent
+    - neutron-l3-agent
+    - neutron-metadata-agent
+  when:
+    - ansible_os_family == "RedHat"
+    - inventory_hostname in groups["neutron_agent"]
+
+- name: Start Openvswitch
+  service:
+    name: "{{ pac_openvswitch }}"
+    state: started

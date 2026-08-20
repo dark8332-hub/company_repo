@@ -1,0 +1,97 @@
+---
+- name: Remove All packages for Debian Purgecluster
+  apt:
+    autoremove: true
+
+- name: Remove All rc packages for Debian Purgecluster
+  ansible.builtin.shell: |
+    dpkg -l | awk '$1=="rc" {print $2}' | xargs -r dpkg --purge
+
+- name: Remove Debian Purgecluster common Openstack Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ debian_purgecluster_common_openstack_files }}"
+
+- name: Remove Debian Purgecluster Common Monitoring Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ purgecluster_common_monitoring_files }}"
+
+- block:
+    - name: Remove Debian Purgecluster Controller Openstack files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ debian_purgecluster_controller_openstack_files }}"
+    
+    - name: Remove Debian Purgecluster Controller Middleware files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ debian_purgecluster_controller_middleware_files }}"
+    
+    - name: Remove Debian Purgecluster Controller Monitoring files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ purgecluster_controller_monitoring_files }}"
+
+  when: inventory_hostname in groups['purge-controller']
+
+- name: Remove Debian Purgecluster Common Users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ debian_purgecluster_common_users }}"
+
+- name: Remove Debian Purgecluster Common Groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ debian_purgecluster_common_users }}"
+
+- block:
+    - name: Remove Debian Purgecluster Controller users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        state: absent
+        remove: true
+      loop: "{{ debian_purgecluster_controller_users }}"
+    
+    - name: Remove Debian Purgecluster Controller groups
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ debian_purgecluster_controller_users }}"
+
+  when: inventory_hostname in groups['purge-controller']
+
+- name: Daemon-reload for Debian Purgecluster
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: sysctl tunning remove for Debian Purgecluster
+  blockinfile:
+    state: absent
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+
+- name: sysctl apply for Debian Purgecluster
+  command: sysctl --system
+
+- name: Install Timesyncd for Debian Purgecluster
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+    update_cache: yes
+
+- name: Remove /etc/hosts entries for OpenStack hosts for Debian Purgecluster
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '(^|\s){{ item }}(\s|$)'
+  loop: "{{ groups['purgecluster'] | default([]) }}"
+

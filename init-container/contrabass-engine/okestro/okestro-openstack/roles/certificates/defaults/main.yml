@@ -1,0 +1,29 @@
+---
+
+external_dir: "{{ certificates_dir }}/private/external"
+internal_dir: "{{ certificates_dir }}/private/internal"
+##backend_dir: "{{ certificates_dir }}/private/backend"
+##libvirt_dir: "{{ certificates_dir }}/private/libvirt"
+
+#external_cert: "{{ external_dir }}/haproxy-external.pem"
+#internal_cert: "{{ internal_dir }}/haproxy-internal.pem"
+
+root_dir: "{{ certificates_dir }}/private/root"
+root_ex_dir: "{{ certificates_dir }}/private/root_ex"
+external_dir: "{{ certificates_dir }}/private/external"
+internal_dir: "{{ certificates_dir }}/private/internal"
+#external_dir: "{{ certificates_dir }}/private/external"
+#internal_dir: "{{ certificates_dir }}/private/internal"
+#backend_dir: "{{ certificates_dir }}/private/backend"
+#libvirt_dir: "{{ certificates_dir }}/private/libvirt"
+cert_backup_dir: "/opt/certificate_backup"
+
+external_cert: "{{ external_dir }}/haproxy-external.pem"
+internal_cert: "{{ internal_dir }}/haproxy-internal.pem"
+
+
+# Whether to generate certificates for libvirt TLS.
+certificates_generate_libvirt: "{{ libvirt_tls | default(false) | bool }}"
+# Directory into which to copy generated certificates and keys for libvirt TLS.
+certificates_libvirt_output_dir: "{{ node_custom_config }}/nova/nova-libvirt"
+

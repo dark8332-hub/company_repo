@@ -1,0 +1,29 @@
+- name: copy to controller ceph keyrings
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'ceph.client.cinder.keyring',dest: '{{ ceph_dir }}',owner: 'cinder',group: 'cinder',mode: '0644' }
+    - { src: 'ceph.client.cinder-backup.keyring',dest: '{{ ceph_dir }}',owner: 'cinder',group: 'cinder',mode: '0644' }
+    - { src: 'ceph.client.glance.keyring',dest: '{{ ceph_dir }}',owner: 'glance',group: 'glance',mode: '0644' }
+  when: inventory_hostname in groups["controller"]
+
+- name: create compute ceph keyrings
+  changed_when: no
+  shell: cat /root/okestro/okestro-openstack/roles/ceph/files/ceph.client.cinder.keyring | sed -n 's/.*key = \(\S\+\).*/\1/p' > /root/okestro/okestro-openstack/roles/ceph/files/client.cinder.key
+  when: inventory_hostname in groups["deploy"]
+
+- name: copy to compute ceph keyrings
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'client.cinder.key',dest: '{{ ceph_dir }}/client.cinder.key',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'ceph.client.cinder.keyring',dest: '{{ ceph_dir }}/ceph.client.cinder.keyring',owner: 'root',group: 'root',mode: '0644' }
+  when: inventory_hostname in groups["compute"]

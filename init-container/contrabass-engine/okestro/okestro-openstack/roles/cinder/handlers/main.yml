@@ -1,0 +1,124 @@
+---
+- import_tasks: cinder-config-set.yml
+
+# Handlers for cinder
+- name: restart apahce2.
+  service: name=apache2 state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart apache2.
+  service: name=httpd stat=restarted
+  when:
+    - cinder_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart cinder-scheduler
+  service: name=cinder-scheduler state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart cinder-scheduler
+  service: name=openstack-cinder-scheduler state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart cinder-backup
+  service: name=cinder-backup state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart cinder-backup
+  service: name=openstack-cinder-backup state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: start apahce2
+  service: name=apache2 state=started
+
+- name: start cinder-scheduler
+  service: name=cinder-scheduler state=started
+
+- name: start cinder-backup
+  service: name=cinder-backup state=started
+
+- name: stop apahce2
+  service: name=apache2 state=stoped
+
+- name: stop cinder-scheduler
+  service: name=cinder-scheduler state=stoped
+
+- name: stop cinder-backup
+  service: name=cinder-backup state=stoped
+- name: restart cinder-backup
+  service: name=cinder-backup state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart cinder-backup
+  service: name=openstack-cinder-backup state=restarted
+  when: 
+    - cinder_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: start apahce2
+  service: name=apache2 state=started
+
+- name: start cinder-scheduler
+  service: name=cinder-scheduler state=started
+
+- name: start cinder-backup
+  service: name=cinder-backup state=started
+
+- name: stop apahce2
+  service: name=apache2 state=stoped
+
+- name: stop cinder-scheduler
+  service: name=cinder-scheduler state=stoped
+
+- name: stop cinder-backup
+  service: name=cinder-backup state=stoped
+- name: start apahce2
+  service: name=apache2 state=started
+
+- name: start cinder-scheduler
+  service: name=cinder-scheduler state=started
+
+- name: start cinder-backup
+  service: name=cinder-backup state=started
+
+- name: stop apahce2
+  service: name=apache2 state=stoped
+
+- name: stop cinder-scheduler
+  service: name=cinder-scheduler state=stoped
+
+- name: stop cinder-backup
+  service: name=cinder-backup state=stoped
+- name: restart cinder-backup
+  service: name=cinder-backup state=restarted
+  when: cinder_conf is changed
+
+- name: start apahce2
+  service: name=apache2 state=started
+
+- name: start cinder-scheduler
+  service: name=cinder-scheduler state=started
+
+- name: start cinder-backup
+  service: name=cinder-backup state=started
+
+- name: stop apahce2
+  service: name=apache2 state=stoped
+
+- name: stop cinder-scheduler
+  service: name=cinder-scheduler state=stoped
+
+- name: stop cinder-backup
+  service: name=cinder-backup state=stoped

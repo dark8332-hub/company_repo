@@ -1,0 +1,83 @@
+- name: Configure haproxy
+  block:
+    - name: Configure Internal contrabass-mole agent vIP to haproxy.cfg
+      blockinfile:
+        path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+        marker: "## {mark} internal_contrabass-mole agent vIP ##"
+        insertbefore: "# public"
+        block: |
+          listen int_contrabass-mole_agent_vIP
+            bind {{ internal_vip_address }}:{{ mole_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+            balance source
+            mode tcp
+            option tcpka
+            option tcplog
+          {% for item in groups['controller'] %}
+            server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ mole_port }} check inter 2000 rise 2 fall 5
+          {% endfor %}
+
+    - name: Configure Internal contrabass-mole agent vIP to haproxy.cfg
+      blockinfile:
+        path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+        marker: "## {mark} external_contrabass-mole agent vIP ##"
+        insertbefore: EOF
+        block: |
+          listen pub_contrabass-mole_agent_vIP
+            bind {{ external_vip_address }}:{{ mole_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+            balance source
+            mode tcp
+            option tcpka
+            option tcplog
+          {% for item in groups['controller'] %}
+            server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ mole_port }} check inter 2000 rise 2 fall 5
+          {% endfor %}
+      when:
+        - external_vip_address != internal_vip_address
+
+    - name: Restart Haproxy
+      service:
+        name: haproxy
+        state: restarted
+  when: inventory_hostname in groups['controller']
+
+- name: Create encrypted keystone password
+  shell: "/var/lib/contrabass/mole/contrabass-moleU encrypt '{{ keystone_pass }}'"
+  register: keystone_password_encryption
+  run_once: true
+
+- name: Set encrypted keystone password to fact
+  set_fact:
+    keystone_encrypt_password: "{{ keystone_password_encryption.stdout.split(': ')[1].strip('[]') }}"
+
+- name: Create encrypted db password
+  shell: "/var/lib/contrabass/mole/contrabass-moleU encrypt '{{ db_password }}'"
+  register: db_password_encryption
+  run_once: true
+
+- name: Set encrypted db password to fact
+  set_fact:
+    db_encrypt_password: "{{ db_password_encryption.stdout.split(': ')[1].strip('[]') }}"
+
+- name: Create encrypted ipmi password
+  shell: "/var/lib/contrabass/mole/contrabass-moleU encrypt '{{ ipmi_password }}'"
+  register: ipmi_password_encryption
+  run_once: true
+
+- name: Set encrypted ipmi password to fact
+  set_fact:
+    ipmi_encrypt_password: "{{ ipmi_password_encryption.stdout.split(': ')[1].strip('[]') }}"
+
+- name: Copy mole agent config
+  template:
+    src: 'agent.local.yml.j2'
+    dest: '/etc/contrabass/mole/agent.local.yml'
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+
+- name: Restart Contrabass mole agent
+  service:
+    name: contrabass-mole
+    state: restarted

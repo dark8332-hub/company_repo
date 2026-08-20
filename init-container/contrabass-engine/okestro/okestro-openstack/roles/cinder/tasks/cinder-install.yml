@@ -1,0 +1,185 @@
+---
+- name: Check Ubuntu 24.04.3 from /etc/os-release
+  ansible.builtin.command: grep -qE '^VERSION="?24\.04\.3' /etc/os-release
+  register: ubuntu_240403_check
+  changed_when: false
+  failed_when: false
+
+- name: Set Ubuntu 24.04.3 Caracal condition fact
+  ansible.builtin.set_fact:
+    is_ubuntu_240403_caracal: "{{ ubuntu_240403_check.rc == 0 and openstack_version | default('') == 'caracal' }}"
+
+- name: cinder_pakage_install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_cinder_api }}"
+      - "{{ pac_cinder_scheduler }}"
+      - "{{ pac_cinder_volume }}"
+      - "{{ pac_cinder_backup }}"
+      - "{{ pac_tgt }}"
+    state: present
+  when:
+    - not (is_ubuntu_240403_caracal | bool)
+
+- name: Install cinder 24.5.0 from source on Ubuntu 24.04.3 Caracal
+  block:
+    - name: Create cinder group
+      ansible.builtin.group:
+        name: cinder
+        gid: 64061
+        state: present
+
+    - name: Create cinder user
+      ansible.builtin.user:
+        name: cinder
+        uid: 64061
+        group: cinder
+        home: /var/lib/cinder
+        shell: /usr/sbin/nologin
+        create_home: false
+        state: present
+
+    - name: Create cinder home directory
+      ansible.builtin.file:
+        path: /var/lib/cinder
+        state: directory
+        owner: cinder
+        group: cinder
+        mode: "0750"
+
+    - name: Extract cinder source tarball
+      ansible.builtin.unarchive:
+        src: cinder-24.5.0.tar.gz
+        dest: /root/
+        remote_src: false
+        creates: /root/cinder-24.5.0/setup.py
+
+    - name: Install cinder 24.5.0 from source
+      ansible.builtin.command: python3 setup.py install
+      args:
+        chdir: /root/cinder-24.5.0
+        creates: /usr/local/bin/cinder-volume
+
+    - name: Create cinder config directory
+      ansible.builtin.file:
+        path: /etc/cinder
+        state: directory
+        owner: root
+        group: cinder
+        mode: "0750"
+
+    - name: Copy cinder api-paste.ini
+      ansible.builtin.copy:
+        src: /root/cinder-24.5.0/etc/cinder/api-paste.ini
+        dest: /etc/cinder/api-paste.ini
+        remote_src: true
+        owner: root
+        group: cinder
+        mode: "0640"
+
+    - name: Copy cinder rootwrap.conf
+      ansible.builtin.copy:
+        src: /root/cinder-24.5.0/etc/cinder/rootwrap.conf
+        dest: /etc/cinder/rootwrap.conf
+        remote_src: true
+        owner: root
+        group: cinder
+        mode: "0640"
+
+    - name: Create cinder rootwrap.d directory
+      ansible.builtin.file:
+        path: /etc/cinder/rootwrap.d
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Copy cinder rootwrap.d files
+      ansible.builtin.copy:
+        src: /root/cinder-24.5.0/etc/cinder/rootwrap.d/
+        dest: /etc/cinder/rootwrap.d/
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Copy cinder logging.conf
+      ansible.builtin.copy:
+        src: logging.conf
+        dest: /etc/cinder/logging.conf
+        owner: root
+        group: cinder
+        mode: "0640"
+
+    - name: Copy cinder resource_filters.json
+      ansible.builtin.copy:
+        src: resource_filters.json
+        dest: /etc/cinder/resource_filters.json
+        owner: root
+        group: cinder
+        mode: "0640"
+
+    - name: Create cinder log directory
+      ansible.builtin.file:
+        path: /var/log/cinder
+        state: directory
+        owner: cinder
+        group: adm
+        mode: "0750"
+
+    - name: Install python3-tabulate
+      ansible.builtin.apt:
+        name: python3-tabulate
+        state: present
+        update_cache: true
+
+    - name: Copy cinder-wsgi apache config
+      ansible.builtin.copy:
+        src: cinder-wsgi.conf
+        dest: /etc/apache2/conf-available/cinder-wsgi.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Enable cinder-wsgi apache config
+      ansible.builtin.file:
+        src: /etc/apache2/conf-available/cinder-wsgi.conf
+        dest: /etc/apache2/conf-enabled/cinder-wsgi.conf
+        state: link
+        owner: root
+        group: root
+
+    - name: Copy cinder systemd service files
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - cinder-scheduler.service
+        - cinder-volume.service
+        - cinder-backup.service
+
+    - name: Copy cinder sudoers file
+      ansible.builtin.copy:
+        src: cinder_sudoers
+        dest: /etc/sudoers.d/cinder_sudoers
+        owner: root
+        group: root
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Remove cinder source directory
+      ansible.builtin.file:
+        path: /root/cinder-24.5.0
+        state: absent
+
+  when:
+    - is_ubuntu_240403_caracal | bool
+    - openstack_version == 'caracal'

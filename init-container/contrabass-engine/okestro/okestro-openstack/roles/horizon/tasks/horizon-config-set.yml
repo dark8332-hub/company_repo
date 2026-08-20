@@ -1,0 +1,116 @@
+---
+- name: Horizon config file setting 
+  template:
+    src: "{{ item }}"
+    dest: "{{ horizon_dir }}/{{ horizon_config }}" 
+    owner: root
+    group: "{{ horizon_owner }}"
+    mode: 0644
+    backup: true
+  with_items:
+  - local_settings.py.j2
+  register: horizon_conf
+  notify: restart apache2
+
+- name: https port changes
+  template:
+    src: "{{ item }}"
+    dest: /etc/apache2/ports.conf
+    owner: root
+    group: horizon
+    mode: 0644
+    backup: true
+  with_items:
+  - ports.conf.j2
+  when: 
+    - enable_horizon_tls | bool
+    - ansible_os_family == "Debian"
+
+- name: Deploy a web server with security vulnerabilities fixed + openstack-dashboard config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'httpd.conf.j2', dest: '/etc/apache2/apache2.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'userdir.conf.j2', dest: '/etc/apache2/mods-available/userdir.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'openstack-dashboard.conf.j2', dest: '/etc/apache2/conf-available/openstack-dashboard.conf', owner: 'root', group: 'root', mode: '0640' }
+  when:
+    - ansible_os_family == 'Debian'
+
+- name: Deploy a web server with security vulnerabilities fixed + openstack-dashboard config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'httpd.conf.j2', dest: '/etc/httpd/conf/httpd.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'userdir.conf.j2', dest: '/etc/httpd/conf/userdir.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'openstack-dashboard.conf.j2', dest: '/etc/httpd/conf.d/openstack-dashboard.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'autoindex.conf.j2', dest: '/etc/httpd/conf.d/autoindex.conf', owner: 'root', group: 'root', mode: '0640' }
+    - { src: 'ssl.conf.j2', dest: '/etc/httpd/conf.d/ssl.conf', owner: 'root', group: 'root', mode: '0640' }
+  when:
+    - ansible_os_family == 'RedHat'
+
+- name: Setting Horizon-symlink for Debian
+  ansible.builtin.template:
+    src: horizon-symlinks.conf.j2
+    dest: /etc/apache2/conf-available/horizon-symlinks.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify:
+    - Enable horizon-symlinks
+  when:
+    - ansible_os_family == 'Debian'
+      
+- name: Restart apache2
+  service:
+    name: "{{ pac_apache }}" 
+    state: restarted
+
+- name: Configure Internal Horizon to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_horizon ##"
+    insertbefore: "# public"
+    block: |
+      listen int_horizon
+        bind {{ internal_vip_address }}:443 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{% if internal_endpoint_protocol == "http" %}80 check inter 2000 rise 2 fall 5{% elif internal_endpoint_protocol == "https" %}11443 check inter 2000 rise 2 fall 5 ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+      {% endfor %}
+
+- name: Configure External Horizon to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_horizon ##"
+    insertbefore: EOF
+    block: |
+      listen pub_horizon
+        bind {{ external_vip_address }}:443 {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{% if public_endpoint_protocol == "http" %}80 check inter 2000 rise 2 fall 5{% elif public_endpoint_protocol == "https" %}11443 check inter 2000 rise 2 fall 5 ssl crt {{ external_fqdn_cert }} ssl verify none {% endif %}
+
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted

@@ -1,0 +1,211 @@
+[DEFAULT]
+log_dir = /var/log/nova
+lock_path = /var/lock/nova
+state_path = /var/lib/nova
+my_ip = {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:5672{% if not loop.last %},{% endif %}{% endfor %}
+
+{% if enable_tls_internal  %}
+cafile = {{ internal_fqdn_cert }}
+{% endif %}
+use_neutron = True
+firewall_driver = nova.virt.firewall.NoopFirewallDriver
+allow_resize_to_same_host = true
+resize_confirm_window = 1
+cpu_allocation_ratio = {{ cpu_allocation_ratio | default(1.0) }}
+ram_allocation_ratio = 1.0
+
+rpc_backend = rabbit
+block_device_allocate_retries = 600
+block_device_allocate_retries_interval = 3
+vif_plugging_timeout = 1800
+vif_plugging_is_fatal = false
+
+[api_database]
+connection = mysql+pymysql://nova:{{ db_password }}@{{ internal_vip_address }}:13306/nova_api
+[database]
+connection = mysql+pymysql://nova:{{ db_password }}@{{ internal_vip_address }}:13306/nova
+
+
+[api]
+auth_strategy = keystone
+
+[cache]
+enabled = true
+backend = oslo_cache.memcache_pool
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:11211{% if not loop.last %},{% endif %}{% endfor %}
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_required = true
+{% if use_dns == true %}
+{% if enable_tls_internal  %}
+www_authenticate_uri = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+www_authenticate_uri = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal  %}
+www_authenticate_uri = https://{{ internal_vip_address }}:15000
+auth_url = https://{{ internal_vip_address }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+www_authenticate_uri = http://{{ internal_vip_address }}:15000
+auth_url = http://{{ internal_vip_address }}:15000
+{% endif %}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = nova
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:11211{% if not loop.last %},{% endif %}{% endfor %}
+
+[cells]
+enable=False
+
+[oslo_concurrency]
+lock_path= /var/lib/nova/tmp
+
+[wsgi]
+api_paste_config=/etc/nova/api-paste.ini
+
+[vnc]
+enabled = True
+server_listen = $my_ip
+server_proxyclient_address = $my_ip
+novncproxy_host = 0.0.0.0
+{% if enable_tls_external  %}
+novncproxy_base_url = https://{{ external_vip_address }}:16080/vnc_auto.html
+{% elif enable_tls_external == false %}
+novncproxy_base_url = http://{{ external_vip_address }}:16080/vnc_auto.html
+{% endif %}
+
+[oslo_messaging_rabbit]
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+
+[glance]
+{% if use_dns == true %}
+{% if enable_tls_internal  %}
+api_servers = https://{{ internal_fqdn }}.{{ zone_fqdn }}:19292
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+api_servers = http://{{ internal_fqdn }}.{{ zone_fqdn }}:19292
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal == true %}
+api_servers = https://{{ internal_vip_address }}:19292
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+api_servers = http://{{ internal_vip_address }}:19292
+{% endif %}
+{% endif %}
+
+[cinder]
+catalog_info = volumev3:cinder:internalURL	
+os_region_name = RegionOne
+endpoint_type = internal
+{% if enable_tls_internal  %}
+cafile = {{ internal_fqdn_cert }}
+{% endif %}
+
+[placement]
+os_region_name = RegionOne
+project_domain_name = Default
+project_name = service
+auth_type = password
+user_domain_name = Default
+{% if use_dns == true %}
+{% if enable_tls_internal  %}
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000/v3
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000/v3
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal  %}
+auth_url = https://{{ internal_vip_address }}:15000/v3
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_vip_address }}:15000/v3
+{% endif %}
+{% endif %}
+username = placement
+password = {{ keystone_pass }} 
+endpoint_type = internal
+
+[neutron]
+{% if use_dns == true %}
+{% if enable_tls_internal  %}
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000/v3
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000/v3
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal  %}
+auth_url = https://{{ internal_vip_address }}:15000/v3
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_vip_address }}:15000/v3
+{% endif %}
+{% endif %}
+auth_type = password
+project_domain_name = default
+user_domain_name = default
+region_name = RegionOne
+project_name = service
+username = neutron
+password = {{ keystone_pass }}
+service_metadata_proxy = true
+metadata_proxy_shared_secret = {{ keystone_pass }}
+
+[libvirt]
+virt_type=kvm
+live_migration_uri = qemu+tcp://%s/system
+live_migration_completion_timeout = 300
+live_migration_downtime = 100
+live_migration_downtime_steps = 3
+live_miogration_downtime_delay = 3
+live_migration_permit_auto_converge = true
+live_migration_with_native_tls = true
+live_migration_scheme = tls
+live_migration_flag="VIR_MIGRATE_UNDEFINE_SOURCE, VIR_MIGRATE_PEER2PEER,VIR_MIGRATE_PERSIST_DEST,VIR_MIGRATE_TUNNELLED"
+
+[compute]
+live_migration_wait_for_vif_plug = true
+
+[service_user]
+send_service_user_token = true
+{% if use_dns == true %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_vip_address }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_vip_address }}:15000
+{% endif %}
+{% endif %}
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = nova
+password = {{ keystone_pass }} 
+

@@ -1,0 +1,14 @@
+- name: Setup Server For Placement 
+  setup:
+
+- include_tasks: placement-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: placement-install.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: placement-config-set.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: placement-init.yml
+  when: inventory_hostname in groups["controller"][0]

@@ -1,0 +1,18 @@
+[Unit]
+Description=IPMI Exporter
+After=network.target
+
+[Service]
+User=root
+Group=root
+Restart=always
+ExecStart=/usr/local/bin/ipmi-exporter \
+{% if monitoring_enable_tls %}
+    --web.config.file="/etc/prometheus/web-config.yml" \
+{% endif %}
+    --config.file=/etc/prometheus/ipmi-exporter.yml
+Restart=on-failure
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

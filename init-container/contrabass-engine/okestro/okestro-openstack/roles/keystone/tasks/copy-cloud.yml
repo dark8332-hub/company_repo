@@ -1,0 +1,27 @@
+- name: Generate auto tab disable
+  template:
+    src: ".vimrc.j2"
+    dest: /root/.vimrc
+    owner: root
+    group: root
+    mode: 0644
+    backup: yes
+
+- name: yaml set
+  shell: source /root/.vimrc
+  args:
+     executable: /bin/bash
+
+- name: create file 
+  file:
+    path: "{{ cloud_dir }}"
+    state: "directory"
+    mode: "0755"
+  
+- name: copy openstack cloud
+  template:
+    src: "cloud.yml.j2"
+    dest: "{{ cloud_dir }}/clouds.yaml"
+    owner: root
+    group: root
+    mode: 0644

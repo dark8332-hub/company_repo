@@ -1,0 +1,103 @@
+[DEFAULT]
+log_dir = /var/log/barbican
+log_file = barbican-api.log
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+host_href = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ barbican_bind_port }}
+db_auto_create = True
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+
+[database]
+connection = mysql+pymysql://barbican:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/barbican
+
+[certificate]
+[certificate_event]
+[cors]
+[oslo_policy]
+[crypto]
+enabled_crypto_plugins = simple_crypto
+[cache]
+enabled = true
+backend = oslo_cache.memcache_pool
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_roles_required = true
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = barbican 
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[keystone_notifications]
+[kmip_plugin]
+[oslo_messaging_amqp]
+[oslo_messaging_kafka]
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+[oslo_messaging_rabbit]
+rabbit_quorum_queue = true
+rabbit_transient_quorum_queue = True
+#use_queue_manager = True
+#rabbit_stream_fanout = True
+rabbit_qos_prefetch_count = 10
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+kombu_missing_consumer_retry_timeout = 60
+heartbeat_timeout_threshold = 60
+heartbeat_rate = 2
+kombu_failover_strategy = round-robin
+
+[oslo_concurrency]
+lock_path = /var/lib/barbican/tmp
+
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+[oslo_middleware]
+[p11_crypto_plugin]
+[queue]
+[quotas]
+[retry_scheduler]
+[snakeoil_ca_plugin]
+[ssl]
+
+[secretstore]
+enabled_secret_storeplugins = store_crypto
+[simple_crypto_plugin]
+kek = 'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY='
+[service_user]
+send_service_user_token = true
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = barbican
+password = {{ keystone_pass }}

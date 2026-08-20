@@ -1,0 +1,25 @@
+[Unit]
+Description=memcached daemon for Thanos cache
+Before=httpd.service
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/sysconfig/memcached-thanos
+ExecStart=/usr/bin/memcached -p ${PORT} -u ${USER} -m ${CACHESIZE} -c ${MAXCONN} $OPTIONS
+
+PrivateTmp=true
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateDevices=true
+CapabilityBoundingSet=CAP_SETGID CAP_SETUID CAP_SYS_RESOURCE
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+##safer##MemoryDenyWriteExecute=true
+##safer##ProtectKernelModules=true
+##safer##ProtectKernelTunables=true
+##safer##ProtectControlGroups=true
+##safer##RestrictRealtime=true
+##safer##RestrictNamespaces=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,20 @@
+[mysqld]
+user=mysql
+pid_file = /var/run/mysqld/mysqld.pid
+bind-address=0.0.0.0
+skip-host-cache
+skip-name-resolve
+wsrep_provider=/usr/lib/libgalera_smm.so
+wsrep_cluster_name=pxc-cluster
+wsrep_cluster_address=gcomm://{% for item in groups['controller'] %}{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{% if not loop.last %},{% endif %}{% endfor %} 
+wsrep_node_name={{ ansible_hostname }}
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+wsrep_node_address={{ ansible_hostname }}
+wsrep_sst_method=xtrabackup-v2
+pxc_strict_mode=ENFORCING
+default_storage_engine=InnoDB
+wsrep_sst_auth="sstuser:s3cretPass"
+max_connections=20000
+#port=13306

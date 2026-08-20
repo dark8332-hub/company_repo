@@ -1,0 +1,38 @@
+---
+- name: Register Thanos rule data dir exists
+  stat:
+    path: '{{ thanos_rule_data_dir }}'
+  register: thanos_rule_data_dir_svc
+  ignore_errors: true
+
+- name: Create Thanos rule data dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ thanos_rule_data_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not thanos_rule_data_dir_svc.stat.exists
+
+- name: Copy Thanos rule service and http client config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-rule-alertmanager-http-client-config.yml.j2',dest: '{{ thanos_config_dir }}/config/thanos-rule-alertmanager-http-client-config.yml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-rule-query-http-client-config.yml.j2',dest: '{{ thanos_config_dir }}/config/thanos-rule-query-http-client-config.yml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-rule.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-rule.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Thanos rule service
+  service:
+    name: thanos-rule
+    state: restarted
+    enabled: true

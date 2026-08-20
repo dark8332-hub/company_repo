@@ -1,0 +1,9 @@
+- name: barbican_pakage_install  
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_barbican_api }}"
+      - "{{ pac_barbican_worker }}"
+      - "{{ pac_barbican_keystone_listener }}"
+    state: present
+

@@ -1,0 +1,62 @@
+[DEFAULT]
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+heat_metadata_server_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ heat_cfn_bind_port }}
+heat_waitcondition_server_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ heat_cfn_bind_port }}/v1/waitcondition
+stack_domain_admin = heat_domain_admin
+stack_domain_admin_password = {{ keystone_pass }}
+stack_user_domain_name = heat
+{% if internal_endpoint_protocol == "https" %}
+ca_file = {{ local_trust_cert_dir }}/{{ root_pem }}
+cert_file = {{ internal_fqdn_cert }}
+key_file = {{ internal_fqdn_cert }}
+{% endif %}
+
+[database]
+connection = mysql+pymysql://heat:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/heat
+
+[keystone_authtoken]
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https"  %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = heat 
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[trustee]
+auth_type = password
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+username = heat
+password = {{ keystone_pass }}
+user_domain_name = default
+
+[clients_keystone]
+auth_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" == true %}
+cert_file = {{ internal_fqdn_cert }}
+{% endif %}
+
+[oslo_messaging_rabbit]
+heartbeat_timeout_threshold = 120
+heartbeat_rate = 2
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications

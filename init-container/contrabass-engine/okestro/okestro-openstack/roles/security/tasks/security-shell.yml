@@ -1,0 +1,23 @@
+---
+- name: Run OS security script
+  ansible.builtin.command: /bin/bash /root/os_security/os_script_start.sh
+
+- name: Run middleware security script
+  ansible.builtin.command: /bin/bash /root/middleware_security/controller_script_start.sh
+  when: inventory_hostname in groups["controller"]
+
+- name: Show security script result guide
+  ansible.builtin.debug:
+    msg: |
+      아래 내용을 확인해주세요.
+
+      OS 보안취약점 조치 스크립트 점검 대상: 전체 노드
+      결과 파일 : /root/os_security/result.txt
+      변경 목록 : /root/os_security/change_list.txt
+      OS 보안취약점 조치 상세 내용 : OS_취약점_점검가이드_U01-U67.md
+
+      MiddleWare 보안취약점 조치 스크립트 점검 대상: Controller 노드
+      결과 파일 : /root/middleware_security/result.txt
+      변경 목록 : /root/middleware_security/change_list.txt
+      MiddleWare 보안취약점 조치 상세 내용 : MiddleWare_취약점_점검가이드.md
+  run_once: true

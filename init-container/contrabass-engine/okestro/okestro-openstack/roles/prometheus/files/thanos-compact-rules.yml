@@ -1,0 +1,61 @@
+groups:
+- name: thanos-compact.rules
+  rules:
+  - alert: ThanosCompactHalted
+    expr: thanos_compact_halted{job="thanos-compact"} == 1
+    for: 5m
+    labels:
+      severity: critical
+      component: thanos-compact
+    annotations:
+      summary: "Thanos Compact halted"
+      description: "Thanos Compact on {{ $labels.instance }} is halted. Compaction/downsampling/retention cleanup may be stopped."
+
+  - alert: ThanosCompactHasNotUploadedFor72Hours
+    expr: |
+      ((time() - max by (job) (max_over_time(thanos_objstore_bucket_last_successful_upload_time{job=~".*thanos-compact.*"}[7d]))) / 60 / 60 > 72)
+      or absent_over_time(thanos_objstore_bucket_last_successful_upload_time{job=~".*thanos-compact.*"}[72h])
+    for: 5m
+    labels:
+      severity: warning
+      component: thanos-compact
+    annotations:
+      summary: "Thanos Compact has not uploaded anything for last 72 hours."
+      description: "Thanos Compact {{ $labels.job }} has not uploaded anything for 72 hours."
+
+  - alert: ThanosCompactMultipleRunning
+    expr: sum by (job) (up{job="thanos-compact"} == 1) > 1
+    for: 5m
+    labels:
+      severity: warning
+      component: thanos-compact
+    annotations:
+      summary: "Multiple Thanos Compact instances are running"
+      description: |
+        More than one Thanos Compact target is up.
+        This can create object-storage block conflicts or overlaps.
+
+  - alert: ThanosCompactNotUpFor72Hours
+    expr: |
+      sum(max_over_time(up{job="thanos-compact"}[72h])) == 0
+      or absent_over_time(up{job="thanos-compact"}[72h])
+    for: 5m
+    labels:
+      severity: warning
+      component: thanos-compact
+    annotations:
+      summary: "Thanos Compact has not been up for 72 hours."
+      description: "No thanos-compact scrape target has been up on any cluster node for the last 72 hours."
+
+  - alert: ThanosCompactTimerMultipleActive
+    expr: sum(node_systemd_unit_state{name="thanos-compact.timer", state="active"} == 1) > 1
+    for: 5m
+    labels:
+      severity: warning
+      component: thanos-compact
+    annotations:
+      summary: "Multiple Thanos Compact timers are active"
+      description: |
+        More than one thanos-compact.timer unit is active.
+        This means multiple nodes may trigger thanos-compact.service at the scheduled time.
+

@@ -1,0 +1,336 @@
+---
+- name: Confirm whether user really meant to remove the Contrabass Openstack Compute Node
+  hosts: localhost
+  gather_facts: false
+  vars_prompt:
+    - name: purge_contrabass_compute
+      prompt: Are you sure yo want to remove the Contrabass Openstack Compute Node?
+      default: 'no'
+      private: no
+  tasks:
+    - name: exit playbook, if user did not mean to purge compute
+      fail:
+        msg: >
+          "Exit to Purge Contrabass Openstack, Not Purged.
+           If You Want to Purge Contrabass Openstack, Say 'yes' on the prompt"
+      when: purge_contrabass_compute != 'yes'
+
+- name: Delete Compute Nodes
+  hosts: compute
+  become: true
+  tasks:
+    - name: Delete Compute Node When in Controller Node
+      block:
+        - name: Check Nova-compute Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-compute.service
+          register: com_serv
+
+        - name: Stop & Disable Nova-Compute Service
+          service:
+            name: nova-compute
+            state: stopped
+            enabled: no
+          when: com_serv.stat.exists
+
+        - name: dnsmasq user running process check
+          shell: ps -u libvirt-dnsmasq | grep dnsmasq | awk '{print $1}'
+          register: dnsmasq_output
+
+        - name: kill dnsmasq process
+          command: kill -9 {{ item.split()[0] }}
+          loop: "{{ dnsmasq_output.stdout_lines }}"
+          when: dnsmasq_output.stdout != ""
+
+        - name: Delete Nova-Compute Service
+          apt:
+            name: "{{ item }}" 
+            state: absent
+          with_items:
+            - nova-compute
+            - nova-compute-kvm
+            - nova-compute-libvirt
+            - libvirt-daemon-config-nwfilter
+            - libvirt-daemon-config-network
+            - libvirt-daemon-system-systemd
+            - libvirt-daemon-system
+            - libvirt-clients
+
+        - name: Remove Nova-compute files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/libvirt
+            - /usr/lib/libvirt
+            - /etc/nova/nova-compute.conf
+
+        - name: Delete Compute User
+          user:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - libvirt-qemu
+            - libvirt-dnsmasq
+
+        - name: Delete Compute Group
+          group:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - libvirt
+            - libvirt-qemu
+            - libvirt-dnsmasq
+      when: inventory_hostname in groups["controller"]
+
+    - name: Purge Compute Node When Not in Controller Node
+      block:
+        - name: Check neutron-l3-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-l3-agent.service
+          register: neutron_l3_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+ 
+        - name: Check neutron-metadata-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-metadata-agent.service
+          register: neutron_metadata_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+ 
+        - name: Check neutron-dhcp-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-dhcp-agent.service
+          register: neutron_dhcp_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+ 
+        - name: Check neutron-openvswitch-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-openvswitch-agent.service
+          register: neutron_ovs_stat
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-l3-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_l3_stat.stat.exists
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-metadata-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_metadata_stat.stat.exists
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-dhcp-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_dhcp_stat.stat.exists
+
+        - name: Delete Compute Node Neutron-Agents
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - neutron-l3-agent
+            - neutron-metadata-agent
+            - neutron-dhcp-agent
+            - keepalived
+          when:
+            - inventory_hostname in groups["neutron_agent"]
+
+        - name: Stop Compute Node Neutron-Openvswitch
+          service:
+            name: neutron-openvswitch-agent
+            state: stopped
+            enabled: no
+          when: 
+            - neutron_ovs_stat.stat.exists
+          
+        - name: Delete Compute Node Neutron-Openvswitch
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - openvswitch-switch
+            - neutron-openvswitch-agent
+            - neutron-common
+            - python3-neutron-lib
+            - python3-neutron
+            - python3-neutronclient
+
+        - name: Delete Neutron User
+          user:
+            name: neutron
+            state: absent
+            remove: true
+
+        - name: Delete Neutron Group
+          group:
+            name: neutron
+            state: absent
+
+        - name: Delete Compute Node Neutron Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/neutron
+            - /etc/neutron
+            - /var/log/neutron
+            - /var/lock/neutron
+
+        - name: Check nova-compute Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-compute.service
+          register: nova_compute_stat
+
+        - name: Stop Compute Node nova-compute
+          service:
+            name: nova-compute
+            state: stopped
+            enabled: no
+          when: nova_compute_stat.stat.exists
+
+        - name: Delete Compute Node nova
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+          with_items:
+            - nova-common
+            - nova-compute
+            - nova-compute-kvm
+            - nova-compute-libvirt
+            - python3-nova
+            - python3-novaclient
+            - libvirt
+            - dnsmasq
+
+        - name: dnsmasq user running process check
+          shell: ps -u libvirt-dnsmasq | grep dnsmasq | awk '{print $1}'
+          register: dnsmasq_output
+
+        - name: kill dnsmasq process
+          command: kill -9 {{ item.split()[0] }}
+          loop: "{{ dnsmasq_output.stdout_lines }}"
+          when: dnsmasq_output.stdout != ""
+
+        - name: Delete Nova User
+          user:
+            name: "{{ item }}"
+            state: absent
+            # remove: true
+          with_items:
+            - nova
+            - libvirt-qemu
+            - libvirt-dnsmasq
+
+        - name: Delete Nova Group
+          group:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - nova
+            - libvirt
+            - libvirt-qemu
+            - libvirt-dnsmasq
+
+        - name: Delete Compute Node Nova Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/nova
+            - /etc/nova
+            - /var/lock/nova
+            - /var/log/nova
+
+        - name: Check Chrony Service
+          stat:
+            path: /etc/systemd/system/chrony.service
+          register: chrony
+
+        - name: Stop Chrony Service
+          service:
+            name: chrony
+            state: stopped
+            enabled: no
+          when: chrony.stat.exists
+    
+        - name: Delete Chrony
+          apt:
+            name: chrony
+            state: absent
+            purge: true
+          
+        - name: Delete Chrony Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/chrony
+            - /etc/chrony
+    
+        - name: Remove Chrony User
+          user:
+            name: _chrony
+            state: absent
+            remove: true
+    
+        - name: Remove Chrony Group
+          group:
+            name: _chrony
+            state: absent
+    
+        - name: Remove All
+          apt:
+            autoremove: true
+
+        - name: sysctl tunning remove
+          blockinfile:
+            state: absent
+            dest: /etc/sysctl.conf
+            marker: "### {mark} okestro kernel tunning ###"
+    
+        - name: sysctl apply
+          command: sysctl --system
+
+        - name: Purge All
+          shell: apt purge $(dpkg --list | grep '^rc' | awk '{print $2}') -y
+      when: inventory_hostname not in groups["controller"]
+
+- name: Remove Nova-compute Service
+  hosts: controller
+  become: true
+  tasks:
+    - name: Remove Nova-compute Service
+      shell: . /root/contrabass-openrc && openstack compute service delete $(openstack compute service list -c ID -c Binary -c Host -f value |  grep "{{ item }}" | grep nova-compute | awk '{print $1}')
+      args:
+        executable: /bin/bash
+      with_items:
+        - "{{ groups.compute }}"
+      when:
+        - inventory_hostname in groups["controller"][0]
+

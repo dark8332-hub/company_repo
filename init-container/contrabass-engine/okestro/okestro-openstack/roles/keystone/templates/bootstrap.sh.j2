@@ -1,0 +1,6 @@
+#!/bin/bash
+keystone-manage bootstrap --bootstrap-password {{ keystone_pass }} \
+	--bootstrap-admin-url {{ admin_endpoint_protocol }}://{{ admin_endpoint }}:{{ keystone_bind_port }}/v3/ \
+	--bootstrap-internal-url {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/ \
+	--bootstrap-public-url {{ public_endpoint_protocol }}://{{ public_endpoint }}:{{ keystone_bind_port }}/v3/ \
+	--bootstrap-region-id {{ region_one }}

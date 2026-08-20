@@ -1,0 +1,20 @@
+- name: Create manila DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+     - db: manila
+
+- name: Update mysql manila password for all manila accounts
+  no_log: true
+  mysql_user:
+     name: manila
+     host: "{{ item }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: manila.*:ALL,GRANT
+     state: present
+     update_password: on_create
+  with_items:
+     - localhost
+     - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}" 

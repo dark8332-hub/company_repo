@@ -1,0 +1,60 @@
+---
+- import_tasks: heat-config-set.yml
+
+# Handlers for heat
+# restart
+- name: restart heat-api
+  service: name=heat-api state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart heat-api
+  service: name=openstack-heat-api state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart heat-api-cfn
+  service: name=heat-api-cfn state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart heat-api-cfn
+  service: name=openstack-heat-api-cfn state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart heat-engine
+  service: name=heat-engine state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart heat-engine
+  service: name=openstack-heat-engine state=restarted
+  when: 
+    - heat_conf is changed
+    - ansible_os_family == "RedHat"
+
+# start
+- name: start heat-api
+  service: name=heat-api state=started
+
+- name: start heat-api-cfn
+  service: name=heat-api-cfn state=started
+
+- name: start heat-engine
+  service: name=heat-engine state=started
+
+# stop
+- name: stop heat-api
+  service: name=heat-api state=stopped
+
+- name: stop heat-api-cfn
+  service: name=heat-api-cfn state=stopped
+
+- name: stop heat-engine
+  service: name=heat-engine state=stopped

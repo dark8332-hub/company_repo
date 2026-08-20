@@ -1,0 +1,14 @@
+---
+- name: Copy prometheus.yml file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'node-exporter.yaml.j2',dest: '{{ prometheus_config_dir }}/sd_files/node-exporter.yaml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'contrabass-exporter.yaml.j2',dest: '{{ prometheus_config_dir }}/sd_files/contrabass-exporter.yaml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'ovs-exporter.yaml.j2',dest: '{{ prometheus_config_dir }}/sd_files/ovs-exporter.yaml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'ipmi-exporter.yaml.j2',dest: '{{ prometheus_config_dir }}/sd_files/ipmi-exporter.yaml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'contrabass-mole-exporter.yaml.j2',dest: '{{ prometheus_config_dir }}/sd_files/contrabass-mole-exporter.yaml',owner: 'root',group: 'root',mode: '0644' }

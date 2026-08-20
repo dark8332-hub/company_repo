@@ -1,0 +1,102 @@
+- name: Create directory for pull images
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - "{{ cephadm_dir }}"
+    - "{{ registry_dir }}"
+
+- name: Copy ceph & registry container images
+  copy:
+    src: "{{ item }}.tar"
+    dest: "{{ cephadm_dir }}"
+    mode: '0644'
+  with_items:
+    - 'registry'
+    - 'node-exporter'
+    - 'alertmanager'
+    - 'grafana'
+    - 'prometheus'
+    - 'ceph'
+    - 'nvmeof'
+    - 'nvmeof-cli'
+
+- name: Load image to podman
+  containers.podman.podman_load:
+    input: "{{ item }}"
+  with_items:
+    - "{{ cephadm_dir }}/registry.tar"
+    - "{{ cephadm_dir }}/node-exporter.tar"
+    - "{{ cephadm_dir }}/alertmanager.tar"
+    - "{{ cephadm_dir }}/grafana.tar"
+    - "{{ cephadm_dir }}/prometheus.tar"
+    - "{{ cephadm_dir }}/ceph.tar"
+    - "{{ cephadm_dir }}/nvmeof.tar"
+    - "{{ cephadm_dir }}/nvmeof-cli.tar"
+
+- name: check registry container exists
+  containers.podman.podman_container_info:
+    name: registry
+  register: registry_container
+
+- name: Create private registry
+  block:
+    - name: Create private registry container
+      containers.podman.podman_container:
+        name: registry
+        image: localhost/private-registry:local
+        privileged: true
+        ports:
+          - "{{ registry_port }}:5000"
+        restart_policy: "always"
+        volumes:
+          - "{{ registry_dir }}:{{ registry_dir }}"
+
+    - name: Wait for registry container up
+      wait_for:
+        timeout: 5
+  when: "'no such container registry' in registry_container.stderr"
+
+- name: Push container image to local registry
+  block:
+    - name: Change container image tags
+      containers.podman.podman_tag:
+        image: "{{ registry_domain }}:5555/{{ item }}"
+        target_names:
+          - "{{ registry_domain }}:{{ registry_port }}/{{ item }}"
+      with_items:
+        - 'ceph/ceph:v19.2.3'
+        - 'prometheus/node-exporter:v1.7.0'
+        - 'prometheus/alertmanager:v0.25.0'
+        - 'ceph/grafana:10.4.0'
+        - 'prometheus/prometheus:v2.51.0'
+        - 'ceph/nvmeof:1.2.5'
+        - 'ceph/nvmeof-cli:1.2.5'
+
+    - name: Remove default port image tag
+      containers.podman.podman_image:
+        name: "{{ registry_domain }}:5555/{{ item.image_name }}"
+        tag: "{{ item.image_tag }}"
+        state: absent
+      with_items:
+        - { image_name: 'ceph/ceph', image_tag: 'v19.2.3' }
+        - { image_name: 'prometheus/node-exporter', image_tag: 'v1.7.0' }
+        - { image_name: 'prometheus/alertmanager', image_tag: 'v0.25.0' }
+        - { image_name: 'ceph/grafana', image_tag: '10.4.0' }
+        - { image_name: 'prometheus/prometheus', image_tag: 'v2.51.0' }
+        - { image_name: 'ceph/nvmeof', image_tag: '1.2.5' }
+        - { image_name: 'ceph/nvmeof-cli', image_tag: '1.2.5' }
+  when: registry_port != '5555'
+
+- name: Push container image to local registry
+  containers.podman.podman_image:
+    name: "{{ item }}"
+    push: true
+  with_items:
+    - "{{ registry_domain }}:{{ registry_port }}/ceph/ceph:v19.2.3"
+    - "{{ registry_domain }}:{{ registry_port }}/prometheus/node-exporter:v1.7.0"
+    - "{{ registry_domain }}:{{ registry_port }}/prometheus/alertmanager:v0.25.0"
+    - "{{ registry_domain }}:{{ registry_port }}/ceph/grafana:10.4.0"
+    - "{{ registry_domain }}:{{ registry_port }}/prometheus/prometheus:v2.51.0"
+    - "{{ registry_domain }}:{{ registry_port }}/ceph/nvmeof:1.2.5"
+    - "{{ registry_domain }}:{{ registry_port }}/ceph/nvmeof-cli:1.2.5"

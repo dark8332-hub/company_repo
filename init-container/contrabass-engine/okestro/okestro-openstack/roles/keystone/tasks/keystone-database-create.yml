@@ -1,0 +1,19 @@
+---
+- name: Create keystone DB
+  mysql_db:
+    name: keystone
+    state: present
+
+- name: Update mysql keystone password for all keystone accounts
+  no_log: true
+  mysql_user:
+     name: keystone
+     host: "{{ item }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: keystone.*:ALL,GRANT
+     state: present
+     update_password: on_create
+  with_items:
+     - localhost
+     - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}" 

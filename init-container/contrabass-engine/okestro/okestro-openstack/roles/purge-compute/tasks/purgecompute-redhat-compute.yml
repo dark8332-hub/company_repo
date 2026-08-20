@@ -1,0 +1,147 @@
+---
+- name: Gather Purgecompute service facts
+  ansible.builtin.service_facts:
+
+- name: Disable Purgecompute Redhat OpenStack services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ redhat_purgecompute_openstack_services | default([]) }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable Purgecompute monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ purgecompute_monitoring_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Find RedHat dnsmasq processes
+  ansible.builtin.shell: |
+    pgrep -u dnsmasq || true
+  register: redhat_dnsmasq_pids
+  changed_when: false
+
+- name: Kill RedHat Purgecompute dnsmasq processes
+  ansible.builtin.command: "kill -9 {{ item }}"
+  loop: "{{ redhat_dnsmasq_pids.stdout_lines }}"
+  when: redhat_dnsmasq_pids.stdout != ""
+
+- name: Ensure /etc/dnf/protected.d exists
+  ansible.builtin.file:
+    path: /etc/dnf/protected.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install contrabass protected packages list
+  ansible.builtin.copy:
+    src: contrabass-base-pkg.conf 
+    dest: /etc/dnf/protected.d/contrabass-base-pkg.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Protect Ceph client libs on Ceph role nodes
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/protected.d/contrabass-base-pkg.conf
+    line: "{{ item }}"
+    state: present
+  loop:
+    - librbd1
+    - librados2
+  when: (group_names | intersect(['osds','mdss','mons','rgws']) | length) > 0
+
+- name: Purge RedHat Purgecompute packages
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: absent
+    autoremove: true
+  loop: "{{ redhat_purgecompute_packages | reject('in', ['firewalld']) | list }}"
+
+- name: Remove original file after copy (only if it exists on the node)
+  ansible.builtin.file:
+    path: /etc/dnf/protected.d/contrabass-base-pkg.conf
+    state: absent
+
+- name: Remove Purgecompute monitoring files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ purgecompute_monitoring_files }}"
+
+- name: Remove Redhat Purgecompute files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ redhat_purgecompute_openstack_files | default([]) }}"
+
+- name: Remove RedHat Purgecompute users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ redhat_purgecompute_users | default([]) }}"
+  ignore_errors: "{{ item in ['openvswitch', 'memcached', 'qemu', 'rpcuser'] }}"
+
+- name: Remove RedHat Purgecompute groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ redhat_purgecompute_users | default([]) }}"
+
+- name: Stop node-exporter leftover units
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - node-exporter.service
+    - node-exporter.socket
+  failed_when: false
+
+- name: Daemon-reload for Purgecompute
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: sysctl tunning remove for Purgecompute
+  blockinfile:
+    state: absent
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+
+- name: sysctl apply for Purgecompute
+  command: sysctl --system
+
+- name: Remove /etc/hosts entries for OpenStack hosts for Purgecompute
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '(^|\s){{ item | regex_escape }}(\s|$)'
+  loop: >-
+    {{
+      (groups['openstack'] | default([]))
+      | difference(
+          (groups['osds'] | default([]))
+          + (groups['rgws'] | default([]))
+          + (groups['mdss'] | default([]))
+          + (groups['mons'] | default([]))
+        )
+    }}
+
+- name: Copy RedHat purgecluster Original chrony.conf
+  ansible.builtin.copy:
+    src: chrony.conf
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'

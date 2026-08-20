@@ -1,0 +1,14 @@
+- name: Setup server for heat
+  setup:
+
+- include_tasks: heat-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: heat-install.yml
+
+- include_tasks: heat-config-set.yml
+
+- include_tasks: heat-init.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: heat-restart.yml

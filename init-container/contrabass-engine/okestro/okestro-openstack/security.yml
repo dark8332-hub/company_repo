@@ -1,0 +1,21 @@
+---
+- name: Ansible environment initialization
+  become: true
+  hosts: localhost
+  any_errors_fatal: true
+  roles:
+    - role: ssh-copy
+      tags: ssh-copy
+
+
+- name: Security Settings
+  become: true
+  hosts: "alls:!deploy"
+  any_errors_fatal: true
+  gather_facts: true
+
+  roles:
+    - role: security
+      when: ansible_os_family == 'Debian'
+
+  tags: security

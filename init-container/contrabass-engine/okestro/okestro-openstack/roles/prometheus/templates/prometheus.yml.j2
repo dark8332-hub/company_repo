@@ -1,0 +1,376 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  scrape_timeout: 20s
+{% if monitoring_ha_enable %}
+  external_labels:
+    prometheus: monitoring-cluster
+    prometheus_replica: prometheus-{{ hostvars[inventory_hostname]['ansible_hostname'] }}
+{% endif %}
+
+alerting:
+{% if monitoring_ha_enable %}
+  alert_relabel_configs:
+    - regex: prometheus_replica
+      action: labeldrop
+{% endif %}
+
+  alertmanagers:
+{% if monitoring_enable_tls %}
+    - scheme: https
+      tls_config:
+        cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+        key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+        ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+        insecure_skip_verify: false
+{% else %}
+    - scheme: http
+{% endif %}
+      static_configs:
+        - targets:
+{% for item in groups['controller'] %}
+          - "{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+
+rule_files:
+  - "./rules/*.yml"
+
+scrape_configs:
+- job_name: "prometheus"
+  scrape_interval: 60s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:up|prometheus_config_last_reload_successful|prometheus_rule_evaluation_failures_total|prometheus_target_scrapes_exceeded_sample_limit_total|prometheus_tsdb_head_series|prometheus_notifications_errors_total|process_resident_memory_bytes|process_cpu_seconds_total|go_goroutines)$'
+      action: keep
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ prometheus_port }}"
+{% endfor %}
+
+- job_name: "alertmanager"
+  scrape_interval: 60s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:alertmanager_alerts_invalid_total|alertmanager_cluster_members|alertmanager_notifications_failed_total|alertmanager_notifications_total)$'
+      action: keep
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+
+- job_name: "node_exporter"
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:contrabass_gpu_info|contrabass_mig_profile_info|contrabass_vgpu_vm_info|node_boot_time_seconds|node_context_switches_total|node_cpu_seconds_total|node_disk_io_now|node_disk_io_time_seconds_total|node_disk_read_bytes_total|node_disk_read_time_seconds_total|node_disk_reads_completed_total|node_disk_write_time_seconds_total|node_disk_writes_completed_total|node_disk_written_bytes_total|node_fibrechannel_info|node_filefd_allocated|node_filefd_maximum|node_filesystem_avail_bytes|node_filesystem_files|node_filesystem_files_free|node_filesystem_free_bytes|node_filesystem_size_bytes|node_load1|node_load15|node_load5|node_memory_Buffers_bytes|node_memory_Cached_bytes|node_memory_MemAvailable_bytes|node_memory_MemFree_bytes|node_memory_MemTotal_bytes|node_memory_SReclaimable_bytes|node_memory_SwapFree_bytes|node_memory_SwapTotal_bytes|node_netstat_TcpExt_ListenDrops|node_netstat_Tcp_ActiveOpens|node_netstat_Tcp_CurrEstab|node_netstat_Tcp_InSegs|node_netstat_Tcp_OutSegs|node_netstat_Tcp_PassiveOpens|node_netstat_Tcp_RetransSegs|node_network_info|node_network_receive_bytes_total|node_network_receive_errs_total|node_network_receive_packets_total|node_network_speed_bytes|node_network_transmit_bytes_total|node_network_transmit_errs_total|node_network_transmit_packets_total|node_network_up|node_pressure_memory_waiting_seconds_total|node_schedstat_waiting_seconds_total|node_sockstat_TCP_alloc|node_sockstat_TCP_tw|node_sockstat_UDP_inuse|node_sockstat_sockets_used|node_systemd_unit_state|node_uname_info|node_vmstat_pgmajfault|node_vmstat_pswpin|node_vmstat_pswpout|up|node_network_mtu_bytes|node_network_receive_drop_total|node_network_transmit_drop_total|node_bonding_slaves|node_bonding_active)$'
+      action: keep
+    - source_labels:
+        - __name__
+        - state
+      separator: ';'
+      regex: 'node_systemd_unit_state;(activating|deactivating|inactive)'
+      action: drop
+    - source_labels:
+        - __name__
+        - type
+      separator: ';'
+      regex: 'node_systemd_unit_state;oneshot'
+      action: drop
+  file_sd_configs:
+  - files:
+    - "./sd_files/node-exporter.yaml"
+
+- job_name: "contrabass_exporter"
+  metrics_path: /metrics
+  scheme: http
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:libvirt_domain_block_stats_capacity_bytes|libvirt_domain_block_stats_read_bytes_total|libvirt_domain_block_stats_read_requests_total|libvirt_domain_block_stats_write_bytes_total|libvirt_domain_block_stats_write_requests_total|libvirt_domain_info_cpu_iowait_seconds_total|libvirt_domain_info_cpu_steal_seconds_total|libvirt_domain_info_cpu_time_seconds_total|libvirt_domain_info_maximum_memory_bytes|libvirt_domain_info_memory_usage_bytes|libvirt_domain_info_state|libvirt_domain_info_virtual_cpus|libvirt_domain_interface_stats_receive_bytes_total|libvirt_domain_interface_stats_receive_drops_total|libvirt_domain_interface_stats_receive_errors_total|libvirt_domain_interface_stats_receive_packets_total|libvirt_domain_interface_stats_transmit_bytes_total|libvirt_domain_interface_stats_transmit_drops_total|libvirt_domain_interface_stats_transmit_errors_total|libvirt_domain_interface_stats_transmit_packets_total|libvirt_domain_memory_stats_available_bytes|libvirt_domain_memory_stats_major_fault_total|libvirt_domain_memory_stats_swap_in_bytes|libvirt_domain_memory_stats_swap_out_bytes|libvirt_domain_memory_stats_usable_bytes|libvirt_domain_memory_stats_used_percent|libvirt_domain_openstack_info|libvirt_domain_stat_memory_available_bytes|libvirt_domain_stat_memory_usable_bytes|libvirt_domain_stat_swap_free_bytes|libvirt_domain_stat_swap_total_bytes|libvirt_domain_vcpu_delay_seconds_total|libvirt_up)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-exporter.yaml"
+
+- job_name: "openstack_exporter"
+  scrape_interval: 60s
+  scrape_timeout: 20s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:openstack_cinder_agent_state|openstack_cinder_pool_capacity_free_gb|openstack_cinder_pool_capacity_total_gb|openstack_cinder_up|openstack_cinder_volume_gb|openstack_cinder_volume_status|openstack_cinder_volumes|openstack_glance_image_bytes|openstack_glance_up|openstack_heat_up|openstack_identity_project_info|openstack_identity_up|openstack_loadbalancer_up|openstack_neutron_agent_state|openstack_neutron_floating_ips|openstack_neutron_network_ip_availabilities_total|openstack_neutron_network_ip_availabilities_used|openstack_neutron_port|openstack_neutron_router|openstack_neutron_subnets|openstack_neutron_up|openstack_nova_agent_state|openstack_nova_server_status|openstack_nova_total_vms|openstack_nova_up|openstack_object_store_up|openstack_placement_up)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/openstack-exporter.yaml"
+
+{% if monitoring_ha_enable %}
+- job_name: "thanos-sidecar"
+  scrape_interval: 60s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:thanos_sidecar_prometheus_up|thanos_shipper_upload_failures_total|thanos_shipper_uploads_total|thanos_shipper_dir_sync_failures_total|thanos_sidecar_last_heartbeat_success_time_seconds)$'
+      action: keep
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ thanos_sidecar_http_port }}"
+{% endfor %}
+
+{% endif %}
+
+{% if monitoring_ha_enable %}
+- job_name: "thanos-compact"
+  scrape_interval: 60s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:thanos_compact_halted|thanos_objstore_bucket_last_successful_upload_time)$'
+      action: keep
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ thanos_compact_http_port }}"
+{% endfor %}
+
+{% endif %}
+
+- job_name: memcached-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:memcached_commands_total|memcached_current_bytes|memcached_current_connections|memcached_current_items|memcached_items_evicted_total|memcached_items_reclaimed_total|memcached_limit_bytes|memcached_read_bytes_total|memcached_up|memcached_uptime_seconds|memcached_written_bytes_total)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/memcached-exporter.yaml"
+
+- job_name: mysqld-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:mysql_global_status_aborted_clients|mysql_global_status_aborted_connects|mysql_global_status_bytes_received|mysql_global_status_bytes_sent|mysql_global_status_innodb_data_read|mysql_global_status_innodb_data_written|mysql_global_status_queries|mysql_global_status_slow_queries|mysql_global_status_table_locks_immediate|mysql_global_status_table_locks_waited|mysql_global_status_threads_connected|mysql_global_status_threads_running|mysql_global_status_uptime|mysql_global_status_wsrep_cluster_size|mysql_global_status_wsrep_cluster_status|mysql_global_status_wsrep_local_state|mysql_global_variables_innodb_buffer_pool_size|mysql_global_variables_max_connections|mysql_up)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/mysqld-exporter.yaml"
+
+- job_name: ha_cluster-exporter
+  scrape_interval: 60s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:ha_cluster_pacemaker_nodes|ha_cluster_pacemaker_resources)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/ha_cluster-exporter.yaml"
+
+- job_name: haproxy-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:haproxy_backend_current_queue|haproxy_backend_current_sessions|haproxy_backend_http_responses_total|haproxy_backend_max_queue|haproxy_backend_response_errors_total|haproxy_backend_sessions_total|haproxy_backend_up|haproxy_frontend_bytes_in_total|haproxy_frontend_bytes_out_total|haproxy_frontend_current_sessions|haproxy_frontend_http_requests_total|haproxy_frontend_http_responses_total|haproxy_frontend_request_errors_total|haproxy_frontend_sessions_total|haproxy_server_bytes_in_total|haproxy_server_bytes_out_total|haproxy_server_check_duration_seconds|haproxy_server_check_failures_total|haproxy_server_current_queue|haproxy_server_max_queue|haproxy_server_response_errors_total|haproxy_server_up|octavia_listener_bytes_in_total|octavia_listener_bytes_out_total|octavia_listener_denied_sessions_total|octavia_listener_http_requests_total|octavia_listener_sessions_total|octavia_loadbalancer_cpu|octavia_loadbalancer_current_connection_rate|octavia_loadbalancer_current_ssl_rate|octavia_loadbalancer_memory|octavia_pool_http_responses_total|octavia_pool_status|haproxy_up|haproxy_backend_bytes_in_total|haproxy_server_http_response_total)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/haproxy-exporter.yaml"
+
+- job_name: rabbitmq-exporter
+  metrics_path: /metrics
+  scheme: http
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:erlang_mnesia_tablewise_size|rabbitmq_alarms_file_descriptor_limit|rabbitmq_alarms_free_disk_space_watermark|rabbitmq_alarms_memory_used_watermark|rabbitmq_build_info|rabbitmq_channels|rabbitmq_connection_incoming_packets_total|rabbitmq_connection_outgoing_packets_total|rabbitmq_connection_pending_packets|rabbitmq_connections|rabbitmq_consumers|rabbitmq_exchange_messages_unroutable_dropped_total|rabbitmq_exchange_messages_unroutable_returned_total|rabbitmq_global_consumers|rabbitmq_global_messages_acknowledged_total|rabbitmq_global_messages_confirmed_total|rabbitmq_global_messages_delivered_total|rabbitmq_global_messages_received_total|rabbitmq_global_messages_routed_total|rabbitmq_global_publishers|rabbitmq_messages_deliver_rate|rabbitmq_process_max_fds|rabbitmq_process_open_fds|rabbitmq_process_resident_memory_bytes|rabbitmq_queue_messages_delivered_ack_total|rabbitmq_queue_messages_published_total|rabbitmq_queue_messages_ready|rabbitmq_queue_messages_redelivered_total|rabbitmq_queue_messages_unacked|rabbitmq_queues|rabbitmq_resident_memory_limit_bytes)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/rabbitmq-exporter.yaml"
+
+- job_name: ovs-exporter
+  metrics_path: /metrics
+  scheme: http
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:ovs_interface_rx_dropped|ovs_interface_rx_errors|ovs_interface_rx_missed_errors|ovs_interface_rx_packets|ovs_interface_tx_dropped|ovs_interface_tx_errors|ovs_interface_tx_packets|ovs_memory_usage|process_cpu_seconds_total)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/ovs-exporter.yaml"
+
+- job_name: ipmi-exporter
+  scrape_interval: 120s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:ipmi_bmc_info|ipmi_chassis_power_state|ipmi_dcmi_power_consumption_watts|ipmi_power_state|ipmi_power_watts|ipmi_sensor_state|ipmi_temperature_celsius|ipmi_temperature_state)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/ipmi-exporter.yaml"
+
+- job_name: mole_exporter
+  metrics_path: /metrics
+  scheme: http
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:mole_host_cpu_usage|mole_host_mem_usage|mole_host_network_port_info|mole_host_network_port_rx_usage|mole_host_network_port_tx_usage|mole_host_service_info|mole_info|mole_vm_cpu_info|mole_vm_cpu_usage|mole_vm_cpu_used|mole_vm_hdd_free|mole_vm_hdd_total|mole_vm_hdd_usage|mole_vm_hdd_used|mole_vm_info|mole_vm_mem_free|mole_vm_mem_total|mole_vm_mem_usage|mole_vm_mem_used|mole_vm_net_info|mole_vm_os_info|mole_vm_qemu_info|mole_vm_scrapped|mole_vm_state|mole_vm_total)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+- job_name: mole_nfv_exporter
+  metrics_path: /metrics_nfv
+  scheme: http
+  metric_relabel_configs:
+    - source_labels: [__name__]
+      regex: '^(?:mole_nfv_amphora_haproxy_status|mole_nfv_amphora_info|octavia_listener_bytes_in_total|octavia_listener_bytes_out_total|octavia_listener_denied_sessions_total|octavia_listener_http_requests_total|octavia_listener_sessions_total|octavia_loadbalancer_cpu|octavia_loadbalancer_current_connection_rate|octavia_loadbalancer_current_ssl_rate|octavia_loadbalancer_memory|octavia_pool_http_responses_total|octavia_pool_status)$'
+      action: keep
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+- job_name: mole_dcgm_exporter
+  metrics_path: /metrics_dcgm
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+{% if cinder_backend == "ceph" %}
+- job_name: ceph-exporter
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ceph-exporter.yaml"
+
+- job_name: ceph
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ceph-mgr.yaml"
+
+- job_name: ceph-core-api
+  metrics_path: /api/predict/metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ceph-core.yaml"
+{% endif %}    

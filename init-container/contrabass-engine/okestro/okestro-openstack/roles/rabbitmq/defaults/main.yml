@@ -1,0 +1,14 @@
+rabbitmq_erlang_cookie: WKRBTTEQRYPTQOPUKSVF
+rabbitmq_tls_port: 5671
+rabbitmq_amqp_port: 5672
+rabbitmq_epmd_port: 4369
+rabbitmq_node_port: 25672
+cacertfile: "/opt/certificate/private/root/root.crt"
+cacertfile_dest: "/etc/rabbitmq/cacert.pem"
+certfile: "/opt/certificate/private/internal/internal_crt.pem"
+certfile_dest: "/etc/rabbitmq/cert.pem"
+keyfile: "/opt/certificate/private/internal/internal_key.pem"
+keyfile_dest: "/etc/rabbitmq/key.pem"
+tls_fail_if_no_peer_cert: false
+tls_verify: "verify_none"
+rabbitmq_name: openstack

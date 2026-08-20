@@ -1,0 +1,21 @@
+---
+- import_tasks: placement-config-set.yml
+
+# Handlers for placement
+- name: restart apache2..
+  service: name=apache2 state=restarted
+  when: 
+    - placement_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart apache2..
+  service: name=httpd state=restarted
+  when:
+    - placement_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: start apache2
+  service: name=apache2 state=started
+
+- name: stop apache2
+  service: name=apache2 state=stopped

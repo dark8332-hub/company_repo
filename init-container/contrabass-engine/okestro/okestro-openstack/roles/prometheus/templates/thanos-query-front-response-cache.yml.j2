@@ -1,0 +1,16 @@
+type: MEMCACHED
+config:
+  addresses:
+{% for item in groups['controller'] %}
+    - {{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:11212
+{% endfor %}
+  timeout: 500ms
+  max_idle_connections: 100
+  max_async_concurrency: 10
+  max_async_buffer_size: 10000
+  max_get_multi_concurrency: 100
+  max_get_multi_batch_size: 0
+  max_item_size: 8MiB
+  auto_discovery: false
+  expiration: 24h
+

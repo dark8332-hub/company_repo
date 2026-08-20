@@ -1,0 +1,3 @@
+- name: pcs remote check
+  command: pcs status
+  register: pcs_status_check

@@ -1,0 +1,27 @@
+- name: Check minio user exists
+  shell: '/usr/local/bin/mc admin user list contrabass'
+  register: minio_user
+
+- name: Minio user creation
+  block:
+    - name: Create minio bucket user
+      shell: "/usr/local/bin/mc admin user add contrabass {{ s3_access_key }} {{ s3_secret_key }}"
+      when: inventory_hostname in groups['controller'][0]
+
+    - name: Attach policy to minio bucket user
+      shell: "sleep 5 && /usr/local/bin/mc admin policy attach contrabass readwrite --user {{ s3_access_key }}"
+      when: inventory_hostname in groups['controller'][0]
+  when:
+    - 's3_access_key not in minio_user.stdout'
+
+- name: Check minio bucket exists
+  shell: '/usr/local/bin/mc ls contrabass'
+  register: minio_bucket
+
+- name: Create monitoring bucket
+  shell: "/usr/local/bin/mc mb contrabass/{{ item }}"
+  with_items:
+    - 'thanos'
+    - 'loki'
+    - 'backup'
+  when: 'item not in minio_bucket.stdout'

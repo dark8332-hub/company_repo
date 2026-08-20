@@ -1,0 +1,11 @@
+- name: Fernetkey-copy
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'ceph.conf',dest: '/etc/ceph/',owner: 'root',group: 'root',mode: '0644' }
+  when:
+    - inventory_hostname in groups['openstack'] and inventory_hostname not in groups['mons']

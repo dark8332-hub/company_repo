@@ -1,0 +1,372 @@
+---
+debian_purgecluster_common_services:
+  ### Compute-service & ALL service ###
+  - nova-compute.service
+  - libvirtd.socket
+  - libvirtd-tcp.socket
+  - libvirtd.service
+  - virtlogd.socket
+  - virtlockd.service
+  - virtlockd.socket
+  - virtlockd-admin.socket
+  - libvirt-guests.service
+  - qemu-kvm.service
+  - neutron-openvswitch-agent.service
+  - openvswitch-switch.service
+  - neutron-ovs-cleanup.service
+  - ovsdb-server.service
+
+  #v3.0.4
+  - pcsd.service
+  - pcsd-ruby.service
+  - pacemaker.service
+  - corosync.service
+
+
+debian_purgecluster_controller_services:
+  ### Controller service ###
+
+  #Nova & Compute
+  - nova-api.service
+  - nova-conductor.service
+  - nova-novncproxy.service
+  - nova-scheduler.service
+
+  # Networking
+  - neutron-dhcp-agent.service
+  - neutron-l3-agent.service
+  - neutron-metadata-agent.service
+  - neutron-server.service
+
+  #Cinder
+  - cinder-backup.service
+  - cinder-scheduler.service
+  - cinder-volume.service
+
+  #Glance
+  - glance-api.service
+
+  #Manila
+  - manila-scheduler.service
+  - manila-api.service
+  - manila-share.service
+
+  #Masakari
+  - masakari-engine.service
+
+  #Barbican
+  - barbican-worker.service
+
+  #Octavia
+  - octavia-api.service
+  - octavia-health-manager.service
+  - octavia-housekeeping.service
+  - octavia-worker.service
+  - octavia-interface.service
+
+
+
+debian_purgecluster_controller_middleware_services:
+  ### Controller Middleware Service ###
+  - apache2.service
+  - chrony.service
+  - rabbitmq-server.service
+  - haproxy.service
+  - memcached.service
+  - pacemaker.service
+  - pcsd.service
+  - pcsd-ruby.service
+  - mysql.service
+  - mysql@bootstrap.service
+  - percona-telemetry-agent.service
+  - minio.service
+  - corosync.service
+
+
+
+debian_purgecluster_common_packages:
+  ### Compute & ALL Packages ###
+  - python3-openstackclient
+  - nova-compute
+  - neutron-openvswitch-agent
+  - openvswitch-switch
+  - libvirt-daemon
+  - chrony
+  - snmpd
+  - lldpd
+  - iperf3
+  - dnsmasq-base
+  - python3-rbd
+  - librbd1
+  - librados2
+  - guestfs-tools
+  - ceph-common
+  - freeipmi
+
+  #v3.0.4
+  - masakari-host-monitor
+  - masakari-instance-monitor
+  - masakari-process-monitor
+  - pacemaker
+  - corosync
+  - pcs
+
+
+debian_purgecluster_controller_packages:
+  ### Controller Packages ###
+
+  #Middleware Packages
+  - corosync
+  - memcached
+  - python3-pymysql
+  - python3-mysqldb
+  - percona-xtradb-cluster
+  - percona-xtrabackup-80
+  - rabbitmq-server
+  - haproxy
+  - pacemaker
+  - pcs
+  - corosync
+  - apache2
+  - libapache2-mod-wsgi-py3
+  - pacemaker-resource-agents
+  - s3cmd
+  - erlang
+
+  #Openstack Packages
+  - keystone
+  - glance
+  - placement-api
+  - nova-api
+  - nova-conductor
+  - nova-scheduler
+  - nova-novncproxy
+  - neutron-server
+  - neutron-dhcp-agent
+  - neutron-l3-agent
+  - neutron-metadata-agent
+  - cinder-api
+  - cinder-scheduler
+  - cinder-volume
+  - cinder-backup
+  - tgt
+  - manila-api
+  - manila-scheduler
+  - manila-share
+  - python3-manila-ui
+  - octavia-api
+  - octavia-health-manager
+  - octavia-housekeeping
+  - octavia-worker
+  - python3-octavia-dashboard
+  - isc-dhcp-client
+  - barbican-api
+  - barbican-worker
+  - barbican-keystone-listener
+  - barbican-common
+  - openstack-dashboard
+  - python3-manilaclient
+  - masakari-api
+  - masakari-engine
+  - python3-masakariclient
+  - python3-masakari-dashboard
+  - python3-pip
+  - python3-octavia
+  - python3-octaviaclient
+  - python3-osc-placement
+
+
+  #v3.0.4
+  - heat-api
+  - heat-api-cfn
+  - heat-engine
+  - python3-heat-dashboard
+
+
+debian_purgecluster_common_openstack_files:
+  ### Compute & ALL Openstack files ###
+
+  # /etc
+  - /etc/nova
+  - /etc/neutron
+  - /etc/keystone
+  - /etc/castellan
+  - /etc/libvirt
+  - /etc/openvswitch
+  - /etc/pycadf
+  - /etc/swtpm-localca.conf
+  - /etc/swtpm-localca.options
+  - /etc/swtpm_setup.conf
+  - /etc/ceph
+
+  # /var/lib
+  - /var/lib/nova
+  - /var/lib/neutron
+  - /var/lib/keystone
+  - /var/lib/libvirt
+  - /var/lib/openvswitch
+  - /var/lib/swtpm-localca
+  - /var/lib/tpm
+  - /var/lib/ceph
+
+  # /var/log
+  - /var/log/nova
+  - /var/log/neutron
+  - /var/log/keystone
+  - /var/log/libvirt
+  - /var/log/openvswitch
+  - /var/log/ceph
+
+  # Extras
+  - /var/run/openvswitch
+  - /var/run/libvirt
+  - /root/.mysql_history
+  - /root/.gitconfig
+  - /usr/local/share/ca-certificates
+  - /etc/ssl/certs/rootCA.pem
+  - /var/run/ceph
+
+  #v3.0.4
+  - /etc/masakarimonitors
+  - /etc/corosync
+  - /etc/pacemaker
+  - /etc/ha.d
+  - /var/lib/corosync
+  - /var/lib/pacemaker
+  - /var/lib/pcsd
+  - /var/log/corosync
+  - /var/log/pacemaker
+  - /var/log/pcsd
+
+
+debian_purgecluster_controller_openstack_files:
+  ### Controller Openstack files ###
+
+  # /etc
+  - /etc/glance
+  - /etc/cinder
+  - /etc/barbican
+  - /etc/manila
+  - /etc/octavia
+  - /etc/placement
+  - /etc/masakari
+  - /etc/openstack
+  - /etc/openstack-dashboard
+  - /etc/os-brick
+
+  # /var/lib
+  - /var/lib/glance
+  - /var/lib/cinder
+  - /var/lib/barbican
+  - /var/lib/manila
+  - /var/lib/octavia
+  - /var/lib/placement
+  - /var/lib/masakari
+  - /var/lib/openstack-dashboard
+
+  # /var/log
+  - /var/log/glance
+  - /var/log/cinder
+  - /var/log/barbican
+  - /var/log/manila
+  - /var/log/octavia
+  - /var/log/placement
+  - /var/log/masakari
+
+  # /usr/local/bin
+  - /usr/local/bin/octavia-interface.sh
+
+  #ETC
+  - /root/contrabass-openrc
+  - /root/dashboard_password.yml
+
+  #v3.0.4
+  - /etc/heat
+  - /var/lib/heat
+
+debian_purgecluster_controller_middleware_files:
+  ### Controller Middleware files ###
+
+  # /etc
+  - /etc/apache2
+  - /etc/loki
+  - /etc/corosync
+  - /etc/pacemaker
+  - /etc/ha.d
+  - /etc/keepalived
+  - /etc/tgt
+  - /etc/stunnel
+  - /etc/mysql
+  - /etc/haproxy
+
+  # /var/lib
+  - /var/lib/mysql
+  - /var/lib/mysql-files
+  - /var/lib/mysql-keyring
+  - /var/lib/rabbitmq
+  - /var/lib/corosync
+  - /var/lib/pacemaker
+  - /var/lib/pcsd
+  - /var/lib/haproxy
+  - /var/lib/stunnel4
+
+  # /var/log
+  - /var/log/apache2
+  - /var/log/mysql
+  - /var/log/percona
+  - /var/log/rabbitmq
+  - /var/log/corosync
+  - /var/log/pacemaker
+  - /var/log/pcsd
+  - /var/log/stunnel4
+
+  # /usr/local/bin/
+  - /usr/local/bin/mc
+  - /usr/local/bin/minio
+
+  # /root
+  - /root/.mc
+  - /root/.minio
+
+debian_purgecluster_common_users:
+  ### Compute & ALL Users ###
+
+  - keystone
+  - nova
+  - neutron
+  - libvirt-qemu
+  - libvirt-dnsmasq
+  - openvswitch
+  - swtpm
+  - ceph
+
+  #v3.0.4
+  - hacluster
+  - masakarimonitors
+
+debian_purgecluster_controller_users:
+  ### Controller Users ###
+  - dnsmasq
+  - Debian-snmp
+  - _lldpd
+  - iperf3
+  - _chrony
+  - haproxy
+  - hacluster
+  - memcache
+  - mysql
+  - stunnel4
+  - epmd
+  - rabbitmq
+  - glance
+  - placement
+  - radvd
+  - cinder
+  - horizon
+  - octavia
+  - barbican
+  - manila
+  - masakari
+
+  #v3.0.4
+  - heat

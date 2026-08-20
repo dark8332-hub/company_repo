@@ -1,0 +1,17 @@
+---
+- name: Create heat DB
+  mysql_db:
+    name: heat
+    state: present
+
+- name: Update mysql heat password for all heat accounts
+  no_log: true
+  mysql_user:
+    name: heat
+    host: "{{ item }}"
+    password: "{{ db_password }}"
+    priv: heat.*:ALL,GRANT
+    state: present
+  with_items:
+    - localhost
+    - '%'

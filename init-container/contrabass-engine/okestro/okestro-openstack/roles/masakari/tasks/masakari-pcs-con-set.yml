@@ -1,0 +1,54 @@
+- name: HA cluster user intigration
+  command: pcs host auth {{ masakari_member }} -u hacluster -p {{ haproxy_pwd }}
+  when: 
+    - inventory_hostname in groups["controller"][0]
+    - masakari_member | length > 0
+
+- name: pcs add remote node
+  command: pcs cluster node add-remote "{{ item }}"
+  with_items:
+  - "{{ groups.compute }}"
+  register: already_remote
+  ignore_errors: true
+  failed_when: ("already exists" in  already_remote.stderr)
+  when: 
+    - inventory_hostname in groups["controller"][0]
+    - item not in groups["controller"] 
+    - remote_process == "remote"
+
+- name: pcs add compute cluster node
+  command: pcs cluster node add "{{ item }}" --force
+  with_items:
+  - "{{ groups.compute }}"
+  register: already_remote
+  ignore_errors: true
+  failed_when: ("already exists" in  already_remote.stderr)
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - item not in groups["controller"]
+    - remote_process == "cluster"
+
+- name: pcs cluster node up
+  command: pcs cluster start --all
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "cluster"
+
+- name: pcs cluster node enable
+  command: pcs cluster enable --all
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "cluster"
+
+- name: pcs haproxy resource ban
+  command: pcs resource ban haproxy "{{ item }}"
+  with_items:
+  - "{{ groups.compute }}"
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - item not in groups["controller"]
+
+- name: pcs resource clean
+  command: pcs resource cleanup
+  when:
+    - inventory_hostname in groups["controller"][0]

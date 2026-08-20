@@ -1,0 +1,6 @@
+*.info;mail.none;authpriv.none;cron.none       /var/log/messages
+auth,authpriv.*                                /var/log/secure
+mail.*                                         /var/log/maillog
+cron.*                                         /var/log/cron
+*.alert                                        /dev/console
+*.emerg                                        *

@@ -1,0 +1,89 @@
+---
+debian_purgecompute_openstack_services:
+  ### Compute-service & ALL service ###
+  - nova-compute.service
+  - libvirtd.socket
+  - libvirtd-tcp.socket
+  - libvirtd.service
+  - virtlogd.socket
+  - virtlockd.service
+  - virtlockd.socket
+  - virtlockd-admin.socket
+  - libvirt-guests.service
+  - qemu-kvm.service
+  - neutron-openvswitch-agent.service
+  - openvswitch-switch.service
+  - neutron-ovs-cleanup.service
+  - ovsdb-server.service
+
+
+debian_purgecompute_packages:
+  ### Compute-service & ALL Packages ###
+  - nova-compute
+  - neutron-openvswitch-agent
+  - openvswitch-switch
+  - libvirt-daemon
+  - chrony
+  - snmpd
+  - lldpd
+  - iperf3
+  - dnsmasq-base
+  - guestfs-tools
+  - librbd1
+  - librados2
+  - freeipmi
+
+
+debian_purgecompute_openstack_files:
+  ### Compute & ALL Openstack files ###
+
+  # /etc
+  - /etc/nova
+  - /etc/neutron
+  - /etc/keystone
+  - /etc/castellan
+  - /etc/libvirt
+  - /etc/openvswitch
+  - /etc/ceph/ceph.client.cinder.keyring
+  - /etc/ceph/client.cinder.key
+  - /etc/ceph/secret.xml
+  - /etc/ceph/uuid-secret.txt
+  - /etc/pycadf
+  - /etc/swtpm-localca.conf
+  - /etc/swtpm-localca.options
+  - /etc/swtpm_setup.conf
+
+  # /var/lib
+  - /var/lib/nova
+  - /var/lib/neutron
+  - /var/lib/keystone
+  - /var/lib/libvirt
+  - /var/lib/openvswitch
+  - /var/lib/swtpm-localca
+  - /var/lib/tpm
+
+  # /var/log
+  - /var/log/nova
+  - /var/log/neutron
+  - /var/log/keystone
+  - /var/log/libvirt
+  - /var/log/openvswitch
+
+  #Extras
+  - /usr/local/share/ca-certificates
+  - /etc/ssl/certs/rootCA.pem
+  - /var/run/openvswitch
+  - /var/run/libvirt
+  - /etc/systemd/system/sockets.target.wants/libvirtd-tcp.socket
+
+
+debian_purgecompute_users:
+  ### Compute & ALL Users ###
+
+  - keystone
+  - nova
+  - neutron
+  - libvirt-qemu
+  - libvirt-dnsmasq
+  - openvswitch
+  - swtpm

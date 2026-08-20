@@ -1,0 +1,17 @@
+- name: Setup Server For Nova 
+  setup:
+
+- include_tasks: nova-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: nova-install.yml
+
+- include_tasks: nova-config-set.yml
+
+- include_tasks: nova-init.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: os_brick-patch.yml
+  when:
+    - inventory_hostname in groups["controller"]
+    - openstack_version <= 'caracal'

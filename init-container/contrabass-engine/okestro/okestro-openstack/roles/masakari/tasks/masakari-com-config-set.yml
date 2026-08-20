@@ -1,0 +1,26 @@
+---
+- name: controller node masakari config file setting
+  template:
+    src: "controller_{{ masakarimonitor_config }}.j2"
+    dest: "{{ masakarimonitor_dir }}/{{ masakarimonitor_config }}"
+    owner: root
+    group: "{{ masakarimonitor_user }}"
+    mode: 0644
+  register: masakari_com_conf
+  notify:
+    - restart masakari-host
+  when: inventory_hostname in groups['controller']
+
+- name: compute node masakari config file setting
+  template:
+    src: "compute_{{ masakarimonitor_config }}.j2"
+    dest: "{{ masakarimonitor_dir }}/{{ masakarimonitor_config }}"
+    owner: root
+    group: "{{ masakarimonitor_user }}"
+    mode: 0644
+  register: masakari_com_conf
+  notify:
+    - restart masakari-host
+  when:
+    - inventory_hostname in groups['compute']
+    - inventory_hostname not in groups['controller']

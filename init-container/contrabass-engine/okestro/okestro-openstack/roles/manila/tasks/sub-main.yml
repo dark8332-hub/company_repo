@@ -1,0 +1,18 @@
+- include_tasks: 1.manila-create-manila-keyring.yml
+  when: inventory_hostname in groups["storage"][0]
+ 
+- include_tasks: 2.manila-add-config-set-to-ceph.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: 3.manila-pull-keyring-by-deploy.yml
+  when: inventory_hostname in groups["storage"][0]
+
+- include_tasks: 4.manila-push-keyring-to-controller.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: 5.manila-add-config-set-to-controller.yml
+  when: inventory_hostname in groups["controller"]
+  
+- include_tasks: 6.manila-restart-daemon.yml
+  when: inventory_hostname in groups["controller"]
+

@@ -1,0 +1,13 @@
+- name: Create Ceph Keyring
+  command: "{{ item }}"
+  with_items:
+    - ceph auth get-or-create client.glance mon 'profile rbd' osd 'profile rbd pool=images' mgr 'profile rbd pool=images'
+    - ceph auth get-or-create client.cinder mon 'profile rbd' osd 'profile rbd pool=volumes, profile rbd pool=vms, profile rbd-read-only pool=images' mgr 'profile rbd pool=volumes, profile rbd pool=vms'
+    - ceph auth get-or-create client.cinder-backup mon 'profile rbd' osd 'profile rbd pool=backups' mgr 'profile rbd pool=backups'
+    
+- name: Get Ceph keyring
+  shell: "{{ item }}"
+  with_items:
+    - ceph auth get-or-create client.cinder | tee {{ ceph_dir }}/ceph.client.cinder.keyring
+    - ceph auth get-or-create client.cinder-backup | tee {{ ceph_dir }}/ceph.client.cinder-backup.keyring
+    - ceph auth get-or-create client.glance | tee {{ ceph_dir }}/ceph.client.glance.keyring

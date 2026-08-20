@@ -1,0 +1,4 @@
+- targets:
+{% for host in groups['openstack'] %}
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ ipmi_exporter_port }}
+{% endfor %}

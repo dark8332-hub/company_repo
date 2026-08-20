@@ -1,0 +1,6 @@
+{% for host in groups['storage'] %}
+- targets:
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ ceph_exporter_port }}
+  labels:
+    nodename: "{{ host }}"
+{% endfor %}

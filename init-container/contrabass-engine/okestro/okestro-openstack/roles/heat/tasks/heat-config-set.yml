@@ -1,0 +1,87 @@
+- name: heat-api config file setting
+  template:
+    src: "{{ heat_config }}.j2"
+    dest: "{{ heat_dir }}/{{ heat_config }}"
+    owner: heat
+    group: heat
+    mode: 0644
+    backup: true
+  register: heat_conf
+  notify: 
+    - restart heat-api
+    - restart heat-api-cfn
+    - restart heat-engine
+
+- include_tasks: heat-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Heat to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_heat ##"
+    insertbefore: "# public"
+    block: |
+      listen int_heat
+        bind {{ internal_vip_address }}:{{ heat_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ heat_port }} check inter 2000 rise 2 fall 5 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+      {% endfor %}
+
+- name: Configure External Heat to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_heat ##"
+    insertbefore: EOF
+    block: |
+      listen pub_heat
+        bind {{ external_vip_address }}:{{ heat_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ heat_port }} check inter 2000 rise 2 fall 5 {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Configure Internal Heat-cfn to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_heat-cfn ##"
+    insertbefore: "# public"
+    block: |
+      listen int_heat-cfn
+        bind {{ internal_vip_address }}:{{ heat_cfn_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ heat_cfn_port }} check inter 2000 rise 2 fall 5 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+        
+      {% endfor %}
+
+- name: Configure External Heat-cfn to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_heat-cfn ##"
+    insertbefore: EOF
+    block: |
+      listen pub_heat-cfn
+        bind {{ external_vip_address }}:{{ heat_cfn_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ heat_cfn_port }} check inter 2000 rise 2 fall 5 {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted

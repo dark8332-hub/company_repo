@@ -1,0 +1,12 @@
+---
+- name: stop rabbitmq app
+  command: rabbitmqctl stop_app
+
+- name: Rest rabbitmq
+  command: rabbitmqctl reset
+
+- name: add this node to cluster
+  command: rabbitmqctl join_cluster rabbit@{{ groups["controller"][0] }} 
+
+- name: start rabbitmq app
+  command: rabbitmqctl start_app

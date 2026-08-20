@@ -1,0 +1,8 @@
+---
+- name: Pulling client.manila keyring
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: true
+  with_items:
+    - { src: "{{ ceph_dir }}/ceph.client.manila.keyring",dest: roles/manila/files/ceph.client.manila.keyring }

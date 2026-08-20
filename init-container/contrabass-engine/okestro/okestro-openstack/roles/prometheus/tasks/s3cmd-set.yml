@@ -1,0 +1,55 @@
+- name: Copy s3cmd config
+  template:
+    src: 's3cfg.j2'
+    dest: '/root/.s3cfg'
+    owner: 'root'
+    group: 'root'
+    mode: '0600'
+
+- name: Check s3cmd exists before install s3cmd
+  stat:
+    path: '/usr/local/bin/s3cmd-2.4.0/s3cmd'
+  register: s3cmd_check
+
+- name: Install s3cmd
+  block:
+    - name: Unarchive s3cmd tar file
+      ansible.builtin.unarchive:
+        src: 's3cmd-2.4.0.tar.gz'
+        dest: '/usr/local/bin'
+    
+    - name: Set python directory for using s3cmd
+      ansible.builtin.file:
+        src: '/usr/bin/python3'
+        dest: '/usr/bin/python'
+        owner: 'root'
+        group: 'root'
+        state: link
+  when: not s3cmd_check.stat.exists
+
+- name: Ceph radosgw user set
+  block:
+    - name: Check radosgw user exists
+      command: 'radosgw-admin user list'
+      register: radosgw_user_check
+
+    - name: Ceph raodsgw user creation
+      block:
+        - name: Create radosgw user
+          command: 'radosgw-admin user create --uid=monitoring --display-name="Monitoring user"'
+
+        - name: Create radosgw user key
+          command: "radosgw-admin key create --uid=monitoring --key-type=s3 --access-key {{ s3_access_key }} --secret-key {{ s3_secret_key }}"
+      when: "'monitoring' not in radosgw_user_check.stdout"
+  when: 
+    - cinder_backend == 'ceph'
+    - groups['rgws'] | length > 0
+    - groups['controller'][0]
+
+- name: Check thanos bucket exists
+  command: '/usr/local/bin/s3cmd-2.4.0/s3cmd ls'
+  register: s3_thanos_bucket
+
+- name: Create thanos bucket
+  command: "/usr/local/bin/s3cmd-2.4.0/s3cmd mb s3://{{ monitoring_bucket }}"
+  when: "monitoring_bucket not in s3_thanos_bucket.stdout"

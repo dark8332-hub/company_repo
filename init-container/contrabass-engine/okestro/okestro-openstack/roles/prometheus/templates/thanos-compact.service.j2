@@ -1,0 +1,40 @@
+[Unit]
+Description=Thanos Compact
+Wants=network-online.target
+After=network-online.target
+PartOf=thanos-compact.timer
+RefuseManualStart=yes
+
+[Service]
+User=root
+Group=root
+Restart=no
+Type=simple
+
+CPUAccounting=true
+MemoryAccounting=true
+IOAccounting=true
+IPAccounting=true
+TasksAccounting=true
+
+ExecStart=/usr/local/bin/thanos compact \
+    --retention.resolution-raw={{ thanos_retention_period }} \
+    --retention.resolution-5m={{ thanos_5m_downsample_retention_period }} \
+    --retention.resolution-1h={{ thanos_1h_downsample_retention_period }} \
+    --data-dir="/var/lib/thanos-compact" \
+    --http-address="0.0.0.0:10910" \
+    --http.config=/etc/thanos/config/thanos-http-server-config.yml \
+    --objstore.config-file=/etc/thanos/buckets/thanos-bucket.yml \
+    --deduplication.replica-label=prometheus_replica \
+    --deduplication.func=penalty \
+    --consistency-delay=1h \
+    --compact.concurrency=1 \
+    --downsample.concurrency=1 \
+    --delete-delay=48h
+
+KillSignal=SIGTERM
+KillMode=control-group
+TimeoutStopSec=30m
+RuntimeMaxSec=36h
+LimitNOFILE=65536
+

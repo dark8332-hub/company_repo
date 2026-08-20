@@ -1,0 +1,98 @@
+---
+- name: Find nova-compute services for purge_compute nodes
+  ansible.builtin.shell: |
+    . /root/contrabass-openrc && openstack compute service list -c ID -c Binary -c Host -f value | awk '$2 == "nova-compute" && $3 == "{{ item }}" {print $1}'
+  args:
+    executable: /bin/bash
+  loop: "{{ groups['purge-compute'] }}"
+  register: nova_service_ids
+  changed_when: false
+  when: inventory_hostname == groups['controller'][0]
+
+- name: Remove nova-compute services
+  ansible.builtin.shell: |
+    . /root/contrabass-openrc && openstack compute service delete {{ item.stdout }}
+  args:
+    executable: /bin/bash
+  loop: "{{ nova_service_ids.results }}"
+  register: remove_nova_compute_services
+  when:
+    - inventory_hostname == groups['controller'][0]
+    - item.stdout is defined
+    - item.stdout | length > 0
+
+- name: Delete compute_nodes row from nova DB (only by host)
+  shell: |
+    mysql -N -e "DELETE FROM compute_nodes WHERE host='{{ item }}';" nova
+  args:
+    executable: /bin/bash
+  loop: "{{ groups['purge-compute'] }}"
+  when:
+    - inventory_hostname == groups['controller'][0]
+    - remove_nova_compute_services is defined
+    - remove_nova_compute_services is not failed
+
+- name: Find neutron-openvswitch-agent for purge_compute nodes
+  ansible.builtin.shell: |
+    . /root/contrabass-openrc && openstack network agent list -c ID -c Binary -c Host -f value | awk '$3 == "neutron-openvswitch-agent" && $2 == "{{ item }}" {print $1}'
+  args:
+    executable: /bin/bash
+  loop: "{{ groups['purge-compute'] }}"
+  register: ovs_agent_ids
+  changed_when: false
+  when: inventory_hostname == groups['controller'][0]
+
+- name: Remove neutron-openvswitch-agent
+  ansible.builtin.shell: |
+    . /root/contrabass-openrc && openstack network agent delete {{ item.stdout }}
+  args:
+    executable: /bin/bash
+  loop: "{{ ovs_agent_ids.results }}"
+  when:
+    - inventory_hostname == groups['controller'][0]
+    - item.stdout is defined
+    - item.stdout | length > 0
+
+- name: Remove purge_compute from promethues_sd_files
+  ansible.builtin.lineinfile:
+    path: "/etc/prometheus/sd_files/{{ item.0 }}"
+    state: absent
+    regexp: "^  - {{ hostvars[item.1]['ansible_' ~ monitoring_network_interface].ipv4.address }}:.*$"
+  loop: "{{ purgecompute_exporter_sd_files | product(groups['purge-compute']) | list }}"
+  when: inventory_hostname in groups['controller']
+
+- name: Remove purge_compute blocks from node-exporter SD
+  ansible.builtin.replace:
+    path: /etc/prometheus/sd_files/node-exporter.yaml
+    regexp: |-
+      - targets:\n  - {{ hostvars[item]['ansible_' ~ monitoring_network_interface].ipv4.address }}:.*\n  labels:\n    nodename: "{{ item }}"\n
+    replace: ""
+  loop: "{{ groups['purge-compute'] }}"
+  when: inventory_hostname in groups['controller']
+
+- name: Remove purge_compute blocks from contrabass-exporter SD
+  ansible.builtin.replace:
+    path: /etc/prometheus/sd_files/contrabass-exporter.yaml
+    regexp: |-
+      - targets:\n  - {{ hostvars[item]['ansible_' ~ monitoring_network_interface].ipv4.address }}:.*\n  labels:\n    hypervisor: "{{ item }}"\n
+    replace: ""
+  loop: "{{ groups['purge-compute'] }}"
+  when: inventory_hostname in groups['controller']
+
+- name: Remove purge_compute entries from /etc/hosts (exclude Ceph role nodes)
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: "^{{ hostvars[item]['ansible_' ~ int_api_interface].ipv4.address }}\\s+{{ item }}(\\s|$)"
+  loop: >-
+    {{
+      (groups['purge-compute'] | default([]))
+      | difference(
+          (groups['osds'] | default([]))
+          + (groups['rgws'] | default([]))
+          + (groups['mdss'] | default([]))
+          + (groups['mons'] | default([]))
+        )
+    }}
+  when: inventory_hostname not in (groups['purge-compute'] | default([]))
+

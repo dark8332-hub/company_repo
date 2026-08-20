@@ -1,0 +1,32 @@
+[Unit]
+Description=Thanos Sidecar
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=on-failure
+Type=simple
+ExecStart={{ exe_path }}/thanos sidecar \
+{% if monitoring_enable_tls %}
+    --prometheus.url=https://{{ hostvars[inventory_hostname]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ prometheus_port }} \
+    --prometheus.http-client-file={{ thanos_config_dir }}/config/thanos-http-client-config.yml \
+{% else %}
+    --prometheus.url=http://{{ hostvars[inventory_hostname]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ prometheus_port }} \
+{% endif %}
+    --grpc-address=0.0.0.0:{{ thanos_sidecar_grpc_port }} \
+{% if monitoring_enable_tls %}
+    --grpc-server-tls-cert={{ monitoring_certs_dir }}/monitoring-server.crt \
+    --grpc-server-tls-key={{ monitoring_certs_dir }}/monitoring-server.key \
+    --grpc-server-tls-client-ca={{ monitoring_certs_dir }}/monitoring-ca.crt \
+{% endif %}
+    --http-address=0.0.0.0:{{ thanos_sidecar_http_port }} \
+{% if monitoring_enable_tls %}
+    --http.config={{ thanos_config_dir }}/config/thanos-http-server-config.yml \
+{% endif %}
+    --tsdb.path={{ prometheus_data_dir }} \
+    --objstore.config-file={{ thanos_config_dir }}/buckets/thanos-bucket.yml
+
+[Install]
+WantedBy=multi-user.target

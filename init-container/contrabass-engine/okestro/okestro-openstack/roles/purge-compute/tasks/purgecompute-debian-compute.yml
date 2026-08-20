@@ -1,0 +1,149 @@
+---
+- name: Gather Purgecompute service facts
+  ansible.builtin.service_facts:
+
+- name: Disable Purgecompute Ubuntu OpenStack services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ debian_purgecompute_openstack_services | default([]) }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable Purgecompute monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ purgecompute_monitoring_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: dnsmasq user running process check for Ubuntu Purgecompute
+  ansible.builtin.shell: |
+    ps -u libvirt-dnsmasq | grep dnsmasq | awk '{print $1}' || true
+  register: ubuntu_dnsmasq_pids
+  changed_when: false
+
+- name: kill Ubuntu Purgecompute dnsmasq process
+  ansible.builtin.command: "kill -9 {{ item }}"
+  loop: "{{ ubuntu_dnsmasq_pids.stdout_lines }}"
+  when: ubuntu_dnsmasq_pids.stdout != ""
+
+- name: Purge Ubuntu Purgecompute packages
+  ansible.builtin.apt:
+    name: "{{ item }}"
+    state: absent
+    purge: true
+  loop: "{{ debian_purgecompute_packages | default([]) }}"
+  when: not ((group_names | intersect(['osds','mdss','mons','rgws']) | length > 0) and (item in ['chrony','librbd1','librados2']))
+
+- name: Remove All Ubuntu packages for Purgecompute
+  ansible.builtin.apt:
+    autoremove: true
+
+- name: Remove All Ubuntu rc packages for Purgecompute
+  ansible.builtin.shell: |
+    set -o pipefail
+    dpkg -l | awk '$1=="rc" {print $2}' | xargs -r dpkg --purge
+  args:
+    executable: /bin/bash
+
+- name: Remove Purgecompute monitoring files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ purgecompute_monitoring_files }}"
+
+- name: Remove Ubuntu Purgecompute files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ debian_purgecompute_openstack_files | default([]) }}"
+
+- name: Remove Ubuntu Purgecompute users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ debian_purgecompute_users | default([]) }}"
+
+- name: Remove Ubuntu Purgecompute groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ debian_purgecompute_users | default([]) }}"
+
+- name: Check node-exporter units via systemctl status
+  ansible.builtin.command: "systemctl status {{ item }} --no-pager"
+  register: node_exporter_status
+  changed_when: false
+  failed_when: false
+  loop:
+    - node-exporter.service
+    - node-exporter.socket
+
+- name: Stop/disable node-exporter units only if unit exists
+  ansible.builtin.systemd:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ node_exporter_status.results }}"
+  when:
+    - item.rc is defined
+    - item.rc != 4   
+    - (item.stdout is not search('Loaded: not-found'))
+  failed_when: false
+
+- name: Check if contrabass-mole.service is in failed state
+  ansible.builtin.command: systemctl is-failed contrabass-mole.service
+  register: contrabass_mole_is_failed
+  changed_when: false
+  failed_when: false
+
+- name: Reset failed state for contrabass-mole.service
+  ansible.builtin.command: systemctl reset-failed contrabass-mole.service
+  when: contrabass_mole_is_failed.rc == 0
+  changed_when: true
+
+- name: Daemon-reload for Purgecompute
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: sysctl tunning remove for Purgecompute
+  blockinfile:
+    state: absent
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+
+- name: sysctl apply for Purgecompute
+  command: sysctl --system
+
+- name: Install Timesyncd for Purgecompute
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+    update_cache: yes
+  when: (group_names | intersect(['osds','mons','mdss','rgws']) | length == 0)
+
+- name: Remove /etc/hosts entries for OpenStack hosts for Purgecompute
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '(^|\s){{ item | regex_escape }}(\s|$)'
+  loop: >-
+    {{
+      (groups['openstack'] | default([]))
+      | difference(
+          (groups['osds'] | default([]))
+          + (groups['rgws'] | default([]))
+          + (groups['mdss'] | default([]))
+          + (groups['mons'] | default([]))
+        )
+    }}
+

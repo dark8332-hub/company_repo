@@ -1,0 +1,42 @@
+---
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Disable Debian Purgecluster common OpenStack services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ debian_purgecluster_common_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable Debian Purgecluster common monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ purgecluster_common_monitoring_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Debian Purgecluster Compute dnsmasq user running process check
+  shell: ps -u libvirt-dnsmasq | grep dnsmasq | awk '{print $1}' || true
+  register: dnsmasq_output
+  changed_when: false
+
+- name: Debian Purgecluster Compute kill dnsmasq process
+  command: kill -9 {{ item.split()[0] }}
+  loop: "{{ dnsmasq_output.stdout_lines }}"
+  when: dnsmasq_output.stdout != ""
+
+- name: Purge Debian Purgecluster Common Packages
+  ansible.builtin.apt:
+    name: "{{ debian_purgecluster_common_packages }}"
+    state: absent
+    purge: true
+

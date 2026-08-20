@@ -1,0 +1,32 @@
+---
+- name: Gather purgecompute facts
+  ansible.builtin.setup:
+
+- name: Load monitoring vars for purge-compute
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/purgecompute-monitoring.yml"
+
+- name: Load OS-specific vars for purge-compute
+  ansible.builtin.include_vars:
+    file: "{{ role_path }}/vars/{{ 'purgecompute-debian.yml' if ansible_os_family == 'Debian' else 'purgecompute-redhat.yml' }}"
+  when: inventory_hostname in groups["purge-compute"]
+
+- include_tasks: purgecompute-preflight.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: purgecompute-debian-compute.yml
+  when: 
+    - inventory_hostname in groups["purge-compute"]
+    - ansible_os_family == 'Debian'
+
+- include_tasks: purgecompute-redhat-compute.yml
+  when: 
+    - inventory_hostname in groups["purge-compute"]
+    - ansible_os_family == 'RedHat'
+
+- include_tasks: purgecompute-cleanup.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: purgecompute-post-purge.yml
+  when: inventory_hostname in groups["purge-compute"]
+

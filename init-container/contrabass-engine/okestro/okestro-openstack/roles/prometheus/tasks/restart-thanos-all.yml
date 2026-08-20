@@ -1,0 +1,11 @@
+---
+- name: Restart Thanos sidecar service
+  service:
+    name: "{{ item }}" 
+    state: restarted
+  with_items:
+    - 'thanos-sidecar'
+    - 'thanos-store'
+    - 'thanos-rule'
+    - 'thanos-query'
+    - 'thanos-query-front'

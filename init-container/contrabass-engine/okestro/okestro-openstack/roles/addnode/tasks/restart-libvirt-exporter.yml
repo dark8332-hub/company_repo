@@ -1,0 +1,5 @@
+---
+- name: Restart Contrabass-exporter service
+  service:
+    name: contrabass-exporter
+    state: restarted

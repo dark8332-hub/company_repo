@@ -1,0 +1,28 @@
+- name: Setup Server For Keystone 
+  setup:
+
+- include_tasks: keystone-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: keystone-install.yml
+
+- include_tasks: keystone-config-set.yml
+
+- include_tasks: keystone-fernet-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: keystone-fernet-copy.yml
+  when: inventory_hostname in groups["controller"][1:]
+
+- include_tasks: keystone-bootstrap.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: keystone-apache-setting.yml
+
+- include_tasks: keystone-bash-shell.yml
+
+- include_tasks: copy-cloud.yml
+
+- include_tasks: keystone-service-project-create.yml
+  when: inventory_hostname in groups["controller"][0]
+

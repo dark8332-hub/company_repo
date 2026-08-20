@@ -1,0 +1,12 @@
+{% for host in groups['compute'] %}
+- targets:
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ contrabass_exporter_port }}
+  labels:
+    hypervisor: "{{ host }}"
+{% endfor %}
+{% for host in groups['new-compute'] %}
+- targets:
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ contrabass_exporter_port }}
+  labels:
+    hypervisor: "{{ host }}"
+{% endfor %}

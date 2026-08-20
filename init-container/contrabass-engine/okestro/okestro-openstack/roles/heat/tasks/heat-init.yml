@@ -1,0 +1,120 @@
+---
+- name: Create Heat Service
+  openstack.cloud.catalog_service:
+    cloud: contrabass
+    state: present
+    name: heat
+    service_type: orchestration
+    description: Openstack Orchestration Service
+    interface: internal 
+
+- name: Create Heat-cfn Service
+  openstack.cloud.catalog_service:
+    cloud: contrabass
+    state: present
+    name: heat-cfn
+    service_type: cloudformation 
+    description: Openstack Orchestration Service
+    interface: internal 
+
+- name: Create Heat User
+  openstack.cloud.identity_user:
+    cloud: contrabass
+    state: present
+    name: heat
+    password: "{{ keystone_pass }}"
+    domain: default
+    interface: internal
+    default_project: service
+
+- name: Create Heat Domain
+  openstack.cloud.identity_domain:
+    cloud: contrabass
+    state: present
+    name: heat
+    description: Stack Projects and Users
+    interface: internal
+
+- name: Create Heat Domain Admin User
+  openstack.cloud.identity_user:
+    cloud: contrabass
+    state: present
+    name: heat_domain_admin
+    password: "{{ keystone_pass }}"
+    domain: heat
+    interface: internal
+
+- name: Heat user role assignment
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: heat
+    role: admin
+    project: service
+    domain: default
+    interface: internal 
+
+- name: Heat Domain user role assignment
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: heat_domain_admin
+    role: admin
+    domain: heat
+    interface: internal
+
+- name: Stack_owner Role Create
+  openstack.cloud.identity_role:
+    cloud: contrabass
+    state: present
+    name: heat_stack_owner
+    interface: internal
+
+- name: Heat User role assignment
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: admin
+    role: heat_stack_owner
+    domain: default
+    project: admin
+    interface: internal
+
+- name: Heat Stack User role create
+  openstack.cloud.identity_role:
+    cloud: contrabass
+    state: present
+    name: heat_stack_user
+    interface: internal
+
+- name: Heat endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    service: heat
+    endpoint_interface: "{{ item.interface }}"
+      #    url: "http://{{ item.endpoint }}:{{ heat_bind_port }}/v1/%(tenant_id)s"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ heat_bind_port }}/v1/%(tenant_id)s"
+    region: RegionOne
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }
+      #    - { interface: "internal", endpoint: "{{ internal_endpoint }}" }
+      #    - { interface: "admin", endpoint: "{{ admin_endpoint }}" }
+      #    - { interface: "public", endpoint: "{{ public_endpoint }}" }
+
+- name: Heat endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    service: heat-cfn
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ heat_cfn_bind_port }}/v1"
+    region: RegionOne
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }
+      #    - { interface: "internal", endpoint: "{{ internal_endpoint }}" }
+      #    - { interface: "admin", endpoint: "{{ admin_endpoint }}" }
+      #    - { interface: "public", endpoint: "{{ public_endpoint }}" }

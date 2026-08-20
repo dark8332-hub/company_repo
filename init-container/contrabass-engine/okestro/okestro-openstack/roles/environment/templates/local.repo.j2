@@ -1,0 +1,91 @@
+[BaseOS-New]
+name=BaseOS-New
+baseurl=http://{{ package_ip }}/BaseOS-New
+gpgcheck=0
+enabled=1
+
+[AppStream]
+name=AppStream
+baseurl=http://{{ package_ip }}/AppStream
+gpgcheck=0
+enabled=1
+
+[CodeReadyBuilder]
+name=CRB
+baseurl=http://{{ package_ip }}/CodeReadyBuilder
+gpgcheck=0
+enabled=1
+
+[SIGs-extra]
+name=extra
+baseurl=http://{{ package_ip }}/SIGs-extra
+gpgcheck=0
+enabled=1
+
+[Ceph-Squid-New]
+name=Ceph-Squid
+baseurl=http://{{ package_ip }}/Ceph-Squid-New
+gpgcheck=0
+enabled=1
+
+[modern-erlang]
+name=modern-erlang
+baseurl=http://{{ package_ip }}/rabbitmq/modern-erlang
+gpgcheck=0
+enabled=1
+
+[rabbitmq-el9-noarch]
+name=rabbitmq-el9
+baseurl=http://{{ package_ip }}/rabbitmq/rabbitmq-el9-noarch
+gpgcheck=0
+enabled=1
+
+{% if openstack_version == 'caracal' %}
+[Openstack-Caracal]
+name=Openstack-Caracal(2024.1)
+baseurl=http://{{ package_ip }}/Openstack-Caracal
+gpgcheck=0
+enabled=1
+{% elif openstack_version == 'epoxy' %}
+[Openstack-Epoxy]
+name=Openstack-Epoxy(2025.1)
+baseurl=http://{{ package_ip }}/Openstack-Epoxy
+gpgcheck=0
+enabled=1
+{% endif %}
+
+[NFV]
+name=NFV
+baseurl=http://{{ package_ip }}/NFV
+gpgcheck=0
+enabled=1
+
+[Percona-Xtradb-Cluster]
+name=Percona XtraDB Cluster
+baseurl=http://{{ package_ip }}/Percona-Xtradb-Cluster
+gpgcheck=0
+enabled=1
+
+[Percona-Xtradb-telemetry]
+name=Percona XtraDB Telemetry
+baseurl=http://{{ package_ip }}/Percona-Xtradb-telemetry
+gpgcheck=0
+enabled=1
+
+[Percona-Xtradb-backup]
+name=Percona XtraDB Backup
+baseurl=http://{{ package_ip }}/Percona-Xtradb-backup
+gpgcheck=0
+enabled=1
+
+[HA]
+name=HighAvailability
+baseurl=http://{{ package_ip }}/pacemaker
+gpgcheck=0
+enabled=1
+
+[epel]
+name=Extra Packages for Enterprise Linux 9 - \
+baseurl=http://{{ package_ip }}/epel
+enabled=0
+gpgcheck=0

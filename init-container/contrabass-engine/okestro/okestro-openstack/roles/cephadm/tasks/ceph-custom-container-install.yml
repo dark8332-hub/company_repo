@@ -1,0 +1,41 @@
+- name: Copy anomaly-predictor container image
+  copy:
+    src: anomaly-predictor.tar
+    dest: "{{ cephadm_dir }}/anomaly-predictor.tar"
+    mode: '0644'
+
+- name: Load anomaly-predictor image to podman
+  containers.podman.podman_load:
+    input: "{{ cephadm_dir }}/anomaly-predictor.tar"
+
+- name: Tag anomaly-predictor image for private registry
+  containers.podman.podman_tag:
+    image: "harbor.hotk.co.kr:18443/ceph-services/anomaly-predictor:v1.7.7"
+    target_names:
+      - "private-registry.local:6666/ceph-services/anomaly-predictor:v1.7.7"
+
+- name: Push anomaly-predictor image to private registry
+  containers.podman.podman_image:
+    name: "private-registry.local:6666/ceph-services/anomaly-predictor:v1.7.7"
+    push: true
+
+- name: Remove Harbor tag of anomaly-predictor image
+  containers.podman.podman_image:
+    name: "harbor.hotk.co.kr:18443/ceph-services/anomaly-predictor"
+    tag: "v1.7.7"
+    state: absent
+
+- name: Apply Ceph Label Set
+  shell: "ceph orch host label add {{ item }} anomaly_node"
+  loop: "{{ groups['mons'] }}"
+
+- name: Copy Custom Container Yaml File
+  template:
+    src: predictor_custom_container.yml.j2
+    dest: "/tmp/cephadm/predictor_custom_container.yml"
+    mode: 0644
+    owner: root
+    group: root
+
+- name: Apply Custom Container Service
+  shell: "ceph orch apply -i /tmp/cephadm/predictor_custom_container.yml"

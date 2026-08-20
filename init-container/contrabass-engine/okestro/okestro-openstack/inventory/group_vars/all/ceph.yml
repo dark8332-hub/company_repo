@@ -1,0 +1,8 @@
+# cephadm
+ceph_monitor_interface: ens36
+ceph_monitor_network: '30.0.0.0/24'
+ceph_cluster_network: '30.0.0.0/24'
+ceph_dashboard_password: 'cloud1234'
+osd_devices:
+#  - /dev/sdc
+rgw_port: '8090'

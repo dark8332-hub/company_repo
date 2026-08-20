@@ -1,0 +1,22 @@
+- name: octavia package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_octavia_api }}"
+      - "{{ pac_octavia_health_manager }}"
+      - "{{ pac_octavia_housekeeping }}"
+      - "{{ pac_octavia_worker }}"
+      - "{{ pac_octavia_dashboard }}"
+      - python3-octavia
+      - python3-octaviaclient
+    state: present
+
+- name: Enable octavia packages
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - octavia-api
+    - octavia-health-manager
+    - octavia-housekeeping
+    - octavia-worker

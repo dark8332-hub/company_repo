@@ -1,0 +1,3 @@
+---
+- name: Create client.manila keyring
+  command: ceph auth get-or-create client.manila -o /etc/ceph/ceph.client.manila.keyring mgr 'allow rw' mon 'allow r' osd 'allow rw'

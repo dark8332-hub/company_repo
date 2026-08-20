@@ -1,0 +1,37 @@
+- name: Setup Server For Ceph Connection 
+  setup:
+
+- include_tasks: ceph-osd-pool-create.yml
+  when: inventory_hostname in groups["storage"][0]
+
+- include_tasks: ceph-package-install.yml
+  when: inventory_hostname in groups["openstack"]
+  
+- include_tasks: ceph-config-pull.yml
+  when: inventory_hostname in groups["storage"][0]
+
+- include_tasks: ceph-config-copy.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: ceph-keyring-create.yml
+  when: inventory_hostname in groups["storage"][0]
+
+- include_tasks: ceph-keyring-pull.yml
+  when: inventory_hostname in groups["storage"][0]
+
+- include_tasks: ceph-keyring-copy.yml
+  when: inventory_hostname in groups["alls"]
+
+- include_tasks: set-libvirt-secret.yml  
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: openstack-config-edit.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: restart-component.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: rgw-haproxy-integration.yml
+  when: 
+    - inventory_hostname in groups["controller"]
+    - groups['rgws'] | length > 0

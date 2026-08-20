@@ -1,0 +1,49 @@
+---
+- name: Create Nova Service
+  openstack.cloud.catalog_service:
+    cloud: "{{ cloud }}"   
+    state: present
+    name: nova
+    service_type: compute
+    description: OpenStack compute Service
+    interface: internal
+
+- name: Create Nova User
+  openstack.cloud.identity_user:
+    cloud: "{{ cloud }}"   
+    state: present
+    name: nova
+    password: "{{ keystone_pass }}"
+    domain: default
+    default_project: service
+    interface: internal
+
+- name: Nova user role assignment
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: nova
+    role: admin
+    project: service
+    interface: internal
+
+- name: Nova user role assignment service
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: nova
+    role: service
+    project: service
+    interface: internal
+
+- name: Nova endpoint create
+  openstack.cloud.endpoint:
+    cloud: "{{ cloud }}"
+    service: nova
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ nova_bind_port }}/v2.1"
+    region: "{{ region_one }}"
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }

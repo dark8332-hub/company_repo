@@ -1,0 +1,96 @@
+---
+- name: Gather RedHat Purgecluster Controller service facts
+  ansible.builtin.service_facts:
+
+- name: Disable RedHat Purgecluster Controller OpenStack services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ redhat_purgecluster_controller_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable RedHat Purgecluster Controller Middleware services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ redhat_purgecluster_controller_middleware_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Disable RedHat Purgecluster Controller monitoring services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop: "{{ purgecluster_controller_monitoring_services }}"
+  when:
+    - item in ansible_facts.services
+    - ansible_facts.services[item].status != 'not-found'
+  failed_when: false
+
+- name: Find RedHat neutron processes
+  ansible.builtin.shell: |
+    pgrep -u neutron || true
+  register: redhat_neutron_pids
+  changed_when: false
+
+- name: Kill RedHat Purgecluster neutron processes
+  ansible.builtin.command: "kill -9 {{ item }}"
+  loop: "{{ redhat_neutron_pids.stdout_lines }}"
+  when: redhat_neutron_pids.stdout != ""
+
+- name: Find RedHat dnsmasq processes
+  ansible.builtin.shell: |
+    pgrep -u dnsmasq || true
+  register: redhat_dnsmasq_pids
+  changed_when: false
+
+- name: Kill RedHat Purgecluster dnsmasq processes
+  ansible.builtin.command: "kill -9 {{ item }}"
+  loop: "{{ redhat_dnsmasq_pids.stdout_lines }}"
+  when: redhat_dnsmasq_pids.stdout != ""
+
+- name: Unmount RedHat Purgecluster monitoring-store 
+  ansible.posix.mount:
+    path: /mnt/monitoring-store
+    state: absent
+
+- name: Wipe filesystem on RedHat Purgecluster minio device
+  community.general.filesystem:
+    dev: "/dev/disk/by-label/miniodisk"
+    state: absent
+
+- name: Ensure /etc/dnf/protected.d exists
+  ansible.builtin.file:
+    path: /etc/dnf/protected.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install contrabass protected packages list
+  ansible.builtin.copy:
+    src: contrabass-base-pkg.conf
+    dest: /etc/dnf/protected.d/contrabass-base-pkg.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Purge RedHat Purgecluster Controller packages
+  ansible.builtin.dnf:
+    name: "{{ item }}"
+    state: absent
+    autoremove: true
+  loop: "{{ redhat_purgecluster_controller_packages | reject('in', ['firewalld']) | list }}"
+
+- name: Remove original file after copy pkg.conf
+  ansible.builtin.file:
+    path: /etc/dnf/protected.d/contrabass-base-pkg.conf
+    state: absent

@@ -1,0 +1,75 @@
+- name: manila python code settings
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'manila.py.j2',dest: '/usr/lib/python3/dist-packages/manila_ui/api/manila.py',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'test_manila.py.j2',dest: '/usr/lib/python3/dist-packages/manila_ui/tests/api/test_manila.py',owner: 'root',group: 'root',mode: '0644' }
+  when: ansible_os_family == "Debian"
+
+- name: Register client.py code1
+  shell: egrep -r 'import os' {{ client_py }} 
+  register: client_py1
+  when:
+    - internal_endpoint_protocol == "https"
+  ignore_errors: true
+
+- name: Manila SSL client.py code1 settings
+  lineinfile:
+    path: "{{ client_py }}" 
+    insertafter: 'from keystoneclient import client as ks_client'
+    line: 'import os'
+    state: present
+  when:
+    - internal_endpoint_protocol == "https"
+    - client_py1.rc == 1
+
+- name: Register client.py code2
+  shell: egrep -r "session=None, auth=None, cacert=os.environ.get('OS_CACERT')" {{ client_py }} 
+  register: client_py2
+  when:
+    - internal_endpoint_protocol == "https" 
+  ignore_errors: true
+
+- name: Manila SSL client.py code2 settings
+  replace:
+    path: "{{ client_py }}" 
+    regexp: 'session=None, auth=None, cacert=None'
+    replace: "session=None, auth=None, cacert=os.environ.get('OS_CACERT')"
+  when:
+    - internal_endpoint_protocol == "https" 
+    - client_py2.rc == 1
+
+- name: Register base.py code1
+  shell: egrep -r 'import os' {{ base_py }}
+  register: base_py1
+  ignore_errors: true
+
+- name: Manila SSL base.py code1 settings
+  lineinfile:
+    path: "{{ base_py }}"
+    insertafter: 'import warnings'
+    line: 'import os'
+    state: present
+  when:
+    - internal_endpoint_protocol == "https"
+    - base_py1.rc == 1
+
+- name: Register base.py code2
+  shell: egrep -r "self.auth_url = os.environ.get('OS_AUTH_URL')" {{ base_py }} 
+  register: base_py2
+  when:
+    - internal_endpoint_protocol == "https" 
+  ignore_errors: true
+
+- name: Manila SSL base.py code2 settings
+  replace:
+    path: "{{ base_py }}"
+    regexp: '#self.auth_url = auth_url'
+    replace: "self.auth_url = os.environ.get('OS_AUTH_URL')"
+  when:
+    - internal_endpoint_protocol == "https" 
+    - base_py2.rc == 1

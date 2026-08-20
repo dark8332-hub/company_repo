@@ -1,0 +1,38 @@
+---
+- name: Configure Internal RadosGW to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_swift ##"
+    insertbefore: "# public"
+    block: |
+      listen int_swift
+        bind {{ internal_vip_address }}:{{ swift_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+        server radosgw_endpoint {{ internal_vip_address }}:{{ radosgw_bind_port }} check inter 2000 rise 2 fall 5 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none {% endif %}
+
+- name: Configure External RadosGW to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_swift ##"
+    insertbefore: "# monitoring" 
+    block: |
+      listen pub_swift
+        bind {{ external_vip_address }}:{{ swift_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+        server radosgw_endpoint {{ external_vip_address }}:{{ radosgw_bind_port }} check inter 2000 rise 2 fall 5 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none {% endif %}
+  when: external_vip_address != internal_vip_address
+
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+  ignore_errors: true

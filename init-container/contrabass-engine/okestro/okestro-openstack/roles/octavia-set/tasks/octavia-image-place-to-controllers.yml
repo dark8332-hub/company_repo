@@ -1,0 +1,34 @@
+- name: Check Octavia image id
+  openstack.cloud.image_info:
+    cloud: contrabass
+    image: "{{ octavia_amphora_img_name }}"
+  register: octavia_img
+  run_once: true
+
+- name: Find octavia image data file
+  ansible.builtin.stat:
+    path: "/var/lib/glance/images/{{ octavia_img.images[0].id }}"
+  register: glance_image_stat
+
+- name: Fetch amphora image file to deploy server
+  ansible.builtin.fetch:
+    src: "/var/lib/glance/images/{{ octavia_img.images[0].id }}"
+    dest: "/tmp/{{ octavia_img.images[0].id }}"
+    flat: true
+  when: glance_image_stat.stat.exists
+
+- name: Copy amphora image to non existing controllers
+  ansible.builtin.copy:
+    src: "/tmp/{{ octavia_img.images[0].id }}"
+    dest: '/var/lib/glance/images/'
+    owner: 'glance'
+    group: 'glance'
+    mode: '0640'
+  when: not glance_image_stat.stat.exists
+
+- name: Remove amphora image file in deploy server
+  file:
+    path: "/tmp/{{ octavia_img.images[0].id }}"
+    state: absent
+  delegate_to: localhost
+  run_once: true

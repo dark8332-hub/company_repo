@@ -1,0 +1,219 @@
+---
+- name: Copy root ca into deploy container
+  fetch:
+    src: "{{ item }}"
+    dest: "{{ root_dir }}/"
+    flat: true
+  with_items:
+    - "{{ certificates_dir }}/{{ root_crt }}"
+    - "{{ certificates_dir }}/{{ root_key }}"
+  run_once: true
+
+- name: Create certificate for new compute hosts
+  block:
+    - name: Create server internal key
+      openssl_privatekey:
+        path: "{{ certificates_dir }}/{{ item }}-internal.key"
+        size: '2048'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create server internal csr
+      openssl_csr:
+        path: "{{ certificates_dir }}/{{ item }}-internal.csr"
+        privatekey_path: "{{ certificates_dir }}/{{ item }}-internal.key"
+        C: "KR"
+        ST: "Seoul"
+        L: "Yeouido"
+        O: "{{ cloud }}"
+        OU: 'contrabass'
+        CN: "{{ item }}"
+        subject_alt_name: "DNS:{{ item }},IP:{{ internal_vip_address }},IP:{{ hostvars[item]['ansible_' ~ int_api_interface]['ipv4']['address'] }}"
+        extended_key_usage:
+          - clientAuth
+          - serverAuth
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create server internal crt
+      openssl_certificate:
+        path: "{{ certificates_dir }}/{{ item }}-internal.crt"
+        csr_path: "{{ certificates_dir }}/{{ item }}-internal.csr"
+        ownca_path: "{{ root_dir }}/{{ root_crt }}"
+        ownca_privatekey_path: "{{ root_dir }}/{{ root_key }}"
+        provider: ownca
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create server external key
+      openssl_privatekey:
+        path: "{{ certificates_dir }}/{{ item }}-external.key"
+        size: '2048'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create server external csr
+      openssl_csr:
+        path: "{{ certificates_dir }}/{{ item }}-external.csr"
+        privatekey_path: "{{ certificates_dir }}/{{ item }}-external.key"
+        C: "KR"
+        ST: "Seoul"
+        L: "Yeouido"
+        O: "{{ cloud }}"
+        OU: 'contrabass'
+        CN: "{{ item }}"
+        subject_alt_name: "DNS:{{ item }},IP:{{ external_vip_address }},IP:{{ hostvars[item]['ansible_' ~ external_api_interface]['ipv4']['address'] }}"
+        extended_key_usage:
+          - clientAuth
+          - serverAuth
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create server external crt
+      openssl_certificate:
+        path: "{{ certificates_dir }}/{{ item }}-external.crt"
+        csr_path: "{{ certificates_dir }}/{{ item }}-external.csr"
+        ownca_path: "{{ root_dir }}/{{ root_crt }}"
+        ownca_privatekey_path: "{{ root_dir }}/{{ root_key }}"
+        provider: ownca
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform internal key to pem
+      shell: /usr/bin/openssl rsa -in "{{ certificates_dir }}/{{ item }}-internal.key" -text > "{{ certificates_dir }}/{{ item }}-internal-key.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform internal crt to pem
+      shell: /usr/bin/openssl x509 -inform PEM -in "{{ certificates_dir }}/{{ item }}-internal.crt" > "{{ certificates_dir }}/{{ item }}-internal-crt.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create internal key&cert merged pem file
+      shell: cat "{{ certificates_dir }}/{{ item }}-internal-key.pem" "{{ certificates_dir }}/{{ item }}-internal-crt.pem" > "{{ certificates_dir }}/contrabass-{{ item }}-internal.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform external key to pem
+      shell: /usr/bin/openssl rsa -in "{{ certificates_dir }}/{{ item }}-external.key" -text > "{{ certificates_dir }}/{{ item }}-external-key.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform external crt to pem
+      shell: /usr/bin/openssl x509 -inform PEM -in "{{ certificates_dir }}/{{ item }}-external.crt" > "{{ certificates_dir }}/{{ item }}-external-crt.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create external key&cert merged pem file
+      shell: cat "{{ certificates_dir }}/{{ item }}-external-key.pem" "{{ certificates_dir }}/{{ item }}-external-crt.pem" > "{{ certificates_dir }}/contrabass-{{ item }}-external.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Pull rootca into files directory to ready for copy
+      fetch:
+        flat: true
+        src: "{{ item }}"
+        dest: 'roles/addnode/files/'
+      with_items:
+        - "{{ root_dir }}/{{ root_crt }}"
+        - "{{ root_dir }}/{{ root_key }}"
+
+    - name: Pull internal certificates into files directory to ready for copy
+      fetch:
+        flat: true
+        src: "{{ certificates_dir }}/contrabass-{{ item }}-internal.pem"
+        dest: 'roles/addnode/files/'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Pull external certificates into files directory to ready for copy
+      fetch:
+        flat: true
+        src: "{{ certificates_dir }}/contrabass-{{ item }}-external.pem"
+        dest: 'roles/addnode/files/'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+  when:
+    - inventory_hostname in groups['deploy']
+
+- name: Copy certificates to new compute hosts
+  block:
+    - name: Create certificate directory
+      file:
+        path: "{{ certificates_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy root certificate
+      copy:
+        src: "{{ root_crt }}"
+        dest: "{{ item }}"
+      with_items:
+        - "{{ local_trusted_cert_dir }}"
+        - "{{ certificates_dir }}"
+    
+    - name: Copy root key
+      copy:
+        src: "{{ root_key }}"
+        dest: "{{ certificates_dir }}"
+
+    - name: Update CA to trusted certificate
+      shell: "{{ local_trusted_cert }}"
+
+    - name: Copy internal certificates
+      copy:
+        src: "contrabass-{{ item }}-internal.pem"
+        dest: "{{ internal_fqdn_cert }}"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+      when:
+        - inventory_hostname == item
+
+    - name: Copy external certificates
+      copy:
+        src: "contrabass-{{ item }}-external.pem"
+        dest: "{{ external_fqdn_cert }}"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+      when:
+        - inventory_hostname == item
+  when: inventory_hostname in groups['new-compute']
+
+- name: Create libvirt certificates
+  block:
+    - name: Create libvirt tls directory
+      file:
+        path: "{{ item.path }}"
+        mode: "{{ item.mode }}"
+        owner: 'root'
+        group: 'root'
+        state: directory
+      with_items:
+        - { path: '/etc/pki/libvirt', mode: '0755' }
+        - { path: '/etc/pki/libvirt/private', mode: '0755' }
+        - { path: '/etc/pki/CA', mode: '0755' }
+
+    - name: Copy CA certificates
+      copy:
+        src: "{{ root_crt }}"
+        dest: "{{ item.dest }}"
+        owner: 'root'
+        group: 'root'
+        mode: "{{ item.mode }}"
+      with_items:
+        - { dest: '/etc/pki/libvirt/ca-cert.pem', mode: '0644' }
+        - { dest: '/etc/pki/CA/cacert.pem', mode: '0444' }
+
+    - name: Copy libvirt server certificates
+      copy:
+        src: "contrabass-{{ item[0] }}-internal.pem"
+        dest: "{{ libvirt_ca_dir }}/{{ item[1] }}.pem"
+        mode: '0644'
+      with_nested:
+        - "{{ groups['new-compute'] }}"
+        - [ 'private/serverkey', 'private/clientkey', 'server-cert', 'server-key', 'servercert', 'client-cert', 'client-key', 'clientcert' ]
+      when:
+        - inventory_hostname == item[0]
+  when:
+    - inventory_hostname in groups['new-compute']
+    - enable_live_migration_tls

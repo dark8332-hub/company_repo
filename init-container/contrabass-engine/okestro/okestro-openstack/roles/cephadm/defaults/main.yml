@@ -1,0 +1,13 @@
+## cephadm vars
+#registry_domain: 'private-registry.local'
+#registry_dir: '/var/lib/registry'
+#registry_port: '6666'
+#cephadm_dir: '/tmp/cephadm'
+## cephadm
+#ceph_monitor_network: '11.11.11.0/24'
+#ceph_cluster_network: '192.168.254.0/24'
+#ceph_dashboard_password: 'cloud1234'
+#osd_devices:
+#  - /dev/vdb
+#  - /dev/vdc
+#rgw_port: '8090'

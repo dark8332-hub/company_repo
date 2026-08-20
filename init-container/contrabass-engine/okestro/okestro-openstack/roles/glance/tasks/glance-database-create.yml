@@ -1,0 +1,18 @@
+- name: Create glance DB
+  mysql_db:
+    name: glance
+    state: present
+
+- name: Update mysql glance password for all glance accounts
+  no_log: true
+  mysql_user:
+     name: glance
+     host: "{{ item }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: glance.*:ALL,GRANT
+     state: present
+     update_password: on_create
+  with_items:
+     - localhost
+     - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}" 

@@ -1,0 +1,99 @@
+- name: python3-pip install
+  apt:
+    update-cache: yes
+    name: python3-pip
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: masakari-dashboard check
+  pip_package_info:
+    clients: ['pip3']
+       #name: masakari-dashboard
+  register: masakari_dashboard_check
+
+- name: masakari-dashboard install
+  apt:
+    update-cache: yes
+    name: python3-masakari-dashboard
+    state: present
+  when:
+    - ansible_os_family == "Debian"
+
+- name: Install Masakari dashboard
+  block:
+    name: Copy masakari-dashboard file
+    copy:
+      src: 'masakari-dashboard.tar'
+      dest: '/root/'
+
+  when:
+    - - ("masakari-dashboard" not in masakari_dashboard_check.packages.pip3)
+      #- name: copy masakari dashboard dir
+      #  copy:
+      #    src: "{{ masakari_dashboard }}" 
+      #    dest: "{{ masakari_dashboard_dir }}"
+      #  when: 
+      #    - ("masakari-dashboard" not in masakari_dashboard_check.packages.pip3)
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #
+      #- name: copy masakari dashboard shell scripts
+      #  template:
+      #    src: masakari-dashboard.sh.j2
+      #    dest: "{{ masakari_dashboard_dir }}/masakari-dashboard.sh"
+      #    #owner: root
+      #    #group: root
+      #    mode: 0755
+      #  when: 
+      #    - ("masakari-dashboard" not in masakari_dashboard_check.packages.pip3)
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #
+      #- name: execute masakari dashboard install scripts
+      #  shell: ". {{ masakari_dashboard_dir }}/masakari-dashboard.sh"
+      #  when: 
+      #    - ("masakari-dashboard" not in masakari_dashboard_check.packages.pip3)
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #  notify: restart apache2
+      #
+      #
+      #- name: checking masakari dashboard dir 
+      #  stat:  
+      #    path: "{{ item }}"
+      #  with_items:
+      #    - "{{ masakari_dashboard_dir }}/masakari-dashboard"
+      #  when:
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #  register: check_masakari_dashboard_dir
+      #
+      #
+      #- name: checking masakari dashboard file 
+      #  stat:  
+      #    path: "{{ item }}"
+      #  with_items:
+      #    - "{{ masakari_dashboard_dir }}/masakari-dashboard.sh"
+      #  when:
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #  register: check_masakari_dashboard_file
+      #
+      #- name: delete dashboard dir
+      #  file:
+      #    path: "{{ item }}"
+      #    state: absent
+      #  with_items: 
+      #    - "{{ masakari_dashboard_dir }}/masakari-dashboard"
+      #  when:
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+      #
+      #- name: delete dashboard files
+      #  file:
+      #    path: "{{ item }}"
+      #    state: absent
+      #  with_items: 
+      #    - "{{ masakari_dashboard_dir }}/masakari-dashboard.sh"
+      #  when:
+      #    -  not (ansible_os_family == "Debian" and openstack_version == "yoga")
+
+- name: Restart apache2
+  service:
+    name: apache2
+    state: restarted
+  when: ansible_os_family == "Debian"

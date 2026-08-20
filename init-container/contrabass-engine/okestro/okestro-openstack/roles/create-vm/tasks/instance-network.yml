@@ -1,0 +1,84 @@
+---
+### Set API Network CIDR ###
+- name: Check&Set API Network Information
+  set_fact:
+    network_range: "{{ (API_Network_address + '/' + API_Network_cidr|string) | ipaddr('network') ~ '/' ~ API_Network_cidr }}"
+
+### Create API Network ###
+- name: Create API Network
+  openstack.cloud.network:
+    cloud: contrabass
+    state: present
+    name: "{{ VM_API_NAME }}"
+    interface: internal
+    external: true
+
+#########################################################
+#If Use Flat Network Add Option
+# provider_network_type: flat
+# provider_physical_network: [provider Mapping Name ]
+
+#If Use Vlan Network Add Option
+#   provider_network_type: vlan
+#   provider_physical_network: [ provider Mapping Name ]
+#   provider_segmentation_id: [ vlan id]
+#########################################################
+
+- name: Create API Network Subent
+  openstack.cloud.subnet:
+    state: present
+    network_name: "{{ VM_API_NAME }}"
+    name: API_Network
+    cidr: "{{ VM_API_SUBNET }}"
+    allocation_pool_start: "{{ VM_API_SUBNET_START }}"
+    allocation_pool_end: "{{ VM_API_SUBNET_END }}"
+    interface: internal
+
+### Create Ceph Network ###
+- name: Create Ceph NetWork 
+  openstack.cloud.network:
+    cloud: contrabass
+    state: present
+    name: "{{ VM_Ceph_NAME }}"
+    interface: internal
+    external: true
+  when: 
+    - Viola | bool
+    - cinder_backend == "ceph"
+
+- name: Create Ceph Network Subnet
+  openstack.cloud.subnet:
+    state: present
+    network_name: "{{ VM_Ceph_NAME }}"
+    name: Ceph_Network
+    cidr: "{{ VM_Ceph_SUBNET }}"
+    allocation_pool_start: "{{ VM_Ceph_SUBNET_START }}"
+    allocation_pool_end: "{{ VM_Ceph_SUBNET_END }}"
+    interface: internal
+  when: 
+    - Viola | bool
+    - cinder_backend == "ceph"
+
+### Vlan Network Create Test Example ### 
+- name: Create Test Vlan Network
+  openstack.cloud.network:
+    cloud: contrabass
+    state: present
+    name: Test
+    interface: internal
+    external: true
+    provider_network_type: "{{ network_type }}"
+    provider_physical_network: "{{ physical_network }}"
+    provider_segmentation_id: "{{ segmentation_id }}"
+  when: use_vlan | bool
+
+- name: Create Test Vlan Subnet
+  openstack.cloud.subnet:
+    state: present
+    network_name: Test
+    name: Test_Network
+    cidr: 172.168.30.0/24
+    allocation_pool_start: 172.168.30.50
+    allocation_pool_end: 172.168.30.100
+    interface: internal
+  when: use_vlan | bool

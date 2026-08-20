@@ -1,0 +1,93 @@
+---
+- name: Remove RedHat Purgecluster common Openstack Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ redhat_purgecluster_common_openstack_files }}"
+
+- name: Remove RedHat Purgecluster Common Monitoring Files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ purgecluster_common_monitoring_files }}"
+
+- block: 
+    - name: Remove RedHat Purgecluster Controller Openstack files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ redhat_purgecluster_controller_openstack_files }}"
+    
+    - name: Remove RedHat Purgecluster Controller Middleware files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ redhat_purgecluster_controller_middleware_files }}"
+    
+    - name: Remove RedHat Purgecluster Controller Monitoring files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ purgecluster_controller_monitoring_files }}"
+
+  when: inventory_hostname in groups['purge-controller']
+
+- name: Remove RedHat Purgecluster Common users
+  ansible.builtin.user:
+    name: "{{ item }}"
+    state: absent
+    remove: true
+  loop: "{{ redhat_purgecluster_common_users }}"
+  ignore_errors: "{{ item in ['openvswitch', 'memcached', 'qemu', 'rpcuser'] }}"
+
+- name: Remove RedHat Purgecluster Common groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    state: absent
+  loop: "{{ redhat_purgecluster_common_users }}"
+
+- block: 
+    - name: Remove RedHat Purgecluster Controller users
+      ansible.builtin.user:
+        name: "{{ item }}"
+        state: absent
+        remove: true
+      loop: "{{ redhat_purgecluster_controller_users }}"
+      ignore_errors: "{{ item in ['apache', 'rtkit', 'flatpak', 'placement', 'radvd'] }}"
+    
+    - name: Remove RedHat Purgecluster Controller groups
+      ansible.builtin.group:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ redhat_purgecluster_controller_users }}"
+
+  when: inventory_hostname in groups['purge-controller']
+
+- name: Daemon-reload for RedHat Purgecluster
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: sysctl tunning remove for RedHat Purgecluster
+  blockinfile:
+    state: absent
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+
+- name: sysctl apply for RedHat Purgecluster
+  command: sysctl --system
+
+- name: Remove /etc/hosts entries for OpenStack hosts for RedHat Purgecluster
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    state: absent
+    regexp: '(^|\s){{ item }}(\s|$)'
+  loop: "{{ groups['purgecluster'] | default([]) }}"
+
+- name: Copy RedHat purgecluster Original chrony.conf
+  ansible.builtin.copy:
+    src: chrony.conf
+    dest: /etc/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+

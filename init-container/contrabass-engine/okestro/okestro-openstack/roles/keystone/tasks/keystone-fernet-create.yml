@@ -1,0 +1,42 @@
+---
+- name: Check kesytone fernet keys
+  stat:
+    path: "{{ keystone_fernet_path_0 }}"
+  register: fernet_0_check
+
+- name: Check kesytone fernet keys
+  stat:
+    path: "{{ keystone_fernet_path_1 }}"
+  register: fernet_1_check
+
+- name: Check kesytone credential keys
+  stat:
+    path: "{{ keystone_credential_path }}"
+  register: credential_check
+
+- name: Initialize Fernet key repositories 
+  shell: keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
+  when: not fernet_0_check.stat.exists and not fernet_1_check.stat.exists
+
+- name: wait keystone_fernet
+  wait_for:
+    timeout: 5
+
+- name: Initialize Fernet key repositories
+  shell: keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
+  when: not credential_check.stat.exists
+
+- name: wait keystone_fernet
+  wait_for:
+    timeout: 5
+
+- name: keystone FernetKeys pulling files
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: true
+  with_items:
+    - { src: "{{ keystone_fernet_path_0 }}",dest: roles/keystone/files/fernet-keys/0 }
+    - { src: "{{ keystone_fernet_path_1 }}",dest: roles/keystone/files/fernet-keys/1 }
+    - { src: "{{ keystone_credential_path }}/0",dest: roles/keystone/files/credential-keys/0 }
+    - { src: "{{ keystone_credential_path }}/1",dest: roles/keystone/files/credential-keys/1 }

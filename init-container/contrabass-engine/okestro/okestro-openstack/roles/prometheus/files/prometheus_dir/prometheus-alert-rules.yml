@@ -1,0 +1,13 @@
+groups:
+  - name: CPU Alert for autoscaling
+    rules:
+      - alert: High CPU
+        expr: ((rate(libvirt_domain_info_cpu_time_seconds_total{instanceName=~"oke-demo-scale"}[1m])*100)) > 70
+        for: 30s
+        labels:
+          severity: upscale
+      - alert: Low CPU
+        expr: ((rate(libvirt_domain_info_cpu_time_seconds_total{instanceName=~"oke-demo-scale"}[1m])*100)) < 30
+        for: 30s
+        labels:
+          severity: downscale

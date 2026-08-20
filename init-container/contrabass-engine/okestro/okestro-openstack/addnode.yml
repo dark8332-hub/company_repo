@@ -1,0 +1,16 @@
+---
+- name:  Ansible enviroment initialization for new compute
+  become: true
+  hosts: localhost
+  tasks:
+     - name: SSH key copy
+       shell: "sshpass -f '/root/.ssh/ansible-user-password.txt' ssh-copy-id {{ hostvars[item].ansible_host }}"
+       with_items:
+         - "{{ groups['new-compute'] }}"
+
+- name: Add Compute Node
+  hosts: alls
+  become: true
+  roles:
+    - role: addnode
+  tags: addnode

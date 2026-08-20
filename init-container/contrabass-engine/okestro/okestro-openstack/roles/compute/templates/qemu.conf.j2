@@ -1,0 +1,5 @@
+security_driver = "none"
+{% if enable_live_migration_tls %}
+default_tls_x509_cert_dir = "/etc/pki/libvirt"
+default_tls_x509_verify = 1
+{% endif %}

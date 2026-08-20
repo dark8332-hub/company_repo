@@ -1,0 +1,31 @@
+[Unit]
+Description=Alert Manager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=on-failure
+Type=simple
+ExecStart={{ exe_path }}/alertmanager \
+    --config.file={{ alertmanager_config_dir }}/alertmanager.yml \
+    --web.listen-address=0.0.0.0:{{ alertmanager_web_port }} \
+{% if monitoring_enable_tls %}
+    --web.config.file={{ alertmanager_config_dir }}/web-config.yml \
+{% endif %}
+    --storage.path={{ alertmanager_data_dir }} \
+    --cluster.listen-address=0.0.0.0:{{ alertmanager_cluster_listen_port }} \
+    --cluster.advertise-address={{ hostvars[inventory_hostname]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ alertmanager_cluster_listen_port }} \
+{% if monitoring_ha_enable %}
+{% if monitoring_enable_tls %}
+    --cluster.tls-config={{ alertmanager_config_dir }}/alertmanager-cluster-tls-config.yml \
+{% endif %}
+{% for item in groups['controller'] %}
+    --cluster.peer={{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ alertmanager_cluster_listen_port }} \
+{% endfor %}
+{% endif %}
+    --data.retention={{ alertmanager_data_retention }}
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+- name: Octavia cert copy
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'certs',dest: '{{ octavia_dir }}/',owner: 'octavia',group: 'octavia',mode: '0644' }

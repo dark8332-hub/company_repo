@@ -1,0 +1,393 @@
+local.file_match "system" {
+  path_targets = [
+    {
+      __address__ = "localhost",
+{% if ansible_os_family == 'RedHat' %}
+      __path__    = "/var/log/messages",
+{% else %}
+      __path__    = "/var/log/syslog",
+{% endif %}
+      hostname    = "{{ inventory_hostname }}",
+      job         = "syslog",
+    },
+    {
+      __address__ = "localhost",
+{% if ansible_os_family == 'RedHat' %}
+      __path__    = "/var/log/audit/audit.log",
+{% else %}
+      __path__    = "/var/log/auth.log",
+{% endif %}
+      hostname    = "{{ inventory_hostname }}",
+      job         = "authlog",
+    },
+  ]
+}
+
+loki.source.file "system" {
+  targets    = local.file_match.system.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+{% if inventory_hostname in groups['controller'] %}
+local.file_match "middleware" {
+	path_targets = [{
+		__address__ = "localhost",
+		__path__    = "/var/log/haproxy.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "haproxylog",
+	}, {
+		__address__ = "localhost",
+		__path__    = "/var/log/pacemaker/pacemaker.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "pacemakerlog",
+	}, {
+		__address__ = "localhost",
+		__path__    = "/var/log/corosync/corosync.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "corosynclog",
+	}, {
+		__address__ = "localhost",
+		__path__    = "/var/log/pcsd/pcsd.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "pcsdlog",
+	}, {
+		__address__ = "localhost",
+		__path__    = "/var/log/mysql/error.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "mysqllog",
+	}, {
+		__address__ = "localhost",
+		__path__    = "/var/log/rabbitmq/rabbit*.log",
+		hostname    = "{{ inventory_hostname }}",
+		job         = "rabbitmqlog",
+	}]
+}
+
+loki.source.file "middleware" {
+  targets    = local.file_match.middleware.targets
+  forward_to = [loki.write.default.receiver]
+}
+{% endif %}
+
+local.file_match "openstack" {
+  path_targets = [
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/nova/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "novalog",
+    },
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/neutron/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "neutronlog",
+    },
+
+{% if inventory_hostname in groups['controller'] %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/keystone/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "keystonelog",
+    },
+    {
+      __address__ = "localhost",
+{% if ansible_os_family == 'RedHat' %}
+      __path__    = "/var/log/httpd/keystone*.log",
+{% else %}
+      __path__    = "/var/log/apache2/keystone*.log",
+{% endif %}
+      hostname    = "{{ inventory_hostname }}",
+      job         = "keystone-httplog",
+    },
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/glance/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "glancelog",
+    },
+    {
+      __address__ = "localhost",
+{% if ansible_os_family == 'RedHat' %}
+      __path__    = "/var/log/httpd/placement*.log",
+{% else %}
+      __path__    = "/var/log/apache2/placement*.log",
+{% endif %}
+      hostname    = "{{ inventory_hostname }}",
+      job         = "placementlog",
+    },
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/cinder/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "cinderlog",
+    },
+
+{% if ansible_facts['distribution'] == 'Ubuntu' %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/apache2/cinder*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "cinder-httplog",
+    },
+{% endif %}
+
+{% if enable_manila %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/manila/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "manilalog",
+    },
+{% endif %}
+
+{% if enable_octavia %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/octavia/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "octavialog",
+    },
+{% endif %}
+
+{% if enable_barbican %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/barbican/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "barbicanlog",
+    },
+{% endif %}
+
+{% if enable_heat %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/heat/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "heatlog",
+    },
+{% endif %}
+
+{% if enable_masakari %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/masakari/*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "masakarilog",
+    },
+
+{% if ansible_facts['distribution'] == 'Ubuntu' %}
+    {
+      __address__ = "localhost",
+      __path__    = "/var/log/apache2/masakari_*.log",
+      hostname    = "{{ inventory_hostname }}",
+      job         = "masakari-httplog",
+    },
+{% endif %}
+{% endif %}
+
+{% endif %}
+  ]
+}
+
+loki.source.file "openstack" {
+  targets    = local.file_match.openstack.targets
+  forward_to = [loki.write.default.receiver]
+}
+
+{% if cinder_backend == "ceph" and 'osds' in group_names %}
+discovery.relabel "ceph_osd" {
+  targets = []
+
+  rule {
+    target_label = "job"
+    replacement  = "ceph"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@osd\\..*\\.service"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@osd\\.(\\d+)\\.service"
+    target_label  = "osd_id"
+    replacement   = "$1"
+  }
+
+  rule {
+    target_label = "ceph_daemon"
+    replacement  = "osd"
+  }
+}
+
+loki.source.journal "ceph_osd" {
+  max_age       = "12h0m0s"
+  path          = "/var/log/journal"
+  relabel_rules = discovery.relabel.ceph_osd.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {}
+}
+{% endif %}
+
+{% if cinder_backend == "ceph" and 'mons' in group_names %}
+discovery.relabel "ceph_mon" {
+  targets = []
+
+  rule {
+    target_label = "job"
+    replacement  = "ceph"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@mon\\..*\\.service"
+    action        = "keep"
+  }
+
+  rule {
+    target_label = "ceph_daemon"
+    replacement  = "mon"
+  }
+}
+
+loki.source.journal "ceph_mon" {
+  max_age       = "12h0m0s"
+  path          = "/var/log/journal"
+  relabel_rules = discovery.relabel.ceph_mon.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {}
+}
+
+discovery.relabel "ceph_mgr" {
+  targets = []
+
+  rule {
+    target_label = "job"
+    replacement  = "ceph"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@mgr\\..*\\.service"
+    action        = "keep"
+  }
+
+  rule {
+    target_label = "ceph_daemon"
+    replacement  = "mgr"
+  }
+}
+
+loki.source.journal "ceph_mgr" {
+  max_age       = "12h0m0s"
+  path          = "/var/log/journal"
+  relabel_rules = discovery.relabel.ceph_mgr.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {}
+}
+
+discovery.relabel "ceph_mds" {
+  targets = []
+
+  rule {
+    target_label = "job"
+    replacement  = "ceph"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@mds\\..*\\.service"
+    action        = "keep"
+  }
+
+  rule {
+    target_label = "ceph_daemon"
+    replacement  = "mds"
+  }
+}
+
+loki.source.journal "ceph_mds" {
+  max_age       = "12h0m0s"
+  path          = "/var/log/journal"
+  relabel_rules = discovery.relabel.ceph_mds.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {}
+}
+
+discovery.relabel "ceph_rgw" {
+  targets = []
+
+  rule {
+    target_label = "job"
+    replacement  = "ceph"
+  }
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    regex         = "ceph-.*@rgw\\..*\\.service"
+    action        = "keep"
+  }
+
+  rule {
+    target_label = "ceph_daemon"
+    replacement  = "rgw"
+  }
+}
+
+loki.source.journal "ceph_rgw" {
+  max_age       = "12h0m0s"
+  path          = "/var/log/journal"
+  relabel_rules = discovery.relabel.ceph_rgw.rules
+  forward_to    = [loki.write.default.receiver]
+  labels        = {}
+}
+{% endif %}
+
+loki.write "default" {
+  endpoint {
+{% if monitoring_enable_tls %}
+    url        = "https://{{ monitoring_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push"
+    batch_size = "512KiB"
+
+    tls_config {
+      cert_file            = "/opt/monitoring-certs/monitoring-server.crt"
+      key_file             = "/opt/monitoring-certs/monitoring-server.key"
+      insecure_skip_verify = true
+    }
+{% else %}
+    url        = "http://{{ monitoring_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push"
+    batch_size = "512KiB"
+{% endif %}
+  }
+
+  external_labels = {}
+}

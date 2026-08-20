@@ -1,0 +1,13 @@
+{%- set total_minutes = thanos_compact_base_hour * 60 + thanos_compact_base_minute + groups['controller'].index(inventory_hostname) * 10 -%}
+{%- set calc_hour = (total_minutes // 60) % 24 -%}
+{%- set calc_minute = total_minutes % 60 -%}
+[Unit]
+Description=Run Thanos Compact daily on Pacemaker active node only
+[Timer]
+OnCalendar=*-*-* {{ '%02d' | format(calc_hour) }}:{{ '%02d' | format(calc_minute) }}:00
+Persistent=false
+RandomizedDelaySec=0
+AccuracySec=1s
+Unit=thanos-compact.service
+[Install]
+WantedBy=timers.target

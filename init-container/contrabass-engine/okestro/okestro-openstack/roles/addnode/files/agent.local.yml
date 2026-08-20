@@ -1,0 +1,74 @@
+Log:
+  LogLevel: debug
+  Path: /var/log/contrabass/mole/mole.log
+  MaxSize: 100 # megabytes
+  MaxBackups: 5
+  MaxAge: 28 # days
+Server:
+  RunMode: debug
+  HTTPContextPath: /c-agent/service
+  HTTPServerIP: 0.0.0.0
+  HTTPPort: 8888
+  ReadTimeout: 60
+  WriteTimeout: 60
+OpenStack:
+  VolumeBackend:
+    Path: /etc/cinder/cinder.conf
+  Nova:
+    Path: /etc/nova/nova.conf
+  Neutron:
+    OpenVSwitchAgentPath: /etc/neutron/plugins/ml2/openvswitch_agent.ini
+    NeutronConfPath: /etc/neutron/neutron.conf
+  DefaultValues:
+    CpuAllocationRatio: 16.0
+    RamAllocationRatio: 1.5
+GetOperationSystemVersion:
+  OS: ubuntu
+  Command: lsb_release -a
+Database:
+  Dsn: root:ENC(73a89a40046ec8466607fad082311c6c40fefcd6712ebbf4fcd2d7ae8c5096e3972e322701)@tcp(172.19.0.100:13306)/?parseTime=true
+IPMI:
+  User: admin
+  Password: ENC(970e8b92b82af3d2aff0925ceccebf86a3ca75bb6dd7e95afb6680b780b9eeb62e47d6f09b)
+Node:
+  Backup:
+    DB:
+      UserID: root
+      Password: ENC(73a89a40046ec8466607fad082311c6c40fefcd6712ebbf4fcd2d7ae8c5096e3972e322701)
+      BackupDir: /root/contrabass-backup/db-backup
+      FullDir: full
+      IncrementalDir: incremental
+      BackupScriptPath: /etc/contrabass/mole/node-backup-db-backup.sh
+      RemoveScriptPath: /etc/contrabass/mole/node-backup-db-remove.sh
+    Config:
+      BackupDir: /root/contrabass-backup/config-backup
+      BackupScriptPath: /etc/contrabass/mole/node-backup-config-backup.sh
+  # Log directories of OpenStack services
+  SearchLogPaths:
+    - /var/log/nova/
+    - /var/log/neutron/
+    - /var/log/glance/
+    - /var/log/cinder/
+    - /var/log/keystone/
+    - /var/log/heat/
+    - /var/log/barbican/
+    - /var/log/swift/
+  ControlNodes:
+    - 172.19.0.101
+    - 172.19.0.102
+    - 172.19.0.103
+
+EnvironmentVars:
+  - PYTHONIOENCODING=utf8
+  - OS_PROJECT_DOMAIN_NAME=Default
+  - OS_USER_DOMAIN_NAME=Default
+  - OS_PROJECT_NAME=admin
+  - OS_USERNAME=admin
+  - OS_PASSWORD=ENC(f23c76cbccba7f82bf6bccbdee3444326c1a2355a8a7e3362ca2643503ce1f72155f6b945f)
+  - OS_AUTH_URL=https://172.19.0.100:15000/v3/
+  - OS_CERT=/opt/certificate/contrabass-internal.pem
+  - OS_IDENTITY_API_VERSION=3
+  - OS_IMAGE_API_VERSION=2
+  - OS_INTERFACE=internal
+  - PS1='[\u@\h \W(admin_openrc)]\$ '
+  - OS_MANILA_ENDPOINT_TYPE=internal

@@ -1,0 +1,5 @@
+{% for host in groups['controller'] %}
+nameserver {{ hostvars[host]['ansible_' ~ external_api_interface]['ipv4']['address'] }}{% if not loop.last %}
+{% endif %}
+{% endfor %}
+

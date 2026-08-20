@@ -1,0 +1,56 @@
+#
+# The Percona Server 8.0 configuration file.
+#
+# For explanations see
+# http://dev.mysql.com/doc/mysql/en/server-system-variables.html
+#
+#
+# * IMPORTANT: Additional settings that can override those from this file!
+#   The files must end with '.cnf', otherwise they'll be ignored.
+#
+
+{% if ansible_os_family == "Debian" %}
+!includedir /etc/mysql/mysql.conf.d/
+!includedir /etc/mysql/conf.d/
+{% elif ansible_os_family == "RedHat" %}
+!includedir /etc/my.cnf.d/
+{% endif %}
+[mysqld]
+user=mysql
+pid_file = /var/run/mysqld/mysqld.pid
+log-error=/var/log/mysql/error.log
+bind-address=0.0.0.0
+skip-host-cache
+skip-name-resolve
+innodb_buffer_pool_size = 4G
+innodb_buffer_pool_instances = 4
+{% if groups['controller'] | length > 1 %}
+{% if ansible_os_family == "Debian" %}
+wsrep_provider=/usr/lib/galera4/libgalera_smm.so
+{% elif ansible_os_family == "RedHat" %}
+wsrep_provider=/usr/lib64/galera4/libgalera_smm.so
+{% endif %}
+wsrep_cluster_name=pxc-cluster
+wsrep_cluster_address=gcomm://{% for item in groups['controller'] %}{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{% if not loop.last %},{% endif %}{% endfor %}
+{% endif %}
+
+wsrep_node_name={{ ansible_hostname }}
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+wsrep_node_address={{ ansible_hostname }}
+wsrep_sst_method=xtrabackup-v2
+pxc_strict_mode=ENFORCING
+default_storage_engine=InnoDB
+max_connections=20000
+pxc-encrypt-cluster-traffic=OFF
+default_authentication_plugin=caching_sha2_password
+
+{% if percona_version == 5.7 %}
+wsrep_sst_auth="sstuser:s3cretPass"
+{% endif %}
+
+{% if ansible_os_family == "RedHat" %}
+[client]
+socket=/var/lib/mysql/mysql.sock
+{% endif %}

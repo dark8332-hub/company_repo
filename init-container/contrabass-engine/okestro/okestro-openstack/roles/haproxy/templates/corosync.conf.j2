@@ -1,0 +1,28 @@
+totem {
+    version: 2
+    cluster_name: openstack
+    transport: knet
+    crypto_cipher: aes256
+    crypto_hash: sha256
+}
+
+nodelist {
+{% for item in groups['controller'] %}
+    node {
+        ring0_addr:  {{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}
+        name: {{ hostvars[item] ['ansible_hostname'] }}
+        nodeid: {{ loop.index }}
+    }
+{% endfor %}
+}
+
+quorum {
+    provider: corosync_votequorum
+}
+
+logging {
+    to_logfile: yes
+    logfile: /var/log/corosync/corosync.log
+    to_syslog: yes
+    timestamp: on
+}

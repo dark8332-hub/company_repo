@@ -1,0 +1,110 @@
+- name: Check loki exists before install
+  stat:
+    path: '/etc/systemd/system/loki.service'
+  register: loki_service
+
+- name: Loki installation
+  block:
+    - name: Create loki directory
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - '/etc/loki'
+        - '/var/lib/loki'
+
+    - name: Copy loki enviroment config
+      template:
+        src: 'loki-s3-config.yaml.j2'
+        dest: '/etc/loki/loki-s3-config.yaml'
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+
+    - name: Copy loki relevant files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - { src: 'loki-linux-amd64', dest: '/usr/local/bin/loki', mode: '0750' }
+        - { src: 'loki.service', dest: '/etc/systemd/system/loki.service', mode: '0644' }
+
+    - name: Reload daemon
+      command: systemctl daemon-reload
+
+    - name: Start loki service
+      service:
+        name: 'loki'
+        state: started
+        enabled: true
+
+    - name: Configure monitoring loki to haproxy.cfg
+      blockinfile:
+        path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+        marker: "## {mark} monitoring_loki_cluster ##"
+        insertbefore: EOF
+        block: |
+          listen int_loki_cluster
+            bind {{ monitoring_vip_address }}:{{ loki_bind_port }} {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+            balance source
+            mode tcp
+            option tcpka
+            option tcplog
+          {% for item in groups['controller'] %}
+            server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_' + monitoring_network_interface].ipv4.address }}:{{ loki_port }} check inter 2000 rise 2 fall 5 {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+          {% endfor %}
+
+    - name: Restart haproxy
+      service:
+        name: haproxy
+        state: restarted
+  when: not loki_service.stat.exists
+
+- name: Check exporters exists
+  stat:
+    path: "/etc/systemd/system/{{ item.exporter }}.service"
+  register: exporter_check
+  with_items:
+    - { exporter: memcached-exporter }
+    - { exporter: mysqld-exporter }
+    - { exporter: haproxy-exporter }
+    - { exporter: ha_cluster-exporter }
+
+- name: Copy exporter binary files
+  copy:
+    src: "{{ item.item.exporter }}"
+    dest: "/usr/local/bin/{{ item.item.exporter }}"
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: not item.stat.exists
+
+- name: Copy exporter service unit file
+  template:
+    src: "{{ item.item.exporter }}.service.j2"
+    dest: "/etc/systemd/system/{{ item.item.exporter }}.service"
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: not item.stat.exists
+
+- name: Reload daemon
+  command: systemctl daemon-reload
+
+- name: Start exporters
+  service:
+    name: "{{ item.item.exporter }}"
+    state: started
+    enabled: yes
+  with_items: "{{ exporter_check.results }}"
+

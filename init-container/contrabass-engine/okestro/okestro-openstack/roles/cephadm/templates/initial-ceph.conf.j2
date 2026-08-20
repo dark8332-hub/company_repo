@@ -1,0 +1,10 @@
+[global]
+container_image = private-registry.local:{{ registry_port }}/ceph/ceph:v19
+[mgr]
+mgr/cephadm/use_repo_digest = false
+mgr/cephadm/container_image_prometheus = private-registry.local:{{ registry_port }}/prometheus/prometheus:v2.51.0
+mgr/cephadm/container_image_node_exporter = private-registry.local:{{ registry_port }}/prometheus/node-exporter:v1.7.0
+mgr/cephadm/container_image_grafana = private-registry.local:{{ registry_port }}/ceph/grafana:10.4.0
+mgr/cephadm/container_image_alertmanager = private-registry.local:{{ registry_port }}/prometheus/alertmanager:v0.25.0
+[mon]
+public_network = {{ ceph_monitor_network }}

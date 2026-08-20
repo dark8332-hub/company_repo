@@ -1,0 +1,14 @@
+clouds:
+  contrabass:
+    auth:
+      auth_url: {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/
+      project_name: admin
+      username: admin
+      password: "{{ keystone_pass }}"
+      user_domain_name: Default
+      project_domain_name: Default
+    interface: internal
+    region_name: RegionOne
+{% if internal_endpoint_protocol == "https" %}
+    verify: False
+{% endif %}

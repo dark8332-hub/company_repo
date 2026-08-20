@@ -1,0 +1,22 @@
+---
+- name: Preflight - purgecluster | Show target host for purge
+  ansible.builtin.debug:
+    msg: "Starting preflight checks on {{ inventory_hostname }} (purge_compute node)"
+
+- name: Preflight - purgecluster | Check libvirt domains (virsh list --all)
+  ansible.builtin.command: virsh list --all --name
+  register: virsh_list
+  changed_when: false
+  failed_when: false
+
+- name: Preflight - purgecluster | Fail if any libvirt domain still exists
+  ansible.builtin.fail:
+    msg: |
+      libvirt domains still exist on {{ "purge-compute" }}.
+      Please evacuate / delete all instances before purge.
+
+      {{ virsh_list.stdout }}
+  vars:
+    libvirt_domains: "{{ virsh_list.stdout_lines | reject('equalto', '') | list }}"
+  when: libvirt_domains | length > 0
+

@@ -1,0 +1,211 @@
+---
+- name: Ubuntu server initialize
+  block:
+    - name: Remove external repository archive file if exists
+      file:
+        path: '/etc/apt/sources.list.d/ubuntu.sources'
+        state: absent
+    
+    - name: Copy repository configuration files
+      template:
+        src: /root/okestro/okestro-openstack/roles/environment/templates/sources.list.j2
+        dest: /etc/apt/sources.list
+        owner: root
+        group: root
+        mode: 0644
+    
+    - name: Copy gpg_key
+      copy:
+        src: "{{ item }}"
+        dest: /etc/apt/trusted.gpg.d/
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - /root/okestro/okestro-openstack/roles/environment/files/percona-keyring.gpg
+        - /root/okestro/okestro-openstack/roles/environment/files/ubuntu-keyring-2012-cloud-archive.gpg
+        - /root/okestro/okestro-openstack/roles/environment/files/maas_ubuntu_3_2.gpg
+        - /root/okestro/okestro-openstack/roles/environment/files/com.rabbitmq.team.gpg
+    
+    - name: apt update && upgrade
+      apt:
+        update_cache: yes
+        force_apt_get: yes
+
+    - name: Package Installation
+      apt:
+        update_cache: yes
+        name: "{{ item }}"
+        state: present
+      with_items:
+          - aptitude
+          - curl
+          - telnet
+          - tree
+          - tcpdump
+          - iperf3
+          - net-tools
+          - network-manager
+          - snmp
+          - snmpd
+          - lldpd
+          - ipmitool
+          - freeipmi
+          - sysfsutils
+
+    - name: Stop & Disable Firewall
+      service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      with_items:
+        - ufw
+        - apparmor
+
+    - name: Package installation Ubuntu
+      apt:
+        update_cache: yes
+        name: python3-pip
+        state: present
+      when: openstack_version == 'caracal'
+
+    - name: copy oslo.messaging wheel to remote
+      ansible.builtin.copy:
+        src: /root/okestro/okestro-openstack/roles/environment/files/oslo.messaging-14.7.2-py3-none-any.whl
+        dest: /tmp/
+        owner: root
+        group: root
+        mode: '0644'
+      when: openstack_version == 'caracal'
+
+    - name: install oslo.messaging
+      ansible.builtin.pip:
+        name: "oslo.messaging==14.7.2"
+        extra_args: >-
+          --break-system-packages
+          --no-index
+          --no-deps
+          --find-links /tmp/
+        state: present
+      when: openstack_version == 'caracal'
+
+    - name: Remove oslo.messaging wheel file
+      ansible.builtin.file:
+        path: /tmp/oslo.messaging-14.7.2-py3-none-any.whl
+        state: absent
+      when: openstack_version == 'caracal'
+
+  when: ansible_os_family == 'Debian'
+
+- name: RedHat server initialize
+  block:
+    - name: Copy repository configuration files
+      template:
+        src: /root/okestro/okestro-openstack/roles/environment/templates/local.repo.j2
+        dest: /etc/yum.repos.d/local.repo
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Copy gpg_key
+      copy:
+        src: "{{ item }}"
+        dest: "{{ repo_key_dir }}"
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - /root/okestro/okestro-openstack/roles/environment/files/PERCONA-PACKAGING-KEY
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-CentOS-SIG-Cloud
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-CentOS-SIG-NFV
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-CentOS-SIG-Virtualization-RDO
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-oracle
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-CentOS-SIG-Messaging
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-CentOS-SIG-Storage
+        - /root/okestro/okestro-openstack/roles/environment/files/RPM-GPG-KEY-Percona
+
+    - name: dnf update
+      dnf:
+        update_cache: yes
+
+    - name: Package Installation RedHat
+      dnf:
+        name:
+          - curl
+          - telnet
+          - tree
+          - tcpdump
+          - iperf3
+          - net-tools
+          - net-snmp
+          - lldpd
+          - ipmitool
+          - freeipmi
+          - sysfsutils
+        state: present
+
+    - name: Stop & Disable Firewall RedHat
+      service:
+        name: firewalld
+        state: stopped
+        enabled: no
+    
+    - name: Disable SELINUX
+      ansible.posix.selinux:
+        state: disabled
+          
+  when: ansible_os_family == 'RedHat'
+
+- name: Add or modify * nofile limits for wildcard domain
+  pam_limits:
+    domain: '*'
+    limit_type: '-'
+    limit_item: nofile
+    value: '65536'
+    use_max: yes
+
+- name: sysctl tunning
+  blockinfile:
+    state: present
+    insertafter: EOF
+    dest: /etc/sysctl.conf
+    marker: "### {mark} okestro kernel tunning ###"
+    content: |
+      fs.file-max = 1000000
+      net.ipv4.ip_nonlocal_bind = 1
+      net.ipv4.ip_forward = 1
+      net.ipv4.conf.all.rp_filter = 0
+      net.ipv4.conf.default.rp_filter = 0
+      net.ipv6.conf.all.disable_ipv6 = 1
+      net.core.somaxconn = 1024
+      net.core.netdev_max_backlog = 5000
+      net.core.rmem_max = 16777216
+      net.core.wmem_max = 16777216
+
+- name: sysctl -p
+  command: sysctl -p
+
+- name: Timedate Set to Asia/Seoul
+  timezone:
+    name: "{{ timezone }}"
+
+- name: NTP Service Install
+  ansible.builtin.package:
+    update_cache: yes
+    name: chrony
+    state: present
+
+- name: NTP Config Setting
+  template:
+    src: /root/okestro/okestro-openstack/roles/environment/templates/chrony.conf.j2
+    dest: "{{ chrony_config_path }}" 
+    owner: root
+    group: root
+    mode: 0644
+
+- name: NTP Service Restart
+  service:
+    name: chronyd
+    state: restarted
+    enabled: yes

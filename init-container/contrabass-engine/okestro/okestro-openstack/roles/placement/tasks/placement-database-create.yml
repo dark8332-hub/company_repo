@@ -1,0 +1,18 @@
+- name: Create placement DB
+  mysql_db:
+    name: placement
+    state: present
+
+- name: Update mysql placement password for all placement accounts
+  no_log: true
+  mysql_user:
+     name: placement
+     host: "{{ item }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: placement.*:ALL,GRANT
+     state: present
+     update_password: on_create
+  with_items:
+     - localhost
+     - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}" 

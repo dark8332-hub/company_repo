@@ -1,0 +1,49 @@
+---
+- name: Copy Thanos query front service & memcached file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-query-front.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-query-front.service',owner: 'root',group: 'root',mode: '0644' }
+    - { src: '{{ thanos_query_front_memcached_daemon_file }}',dest: '{{ thanos_service_daemon_path }}/memcached-thanos.service',owner: 'root',group: 'root',mode: '0644' }
+    - { src: '{{ thanos_query_front_memcached_config_file }}',dest: '{{ memcached_config_dir }}/{{ thanos_query_front_memcached }}',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-query-front-response-cache.yml.j2',dest: '{{ thanos_config_dir }}/config/thanos-query-front-response-cache.yml',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Thanos query front and memcached-thanos services
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  loop:
+    - thanos-query-front
+    - memcached-thanos
+
+- name: Configure Internal Thanos query front to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} monitoring_thanos_query_front ##"
+    insertbefore: EOF
+    block: |
+      listen int_thanos_query_front
+        bind {{ monitoring_vip_address }}:{{ thanos_query_front_http_loadbalance_port }} {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+        balance  source
+        option tcpka
+        option httpchk
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ thanos_query_front_http_port }} check inter 2000 rise 2 fall 5 {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+      {% endfor %}
+
+- name: Restart HAProxy service
+  service:
+    name: haproxy
+    state: restarted
+  ignore_errors: true

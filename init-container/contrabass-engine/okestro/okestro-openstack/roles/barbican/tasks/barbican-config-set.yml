@@ -1,0 +1,103 @@
+---
+- name: Barbican file Settings
+  template:
+    src: "{{ barbican_config }}.j2"
+    dest: "{{ barbican_dir }}/{{ barbican_config }}"
+    owner: barbican
+    group: barbican
+    mode: 0644
+    backup: true
+
+- include_tasks: barbican-dbsync.yml
+  when: groups['controller'] is defined and inventory_hostname == groups['controller'][0]
+
+- name: Configure Internal Barbican to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_barbican ##"
+    insertbefore: "# public"
+    block: |
+      listen int_barbican
+        bind {{ internal_vip_address }}:{{ barbican_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ barbican_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: barbican_int_haproxy
+
+- name: Configure External Barbican to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_barbican ##"
+    insertbefore: "# monitoring" 
+    block: |
+      listen pub_barbican
+        bind {{ external_vip_address }}:{{ barbican_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{external_fqdn_cert}} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ barbican_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: barbican_pub_haproxy
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Set Barbican WSGI processes to 6 on Ubuntu
+  ansible.builtin.replace:
+    path: /etc/apache2/conf-available/barbican-api.conf
+    regexp: 'processes=3'
+    replace: 'processes=6'
+    backup: yes
+  when: ansible_os_family == "Debian"
+
+- name: Set Barbican gunicorn workers to 6 on RedHat
+  ansible.builtin.lineinfile:
+    path: /etc/barbican/gunicorn-config.py
+    regexp: '^workers\s*='
+    line: 'workers = 6'
+    insertafter: '^#workers = multiprocessing.cpu_count'
+    backup: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Barbican-API service log file enable - Suse
+  ini_file:
+    dest: /usr/lib/systemd/system/openstack-barbican-api.service
+    section: Service
+    option: '{{ item.key }}'
+    value: '{{ item.value }}'
+  with_dict:
+    StandardOutput: "append:/var/log/barbican/barbican-api.log"
+    StandardError: "append:/var/log/barbican/barbican-api.log"
+  when: ansible_os_family == "RedHat"
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Restart Barbican
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - "{{ pac_barbican_keystone_listener }}"
+    - "{{ pac_barbican_worker }}"
+    - "{{ serv_barbican_api }}"
+
+- name: Change owner/group of barbican-api log file to barbican for Suse
+  ansible.builtin.file:
+    path: /var/log/barbican/barbican-api.log
+    owner: barbican
+    group: barbican

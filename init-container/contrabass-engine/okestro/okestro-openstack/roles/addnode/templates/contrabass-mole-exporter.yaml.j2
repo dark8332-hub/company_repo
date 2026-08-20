@@ -1,0 +1,4 @@
+- targets:
+{% for host in (groups['compute'] + groups.get('new-compute', [])) %}
+  - {{ hostvars[host]['ansible_'~monitoring_network_interface].ipv4.address }}:{{ contrabass_mole_exporter_port }}
+{% endfor %}

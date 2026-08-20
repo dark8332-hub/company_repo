@@ -1,0 +1,46 @@
+---
+- name: Configure keystone policy
+  file:
+    src: /usr/share/keystone/wsgi-keystone.conf
+    dest: /etc/httpd/conf.d/wsgi-keystone.conf
+    state: link
+    force: true
+  when: ansible_os_family == "RedHat"
+
+- name: Change Keystone WSGI processes 6 for Ubuntu
+  replace:
+    path: /etc/apache2/sites-available/keystone.conf
+    regexp: 'WSGIDaemonProcess\s+keystone-public\s+processes=5'
+    replace: 'WSGIDaemonProcess keystone-public processes=6'
+    backup: yes
+  when: ansible_os_family == "Debian"
+
+- name: Change Keystone WSGI processes 6 for Suse
+  replace:
+    path: /etc/httpd/conf.d/wsgi-keystone.conf
+    regexp: 'WSGIDaemonProcess\s+keystone-public\s+processes=5'
+    replace: 'WSGIDaemonProcess keystone-public processes=6'
+    backup: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Set ownership on /etc/keystone
+  ansible.builtin.file:
+    path: /etc/keystone
+    owner: keystone
+    group: keystone
+    recurse: true
+  when: ansible_os_family == "RedHat"
+
+- name: Configure apache2.conf
+  lineinfile:
+    path: "{{ apache_conf }}"
+    backup: true
+    insertbefore: BOF
+    line: "ServerName {{ ansible_hostname }}"
+  register: servername_conf
+
+- name: Restart apache
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted
+  when: servername_conf.changed

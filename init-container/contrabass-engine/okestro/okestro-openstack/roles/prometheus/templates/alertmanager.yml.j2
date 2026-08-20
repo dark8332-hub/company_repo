@@ -1,0 +1,38 @@
+route:
+  receiver: 'null'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 1h
+
+  routes:
+    - receiver: 'prometheus-am-executor-galera'
+      matchers:
+        - alertname = "GaleraClusterPartitioned"
+        - severity = "critical"
+        - team = "db"
+        - environment = "production"
+        - cause = "network_partition"
+        - component = "mysql_galera"
+      group_by: ['alertname', 'instance', 'component', 'cause']
+      group_wait: 5s
+      group_interval: 1m
+      repeat_interval: 24h
+
+receivers:
+  - name: 'null'
+
+  - name: 'prometheus-am-executor-galera'
+    webhook_configs:
+{% for item in groups['controller'] %}
+      - url: 'http://{{ hostvars[item]["ansible_" ~ monitoring_network_interface]["ipv4"]["address"] }}:9999/'
+        send_resolved: false
+{% endfor %}
+
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'dev', 'instance']
+

@@ -1,0 +1,44 @@
+- name: Create Placement Service
+  openstack.cloud.catalog_service:
+    cloud: "{{ cloud }}"   
+    state: present
+    name: placement
+    service_type: placement
+    description: Placement API
+    interface: internal
+
+- name: Create Placement User
+  openstack.cloud.identity_user:
+    auth:
+    cloud: "{{ cloud }}"   
+    state: present
+    name: placement
+    password: "{{ keystone_pass }}"
+    domain: default
+    default_project: service
+    interface: internal
+
+- name: placement user role assignment 
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: placement
+    role: "{{ item }}"
+    project: service
+    interface: internal
+  with_items:
+    - 'admin'
+    - 'service'
+
+- name: Placement endpoint create
+  openstack.cloud.endpoint:
+    cloud: "{{ cloud }}"
+    service: placement
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ placement_bind_port }}"
+    region: "{{ region_one }}"
+    state: present
+    interface: internal
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }

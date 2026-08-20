@@ -1,0 +1,8 @@
+[Unit]
+Description=Node Exporter
+
+[Socket]
+ListenStream={{ node_exporter_port }}
+
+[Install]
+WantedBy=sockets.target

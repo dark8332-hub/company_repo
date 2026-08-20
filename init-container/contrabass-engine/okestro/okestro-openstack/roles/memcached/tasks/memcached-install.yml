@@ -1,0 +1,11 @@
+---
+- name: memcached install Ubuntu
+  ansible.builtin.package:
+    name:
+       - "{{ pac_memcached }}"
+       - "{{ pac_python3_memcached }}"
+
+- name: enable memcached 
+  service:
+    name: memcached
+    enabled: true

@@ -1,0 +1,106 @@
+[DEFAULT]
+graceful_shutdown_timeout = 5
+os_privileged_user_tenant = service
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+os_privileged_user_password = {{ keystone_pass }}
+os_privileged_user_name = nova
+os_privileged_user_auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if enable_tls_internal  %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+os_privileged_user_auth_url = http://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% endif %}
+logging_exception_prefix = %(color)s%(asctime)s.%(msecs)03d TRACE %(name)s [01;35m%(instance)s[00m
+logging_debug_format_suffix = [00;33mfrom (pid=%(process)d) %(funcName)s %(pathname)s:%(lineno)d[00m
+logging_default_format_string = %(asctime)s.%(msecs)03d %(color)s%(levelname)s %(name)s [[00;36m-%(color)s] [01;35m%(instance)s%(color)s%(message)s[00m
+logging_context_format_string = %(asctime)s.%(msecs)03d %(color)s%(levelname)s %(name)s [[01;36m%(request_id)s [00;36m%(project_name)s %(user_name)s%(color)s] [01;35m%(instance)s%(color)s%(message)s[00m
+use_syslog = False
+debug = false
+masakari_api_workers = 6
+nova_catalog_admin_info = compute:nova:internalURL
+#nova_ca_certificates_file = {{ internal_fqdn_cert }} 
+notification_driver = taskflow_driver
+os_regione_name = ReigonOne
+os_user_domain_name = default
+os_project_domain_name = default
+log_dir = /var/log/masakari
+wait_period_after_evacuation = 600
+verify_interval = 3
+
+
+[database]
+connection = mysql+pymysql://masakari:{{ db_password }}@{{ internal_endpoint }}:{{ percona_bind_port }}/masakari
+
+
+[keystone_authtoken]
+{% if enable_tls_internal  %}
+service_type = instance-ha
+www_authenticate_uri = https://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = https://{{ internal_endpoint }}:{{ keystone_bind_port }}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+www_authenticate_uri = http://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = http://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = masakari
+password = {{ keystone_pass }}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:11211{% if not loop.last %},{% endif %}{% endfor %}
+
+service_token_roles = service
+service_token_roles_required = true
+
+
+[taskflow]
+connection = mysql+pymysql://masakari:{{ db_password }}@{{ internal_endpoint}}:{{ percona_bind_port }}/masakari?charset=utf8
+
+[instance_failure]
+process_all_instances = true
+
+[oslo_messaging_notifications]
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+driver = noop
+
+[oslo_middleware]
+enable_proxy_headers_parsing = True
+
+[oslo_messaging_rabbit]
+rabbit_quorum_queue = true
+rabbit_transient_quorum_queue = True
+#use_queue_manager = True
+#rabbit_stream_fanout = True
+rabbit_qos_prefetch_count = 10
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+kombu_missing_consumer_retry_timeout = 60
+heartbeat_timeout_threshold = 60
+heartbeat_rate = 2
+kombu_failover_strategy = round-robin
+
+[oslo_concurrency]
+lock_path = /var/lock/masakari
+
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+[coordination]
+backend_url = memcached://{{ internal_endpoint }}:11211

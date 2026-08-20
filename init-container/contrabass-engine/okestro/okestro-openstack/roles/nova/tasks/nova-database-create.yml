@@ -1,0 +1,28 @@
+- name: Create nova DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+     - db: nova
+     - db: nova_api
+     - db: nova_cell0
+
+
+- name: Update mysql nova-api password for all nova-api accounts
+  no_log: true
+  mysql_user:
+     name: nova
+     host: "{{ item.host }}"
+     plugin: caching_sha2_password
+     plugin_auth_string: "{{ db_password }}"
+     priv: "{{ item.db }}.*:ALL"
+     state: present
+     append_privs: yes
+     update_password: on_create
+  with_items:
+    - { host: 'localhost', db: 'nova' }
+    - { host: 'localhost', db: 'nova_api' }
+    - { host: 'localhost', db: 'nova_cell0' }
+    - { host: "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}", db: 'nova' }
+    - { host: "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}", db: 'nova_api' }
+    - { host: "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}", db: 'nova_cell0' }

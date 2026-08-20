@@ -1,0 +1,44 @@
+---
+- name: Setup Server For Masakari 
+  setup:
+
+- include_tasks: masakari-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: masakari-con-install.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: masakari-con-config-set.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: masakari-init.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: masakari-restart.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: masakari-com-install.yml
+  when:
+    - inventory_hostname in groups["compute"]
+    - enable_masakari_only == true
+
+- include_tasks: masakari-com-config-set.yml
+  when:
+    - inventory_hostname in groups["compute"]
+    - enable_masakari_only == true
+
+- include_tasks: masakari-pcs-com-set.yml
+  when:
+    - inventory_hostname in groups["compute"]
+    - enable_masakari_only == true
+
+- include_tasks: masakari-pcs-con-set.yml
+  when:
+    - inventory_hostname in groups["openstack"]
+    - enable_masakari_only == true
+
+- include_tasks: masakari-disable-monitors.yml
+  when:
+    - inventory_hostname in groups["compute"]
+    - enable_masakari_only == true
+    - ansible_os_family == "Debian"

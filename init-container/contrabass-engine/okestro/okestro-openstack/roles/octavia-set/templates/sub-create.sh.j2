@@ -1,0 +1,92 @@
+#!/bin/bash
+set -ex
+
+# OpenStack CLI 환경
+source /root/contrabass-openrc
+
+# === 사용자/환경 변수 (필요 시 수정) ==========================
+# 포트 "이름"만 알면 자동으로 IP/Prefix를 가져와 세팅합니다.
+OCTAVIA_HEALTH_MANAGER_PORT_NAME={{ octavia_health_manager_port_name }}
+
+# MGMT Port 가 없을 때 새로 만들 때 사용할 고정 IP
+OCTAVIA_MGMT_PORT_IP={{ octavia_health_manager_ip }}
+
+# Amphora 관리 네트워크 / 보안그룹 이름 (기존 템플릿 변수 그대로 사용)
+OCTAVIA_NETWORK_NAME={{ OCTAVIA_NETWORK_NAME }}
+H_SECURITY_GROUP_NAME={{ H_SECURITY_GROUP_NAME }}
+
+# MGMT subnet 이름 (필요하면 lb-mgmt-subnet 대신 환경에 맞게 변경)
+OCTAVIA_MGMT_SUBNET_NAME=lb-mgmt-subnet
+
+# MTU는 네트워크에서 조회되면 그 값을 쓰고, 조회 실패 시 아래 기본값 사용
+DEFAULT_MTU=1450
+# ============================================================
+
+# --- 1) Health Manager MGMT 포트 존재 여부 확인 및 생성 -----------------
+
+# 먼저 포트 존재 여부 체크 (없으면 오류 무시)
+MGMT_PORT_ID=$(openstack port show -f value -c id "$OCTAVIA_HEALTH_MANAGER_PORT_NAME" 2>/dev/null || true)
+
+if [ -z "$MGMT_PORT_ID" ]; then
+  # Subnet ID 구해서 고정 IP 설정
+  SUBNET_ID_CREATE=$(openstack subnet show "$OCTAVIA_MGMT_SUBNET_NAME" -f value -c id)
+  PORT_FIXED_IP="--fixed-ip subnet=$SUBNET_ID_CREATE,ip-address=$OCTAVIA_MGMT_PORT_IP"
+
+  # MGMT Port 생성
+  MGMT_PORT_ID=$(openstack port create \
+    --security-group "$H_SECURITY_GROUP_NAME" \
+    --device-owner octavia:health-mgr \
+    --host="$(hostname)" \
+    --network "$OCTAVIA_NETWORK_NAME" \
+    -c id -f value \
+    $PORT_FIXED_IP \
+    "$OCTAVIA_HEALTH_MANAGER_PORT_NAME")
+fi
+
+# --- 2) Neutron 포트 정보 조회 (존재/신규 공통 처리) --------------------
+
+MGMT_PORT_MAC=$(openstack port show -f value -c mac_address "$MGMT_PORT_ID")
+FIXED_IPS_RAW=$(openstack port show -f value -c fixed_ips "$MGMT_PORT_ID")
+
+# fixed_ips 파싱 (ip_address & subnet_id)
+IP_ADDR=$(echo "$FIXED_IPS_RAW" | \
+  grep -oE "ip_address['\"]?[:=][ ']*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)" | \
+  grep -oE "([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)" | head -n1)
+
+SUBNET_ID=$(echo "$FIXED_IPS_RAW" | \
+  grep -oE "subnet_id['\"]?[:=][ ']*[a-f0-9-]{36}" | \
+  grep -oE "[a-f0-9-]{36}" | head -n1)
+
+# prefixlen 구하기
+CIDR=$(openstack subnet show -f value -c cidr "$SUBNET_ID")
+PREFIXLEN=$(echo "$CIDR" | awk -F/ '{print $2}')
+
+# 네트워크 MTU 조회 (없으면 DEFAULT_MTU 사용)
+NET_ID=$(openstack port show -f value -c network_id "$MGMT_PORT_ID")
+NET_MTU=$(openstack network show -f value -c mtu "$NET_ID" 2>/dev/null || true)
+MTU_TO_SET=${NET_MTU:-$DEFAULT_MTU}
+
+if [ -z "$IP_ADDR" ] || [ -z "$PREFIXLEN" ]; then
+  echo "ERROR: Unable to determine IP/prefix from Neutron port $MGMT_PORT_ID"
+  exit 1
+fi
+
+# --- 3) OVS 내부 포트 생성 및 IP 세팅 ----------------------------------
+
+# OVS 내부 포트 생성 및 속성 설정 (외부 ID 키 정확히 'external_ids:*')
+sudo ovs-vsctl -- --may-exist add-port br-int o-hm0 \
+  -- set Interface o-hm0 type=internal \
+  -- set Interface o-hm0 external_ids:iface-status=active \
+  -- set Interface o-hm0 external_ids:attached-mac="$MGMT_PORT_MAC" \
+  -- set Interface o-hm0 external_ids:iface-id="$MGMT_PORT_ID"
+
+ip link set dev o-hm0 address "$MGMT_PORT_MAC"
+ip link set dev o-hm0 mtu "$MTU_TO_SET"
+ip link set o-hm0 up
+
+# IP를 '고정'으로 설정 (이전 주소 있으면 정리)
+ip addr flush dev o-hm0 && sleep 1
+ip addr add "$IP_ADDR/$PREFIXLEN" dev o-hm0
+
+# Amphora 관리망으로 기본 경로가 생기지 않도록 정리
+ip route del default via 172.16.0.1 dev o-hm0 2>/dev/null || true

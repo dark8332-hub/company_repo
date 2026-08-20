@@ -1,0 +1,38 @@
+service_type: mon
+placement:
+  hosts:
+{% for host in groups['mons'] %}
+    - {{ host }}
+{% endfor %}
+---
+service_type: mgr
+placement:
+  hosts:
+{% for host in groups['mons'] %}
+    - {{ host }}
+{% endfor %}
+---
+{% if groups['mdss'] | length > 0 %}
+---
+service_type: mds
+service_id: cephfs
+placement:
+  hosts:
+{% for host in groups['mdss'] %}
+    - {{ host }}
+{% endfor %}
+{% endif %}
+{% if groups['rgws'] | length > 0 %}
+---
+service_type: rgw
+service_id: radosgw
+placement:
+  hosts:
+{% for host in groups['rgws'] %}
+    - {{ host }}
+{% endfor %}
+networks:
+- {{ ceph_monitor_network }}
+spec:
+  rgw_frontend_port: {{ rgw_port }}
+{% endif %}

@@ -1,0 +1,39 @@
+- name: Configure Internal RadosGW to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_s3 ##"
+    insertbefore: "# public"
+    block: |
+      listen int_radosgw
+        bind {{ internal_vip_address }}:{{ radosgw_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['rgws'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~radosgw_interface].ipv4.address }}:{{ radosgw_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External RadosGW to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_s3 ##"
+    insertbefore: "# monitoring" 
+    block: |
+      listen pub_radosgw
+        bind {{ external_vip_address }}:{{ radosgw_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['rgws'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~radosgw_interface].ipv4.address }}:{{ radosgw_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted

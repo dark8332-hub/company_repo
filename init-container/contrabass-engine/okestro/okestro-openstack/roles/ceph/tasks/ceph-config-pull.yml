@@ -1,0 +1,9 @@
+---
+- name:  Pulling Ceph Config files
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: true
+  with_items:
+    - { src: "{{ ceph_dir }}/{{ ceph_config }}",dest: "roles/ceph/files/{{ ceph_config }}" }
+

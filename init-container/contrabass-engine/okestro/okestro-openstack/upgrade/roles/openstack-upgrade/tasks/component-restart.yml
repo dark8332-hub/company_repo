@@ -1,0 +1,78 @@
+---
+- name: Controller glance-api restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - glance-api
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["controller"]
+
+- name: Controller nova restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - nova-api
+    - nova-conductor
+    - nova-novncproxy
+    - nova-scheduler
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["controller"]
+
+- name: Controller neutron restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - neutron-server
+    - neutron-openvswitch-agent
+  when:
+    - inventory_hostname in groups["controller"]
+
+- name: Controller cinder restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - cinder-scheduler
+    - cinder-volume
+    - cinder-backup
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["controller"]
+
+- name: Compute Service restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - nova-compute
+    - neutron-openvswitch-agent
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["compute"]
+
+- name: Neutron Agent restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - neutron-dhcp-agent
+    - neutron-metadata-agent
+    - neutron-l3-agent
+  when: inventory_hostname in groups["neutron_agent"]
+
+- name: Apache and Memcached restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - apache2
+    - memcached
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["controller"]

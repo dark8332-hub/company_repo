@@ -1,0 +1,13 @@
+- name: Setup Server For Swift 
+  setup:
+
+- include_tasks: swift-init.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: swift-haproxy-confing-add.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: swift-radosgw-config-setting.yml
+  when: 
+    - inventory_hostname in groups["mons"][0]
+    - cinder_backend == 'ceph'

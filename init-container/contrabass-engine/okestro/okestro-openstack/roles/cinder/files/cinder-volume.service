@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenStack Cinder Volume
+After=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service tgt.service network-online.target local-fs.target remote-fs.target
+Wants=postgresql.service mysql.service keystone.service rabbitmq-server.service ntp.service tgt.service network-online.target
+
+Documentation=man:cinder-volume(1)
+
+[Service]
+User=cinder
+Group=cinder
+Type=simple
+WorkingDirectory=~
+RuntimeDirectory=cinder lock/cinder
+CacheDirectory=cinder
+ExecStart=/usr/local/bin/cinder-volume --config-file=/etc/cinder/cinder.conf --log-file=/var/log/cinder/cinder-volume.log
+Restart=on-failure
+LimitNOFILE=65535
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,29 @@
+---
+- name: apache2 restart
+  service: 
+    name: "{{ pac_apache }}"
+    state: restarted
+
+- name: Permission secret_key settings
+  file:
+    path: /var/lib/openstack-dashboard/secret_key
+    owner: "{{ horizon_owner }}"
+    group: "{{ horizon_owner }}"
+    mode: 0600
+  when:
+    - enable_horizon_tls | bool
+
+- name: Collect static files for Horizon
+  ansible.builtin.command:
+    cmd: python3 manage.py collectstatic --noinput
+    chdir: /usr/share/openstack-dashboard
+
+- name: Compress static assets for Horizon
+  ansible.builtin.command:
+    cmd: python3 manage.py compress --force
+    chdir: /usr/share/openstack-dashboard
+
+- name: apache2 restart
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted

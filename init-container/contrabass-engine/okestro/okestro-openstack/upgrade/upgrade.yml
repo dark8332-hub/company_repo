@@ -1,0 +1,9 @@
+- name: Openstack Upgrade
+  become: true
+  hosts:
+    - openstack
+    - controller
+    - compute
+    - neutron_agent
+  roles:
+    - { role: openstack-upgrade }

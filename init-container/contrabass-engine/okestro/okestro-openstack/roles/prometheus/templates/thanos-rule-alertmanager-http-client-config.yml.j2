@@ -1,0 +1,15 @@
+alertmanagers:
+- http_config:
+{% if monitoring_enable_tls %}
+    tls_config:
+      cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+      key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+      ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+      insecure_skip_verify: false
+  scheme: https
+{% else %}
+  scheme: http
+{% endif %}
+  static_configs: [{% for item in groups['controller'] %}"{{ hostvars[item]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"{% if not loop.last %},{% endif %}{% endfor %}]
+  timeout: 10s
+  api_version: v1

@@ -1,0 +1,56 @@
+---
+- name: Copy OpenStack-exporter binary file
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'openstack-exporter',dest: '{{ exe_path }}',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Copy OpenStack-exporter web config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'openstack-exporter-web-config.yml.j2',dest: '{{ openstack_exporter_config_dir }}/web-config.yml',owner: 'root',group: 'root',mode: '0644' }
+  when: monitoring_enable_tls == true
+
+- name: Copy OpenStack-exporter service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'openstack-exporter.service.j2',dest: '{{ openstack_exporter_service_daemon_path }}/openstack-exporter.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start OpenStack-exporter service
+  service:
+    name: openstack-exporter
+    state: restarted
+    enabled: true
+
+- name: Check openstack_exporter pacemaker resource
+  command: pcs resource config openstack_exporter
+  register: openstack_exporter_check
+  changed_when: false
+  failed_when: false
+  when:
+    - inventory_hostname in groups["controller"][0]
+
+- name: Create openstack_exporter pacemaker resource in openstack group
+  command: "{{ item }}"
+  with_items:
+    - pcs resource create openstack_exporter systemd:openstack-exporter op monitor interval=20s timeout=20 --group openstack
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - openstack_exporter_check.rc != 0

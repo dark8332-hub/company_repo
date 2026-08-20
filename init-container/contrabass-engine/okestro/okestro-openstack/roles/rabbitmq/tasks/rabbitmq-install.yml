@@ -1,0 +1,22 @@
+---
+- name: Install rabbitmq-server
+  ansible.builtin.dnf:
+    name:
+      - rabbitmq-server-4.1.2
+      - erlang
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install rabbitmq-server
+  ansible.builtin.apt:
+    name:
+      #      - rabbitmq-server=4.1.2-1
+      - rabbitmq-server
+      - erlang
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Enable RabbitMQ
+  service:
+    name: rabbitmq-server
+    enabled: true

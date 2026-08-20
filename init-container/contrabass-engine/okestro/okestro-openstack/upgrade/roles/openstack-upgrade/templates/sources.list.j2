@@ -1,0 +1,19 @@
+{% if package_ip == "default" %}
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb [arch=amd64] http://repo.percona.com/prel/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://repo.percona.com/pxc-80/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://repo.percona.com/tools/apt {{ ansible_distribution_release }} main
+{% else %}
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }} main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/prel/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/tools/apt {{ ansible_distribution_release }} main
+{% if percona_version == 8 %}
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/pxc-80/apt {{ ansible_distribution_release }} main
+{% elif percona_version == 5.7 %}
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/percona/apt {{ ansible_distribution_release }} main
+{% endif %}
+{% endif %}

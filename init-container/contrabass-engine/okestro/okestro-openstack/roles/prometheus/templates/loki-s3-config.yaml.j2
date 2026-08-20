@@ -1,0 +1,86 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+{% if monitoring_enable_tls %}
+  http_tls_config: &tls_server_config
+    cert_file: /opt/monitoring-certs/monitoring-server.crt
+    key_file: /opt/monitoring-certs/monitoring-server.key
+{% endif %}
+  grpc_listen_port: 9096
+  log_level: debug
+  grpc_server_max_concurrent_streams: 1000
+
+common:
+  path_prefix: /var/lib/loki
+
+compactor:
+  working_directory: /var/lib/loki/compactor
+  retention_enabled: true
+  compaction_interval: 10m
+  delete_request_store: aws
+
+frontend_worker:
+  frontend_address: 127.0.0.1:9096
+
+ingester:
+  lifecycler:
+    address: {{ hostvars[inventory_hostname]['ansible_'~monitoring_network_interface]['ipv4']['address'] }}
+    ring:
+      kvstore:
+{% if groups['controller'] | length == 1 %}
+        store: inmemory
+      replication_factor: 1
+{% else %}
+        store: memberlist
+      replication_factor: {{ groups['controller'] | length }}
+{% endif %}
+
+distributor:
+  ring:
+    kvstore:
+{% if groups['controller'] | length == 1 %}
+      store: inmemory
+{% else %}
+      store: memberlist
+{% endif %}
+
+{% if groups['controller'] | length > 1 %}
+memberlist:
+  bind_addr:
+    - {{ hostvars[inventory_hostname]['ansible_' ~ monitoring_network_interface].ipv4.address }}
+  bind_port: 7946
+  advertise_addr: {{ hostvars[inventory_hostname]['ansible_' ~ monitoring_network_interface].ipv4.address }}
+  advertise_port: 7946
+  join_members:
+{% for item in groups['controller'] %}
+    - {{ hostvars[item]['ansible_'~monitoring_network_interface].ipv4.address }}
+{% endfor %}
+{% endif %}
+
+schema_config:
+  configs:
+  - from: 2025-01-01
+    store: tsdb
+    object_store: s3
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /var/lib/loki/index
+    cache_location: /var/lib/loki/index_cache
+  aws:
+    s3: http://{{ s3_access_key }}:{{ s3_secret_key }}@{{ monitoring_vip_address }}:{{ minio_bind_port }}/{{ loki_bucket }}
+    insecure: true
+    s3forcepathstyle: true
+
+analytics:
+  reporting_enabled: false
+
+limits_config:
+  ingestion_rate_mb: 40
+  ingestion_burst_size_mb: 80
+  retention_period: {{ loki_retention_period | default('30d') }}

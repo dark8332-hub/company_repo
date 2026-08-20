@@ -1,0 +1,87 @@
+---
+- name: Confirm whether user really meant to remove the Contrabass Openstack Compute Node
+  hosts: localhost
+  gather_facts: false
+
+  vars_prompt:
+    - name: purge_contrabass_compute
+      prompt: |
+        [WARNING] 이 플레이북은 Contrabass OpenStack Compute 노드를 "삭제(purge)" 합니다.
+        - 대상 compute 호스트에서 OpenStack 관련 패키지/서비스를 제거합니다.
+        - Contrabass 제품에 포함되지 않은 패키지는 수동으로 삭제해야 합니다.
+        - 반드시 해당 compute 호스트의 모든 인스턴스를 evacuate/migrate 완료한 뒤 실행해야 합니다.
+        - 해당 Ansbile 진행 중 노드는 완전한 Purge를 위해 자동 재부팅 됩니다.
+
+        계속 진행하시겠습니까? (yes/no)
+      default: 'no'
+      private: no
+
+  tasks:
+    - name: Exit playbook if user did not confirm purge compute
+      ansible.builtin.fail:
+        msg: >
+          Exit to Purge Contrabass Openstack Compute. Not purged.
+          If you really want to purge Contrabass Openstack Compute nodes,
+          answer 'yes' at the prompt.
+      when: purge_contrabass_compute != 'yes'
+
+    - name: Confirm [purge-compute] host list
+      ansible.builtin.pause:
+        prompt: |
+          [purge-compute] 그룹에 설정된 purge 대상 호스트 목록:
+          ====================================================
+          ====================================================
+          {% for h in groups['purge-compute'] | default([]) %}
+            - {{ h }}
+          {% endfor %}
+          ====================================================
+          ====================================================
+
+          [WARNING] 위 [purge-compute] 호스트들이 실제 purge 대상입니다.
+          목록이 정확한지 다시 한 번 확인하세요.
+
+          계속 진행하려면 'yes' 를 입력하고,
+          취소하려면 다른 값을 입력하십시오:
+      register: purge_hosts_confirm
+
+    - name: Exit playbook if purge_compute host list not confirmed
+      ansible.builtin.fail:
+        msg: >
+          Exit to Purge Contrabass Openstack Compute. Host list not confirmed.
+          Fix [purge-compute] group in inventory and run again.
+      when: purge_hosts_confirm.user_input != 'yes'
+
+- name: Ansible environment initialization
+  become: true
+  hosts: localhost
+  any_errors_fatal: true
+  roles:
+    - role: ssh-copy
+      tags: ssh-copy
+
+
+- name: Purge Contrabass Compute node
+  become: true
+  hosts: openstack
+  any_errors_fatal: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Check Openstack compute service list
+      ansible.builtin.shell: |
+        . /root/contrabass-openrc && openstack compute service list
+      args:
+        executable: /bin/bash
+      when: inventory_hostname == groups['controller'][0]
+      changed_when: false
+
+    - name: Check Openstack network agent list
+      ansible.builtin.shell: |
+        . /root/contrabass-openrc && openstack network agent list
+      args:
+        executable: /bin/bash
+      when: inventory_hostname == groups['controller'][0]
+      changed_when: false
+
+  roles:
+    - role: purge-compute

@@ -1,0 +1,18 @@
+---
+- name: Copy configuration file 
+  template:
+    src: "memcached.conf.j2"
+    dest: "{{ memcached_config_dir }}/{{ memcached_config }}"
+    owner: root
+    group: root
+    mode: 0644
+  register: memcached_conf
+
+- name: Wait for applying memcached config
+  wait_for:
+    timeout: 10
+
+- name: Restart memcached
+  service:
+    name: memcached
+    state: restarted

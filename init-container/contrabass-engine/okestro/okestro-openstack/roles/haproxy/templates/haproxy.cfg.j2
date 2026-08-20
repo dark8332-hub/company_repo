@@ -1,0 +1,34 @@
+global
+  chroot  /var/lib/haproxy
+  daemon
+  group  haproxy
+  maxconn  20000
+  pidfile  /var/run/haproxy.pid
+  user  haproxy
+  log /dev/log    local0
+  log /dev/log    local1 notice
+
+defaults
+  log  global
+  maxconn  20000
+  option  redispatch
+  retries  3
+  timeout  http-request 3600s
+  timeout  queue 1m
+  timeout  connect 3600s
+  timeout  client 3600s
+  timeout  server 3600s
+  timeout  check 3600s
+
+listen stats
+  bind *:8999 
+  mode http
+  stats enable
+  stats realm Haproxy\ Statistics
+  stats uri /stats
+
+# internal
+
+# public
+
+# monitoring
