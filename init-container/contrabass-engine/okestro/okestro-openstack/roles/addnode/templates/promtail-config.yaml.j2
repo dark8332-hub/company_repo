@@ -1,0 +1,61 @@
+server:
+  http_listen_port: 9080
+{% if monitoring_enable_tls %}
+  http_tls_config:
+    cert_file: /opt/monitoring-certs/monitoring-server.crt
+    key_file: /opt/monitoring-certs/monitoring-server.key
+{% endif %}
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+{% if monitoring_enable_tls %}
+  - url: https://{{ internal_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push
+    tls_config:
+      cert_file: /opt/monitoring-certs/monitoring-server.crt
+      key_file: /opt/monitoring-certs/monitoring-server.key
+      insecure_skip_verify: true
+{% else %}
+  - url: http://{{ internal_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push
+{% endif %}
+    batchsize: 524288
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+    - localhost
+    labels:
+      job: syslog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/messages
+{% else %}
+      __path__: /var/log/syslog
+{% endif %}
+  - targets:
+      - localhost
+    labels:
+      job: authlog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/audit/audit.log
+{% else %}
+      __path__: /var/log/auth.log
+{% endif %}
+- job_name: openstack
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: novalog
+      __path__: /var/log/nova/*.log
+  - targets:
+      - localhost
+    labels:
+      job: neutronlog
+      __path__: /var/log/neutron/*.log
+  - targets:
+      - localhost
+    labels:
+      job: masakarimonitorlog
+      __path__: /var/log/masakarimonitors/masakari-host-monitor.log

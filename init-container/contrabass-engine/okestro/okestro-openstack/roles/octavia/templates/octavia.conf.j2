@@ -1,0 +1,116 @@
+[DEFAULT]
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[database]
+connection = mysql+pymysql://octavia:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/octavia
+
+[oslo_messaging]
+topic = octavia_prov
+
+[api_settings]
+bind_host = 0.0.0.0
+bind_port = 9876
+
+[keystone_authtoken]
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = octavia
+password = {{ keystone_pass }}
+
+[service_auth]
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+auth_type = password
+project_name = service
+username = octavia
+password = {{ keystone_pass }}
+project_domain_name = Default
+user_domain_name = Default
+
+[certificates]
+ca_private_key_passphrase = cloud1234
+ca_private_key = {{ octavia_dir }}/certs/server_ca.key.pem
+ca_certificate = {{ octavia_dir }}/certs/server_ca.cert.pem
+region_name = RegionOne
+endpoint_type = internal
+
+[haproxy_amphora]
+client_cert = {{ octavia_dir }}/certs/client.cert-and-key.pem
+server_ca = {{ octavia_dir }}/certs/server_ca.cert.pem
+
+[controller_worker]
+amp_image_tag = amphora
+amp_ssh_key_name = octavia-ssh-key
+amp_secgroup_list = 
+amp_boot_network_list = 
+amp_flavor_id = 200
+network_driver = allowed_address_pairs_driver
+compute_driver = compute_nova_driver
+amphora_driver = amphora_haproxy_rest_driver
+client_ca = /etc/octavia/certs/client_ca.cert.pem
+amp_active_retries = 100
+amp_active_wait_sec = 2
+
+loadbalancer_topology = ACTIVE_STANDBY
+
+[health_manager]
+bind_port = 5555
+bind_ip = {{ octavia_health_manager_ip }} 
+event_streamer_driver = noop_event_streamer
+health_check_interval = 3
+heartbeat_interval = 10
+heartbeat_key = None
+heartbeat_timeout = 60
+
+[glance]
+region_name = RegionOne
+endpoint_type = internal
+{% if internal_endpoint_protocol == "https" %}
+certificates_file = {{ internal_fqdn_cert }}
+{% endif %}
+
+[neutron]
+region_name = RegionOne
+endpoint_type = internal
+{% if internal_endpoint_protocol == "https" %}
+certificates_file = {{ internal_fqdn_cert }}
+{% endif %}
+
+[nova]
+region_name = RegionOne
+endpoint_type = internal
+enable_anti_affinity = True
+{% if internal_endpoint_protocol == "https" %}
+certificates_file = {{ internal_fqdn_cert }}
+{% endif %}
+
+[networking]
+port_detach_timeout = 300
+retry_interval = 1
+max_retries = 15
+
+[oslo_messaging_rabbit]
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}

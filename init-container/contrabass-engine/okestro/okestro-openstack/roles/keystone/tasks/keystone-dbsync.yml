@@ -1,0 +1,8 @@
+---
+- name: set keystone-manage.log
+  command: chown keystone. /var/log/keystone/keystone-manage.log
+  ignore_errors: yes
+
+- name: DB sync
+  changed_when: no
+  shell:  /bin/sh -c "keystone-manage db_sync" keystone

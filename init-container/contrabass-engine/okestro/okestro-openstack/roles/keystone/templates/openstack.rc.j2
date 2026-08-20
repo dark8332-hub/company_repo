@@ -1,0 +1,18 @@
+#!/bin/sh
+export PYTHONIOENCODING=utf8
+export OS_PROJECT_DOMAIN_NAME=Default
+export OS_USER_DOMAIN_NAME=Default
+export OS_PROJECT_NAME=admin
+export OS_USERNAME=admin
+export OS_PASSWORD="{{ keystone_pass }}"
+export OS_IDENTITY_API_VERSION=3
+export OS_IMAGE_API_VERSION=2
+export OS_INTERFACE=internal
+export PS1='[\u@\h \W(admin_openrc)]\$ '
+export OS_AUTH_URL={{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/
+{% if internal_endpoint_protocol == "https" %}
+export OS_CERT="{{ internal_fqdn_cert }}"
+{% endif %}
+{% if enable_manila %}
+export OS_MANILA_ENDPOINT_TYPE=internal
+{% endif %}

@@ -1,0 +1,16 @@
+---
+# Handlers for keystone
+- name: Restart Keystone
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Restart Apache2
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted

@@ -1,0 +1,13 @@
+---
+# Handlers for glance
+
+- name: Restart Glance 
+  service:
+    name: "{{ serv_glance }}"
+    state: restarted
+
+- name: Restart Haproxy 
+  service:
+    name: haproxy
+    state: restarted
+

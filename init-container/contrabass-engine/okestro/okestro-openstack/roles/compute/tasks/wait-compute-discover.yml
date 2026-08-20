@@ -1,0 +1,48 @@
+- block:
+  - name: Set expected_compute_service_hosts from inventory [compute]
+    set_fact:
+      expected_compute_service_hosts: "{{ groups['compute'] | map('extract', hostvars, ['inventory_hostname']) | list }}"
+
+  - name: Debug expected_compute_service_hosts checks
+    ansible.builtin.debug:
+      var:  expected_compute_service_hosts
+
+
+  - name: Waiting Compute-Discover to register
+    command: >
+      openstack
+      --os-interface internal
+      --os-auth-url {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/
+      --os-username admin
+      --os-password "{{ keystone_pass }}"
+      --os-identity-api-version 3
+      --os-project-domain-name Default
+      --os-user-domain-name Default
+      --os-project-name admin
+      {% if internal_endpoint_protocol == "https" %}
+      --os-cacert "{{ internal_fqdn_cert }}"
+      {% endif %}
+      hypervisor list --format json --column 'Hypervisor Hostname'
+    register: nova_compute_service
+    changed_when: false
+    retries: 10
+    delay: 10
+    until:
+      - nova_compute_service is success
+      - (nova_compute_service.stdout |
+        from_json |
+        map(attribute='Hypervisor Hostname') |
+        list ) is superset(expected_compute_service_hosts )
+    when: inventory_hostname in groups["controller"][0]
+
+  rescue:
+    - name: Run nova-manage cell_v2 discover_hosts
+      become: true
+      command: nova-manage cell_v2 discover_hosts --verbose
+      register: discover_hosts_output
+      changed_when: false
+        
+
+    - name: Debug nova-manage output
+      debug:
+        msg: "Output from nova-manage: {{ discover_hosts_output.stdout | default('No output available') }}"

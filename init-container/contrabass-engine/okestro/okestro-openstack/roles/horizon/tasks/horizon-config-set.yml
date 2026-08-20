@@ -1,0 +1,112 @@
+---
+- name: Horizon config file setting 
+  template:
+    src: "{{ item }}"
+    dest: "{{ horizon_dir }}/{{ horizon_config }}" 
+    owner: root
+    group: "{{ horizon_owner }}"
+    mode: 0644
+    backup: true
+  with_items:
+  - local_settings.py.j2
+  register: horizon_conf
+  notify: restart apache2
+
+- name: https port changes
+  template:
+    src: "{{ item }}"
+    dest: /etc/apache2/ports.conf
+    owner: root
+    group: horizon
+    mode: 0644
+    backup: true
+  with_items:
+  - ports.conf.j2
+  when: 
+    - enable_horizon_tls | bool
+    - ansible_os_family == "Debian"
+
+- name: Horizon enable-conf file setting 
+  template:
+    src: "{{ item }}"
+    dest: /etc/apache2/conf-available/openstack-dashboard.conf
+    owner: root
+    group: horizon
+    mode: 0644
+    backup: true
+  with_items:
+  - openstack-dashboard.conf.j2
+  when: 
+    - enable_horizon_tls | bool
+    - ansible_os_family == "Debian"
+  register: horizon_conf
+  notify: restart apache2
+  
+- name: Horizon enable-conf file setting
+  template:
+    src: "{{ item }}"
+    dest: /etc/httpd/conf.d/openstack-dashboard.conf
+    owner: root
+    group: "{{ horizon_owner }}"
+    mode: 0644
+    backup: true
+  with_items:
+    - openstack-dashboard.conf.j2
+  register: horizon_conf
+  notify: restart apache2
+  when:
+    - ansible_os_family == "RedHat"
+      
+- name: Restart apache2
+  service:
+    name: apache2
+    state: restarted
+  when: ansible_os_family == "Debian"
+
+- name: Restart httpd
+  service:
+    name: httpd
+    state: restarted
+  when: ansible_os_family == "RedHat"
+
+- name: Configure Internal Horizon to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_horizon ##"
+    insertbefore: "# public"
+    block: |
+      listen int_horizon
+        bind {{ internal_vip_address }}:443 {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{% if internal_endpoint_protocol == "http" %}80 check inter 2000 rise 2 fall 5{% elif internal_endpoint_protocol == "https" %}11443 check inter 2000 rise 2 fall 5 ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+      {% endfor %}
+
+- name: Configure External Horizon to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_horizon ##"
+    insertbefore: EOF
+    block: |
+      listen pub_horizon
+        bind {{ external_vip_address }}:443 {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{% if public_endpoint_protocol == "http" %}80 check inter 2000 rise 2 fall 5{% elif public_endpoint_protocol == "https" %}11443 check inter 2000 rise 2 fall 5 ssl crt {{ external_fqdn_cert }} ssl verify none {% endif %}
+
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted

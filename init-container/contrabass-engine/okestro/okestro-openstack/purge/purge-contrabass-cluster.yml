@@ -1,0 +1,1203 @@
+---
+- name: Confirm whether user really meant to purge the Contrabass Openstack
+  hosts: localhost
+  gather_facts: false
+  vars_prompt:
+    - name: purge_contrabass
+      prompt: Are you sure yo want to purge the Contrabass Openstack?
+      default: 'no'
+      private: no
+  tasks:
+    - name: exit playbook, if user did not mean to purge cluster
+      fail:
+        msg: >
+          "Exit to Purge Contrabass Openstack, Not Purged.
+           If You Want to Purge Contrabass Openstack, Say 'yes' on the prompt"
+      when: purge_contrabass != 'yes'
+
+- name: Delete Compute Nodes
+  hosts: compute
+  become: true
+  tasks:
+    - name: Delete Compute Node Neutron
+      block:
+        - name: Check neutron-l3-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-l3-agent.service
+          register: neutron_l3_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+ 
+        - name: Check neutron-metadata-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-metadata-agent.service
+          register: neutron_metadata_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+ 
+        - name: Check neutron-dhcp-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-dhcp-agent.service
+          register: neutron_dhcp_stat
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+ 
+        - name: Check neutron-openvswitch-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-openvswitch-agent.service
+          register: neutron_ovs_stat
+          when: 
+            - inventory_hostname not in groups["controller"]
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-l3-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+            - neutron_l3_stat.stat.exists
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-metadata-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+            - neutron_metadata_stat.stat.exists
+
+        - name: Stop Compute Node Neutron-Agents
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-dhcp-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+            - neutron_dhcp_stat.stat.exists
+
+        - name: Delete Compute Node Neutron-Agents
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - neutron-l3-agent
+            - neutron-metadata-agent
+            - neutron-dhcp-agent
+            - keepalived
+          when:
+            - inventory_hostname in groups["neutron_agent"]
+            - inventory_hostname not in groups["controller"]
+
+        - name: Stop Compute Node Neutron-Openvswitch
+          service:
+            name: neutron-openvswitch-agent
+            state: stopped
+            enabled: no
+          when: 
+            - inventory_hostname not in groups["controller"]
+            - neutron_ovs_stat.stat.exists
+          
+        - name: Delete Compute Node Neutron-Openvswitch
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - openvswitch-switch
+            - openvswitch-common
+            - python3-openvswitch
+            - neutron-openvswitch-agent
+            - neutron-common
+            - python3-neutron-lib
+            - python3-neutron
+            - python3-neutronclient
+          when:
+            - inventory_hostname not in groups["controller"]
+
+        - name: Delete Neutron User
+          user:
+            name: neutron
+            state: absent
+            remove: true
+          when: inventory_hostname not in groups["controller"]
+
+        - name: Delete Neutron Group
+          group:
+            name: neutron
+            state: absent
+          when: inventory_hostname not in groups["controller"]
+
+        - name: Delete Compute Node Neutron Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/neutron
+            - /etc/neutron
+            - /var/log/neutron
+            - /var/lock/neutron
+          when: inventory_hostname not in groups["controller"]
+
+    - name: Delete Compute Node Nova
+      block:
+        - name: Check nova-compute Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-compute.service
+          register: nova_compute_stat
+
+        - name: Stop Compute Node nova-compute
+          service:
+            name: nova-compute
+            state: stopped
+            enabled: no
+          when: nova_compute_stat.stat.exists
+          
+        - name: Delete Compute Node nova-compute
+          apt:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - libvirt-daemon-config-nwfilter
+            - libvirt-daemon-config-network
+            - libvirt-daemon-system-systemd
+            - libvirt-daemon-system
+            - libvirt-clients
+            - nova-compute
+            - nova-compute-kvm
+            - nova-compute-libvirt
+
+        - name: Delete Compute Node nova
+          apt:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - nova-common
+            - nova-compute-kvm
+            - nova-compute-libvirt
+            - python3-nova
+            - python3-novaclient
+          when: inventory_hostname not in groups["controller"]
+
+        - name: dnsmasq user running process check
+          shell: ps -u libvirt-dnsmasq | grep dnsmasq | awk '{print $1}'
+          register: dnsmasq_output
+
+        - name: kill dnsmasq process
+          command: kill -9 {{ item.split()[0] }}
+          loop: "{{ dnsmasq_output.stdout_lines }}"
+          when: dnsmasq_output.stdout != ""
+
+        - name: Delete Compute User
+          user:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - libvirt-qemu
+            - libvirt-dnsmasq
+          when: inventory_hostname in groups["controller"]
+
+        - name: Delete Compute User
+          user:
+            name: "{{ item }}"
+            state: absent
+            # remove: true
+          with_items:
+            - nova
+            - libvirt
+            - libvirt-qemu
+            - libvirt-dnsmasq
+          when: inventory_hostname not in groups["controller"]
+
+        - name: Delete Compute Group
+          group:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - libvirt-qemu
+            - libvirt-dnsmasq
+            - libvirt
+          when: inventory_hostname in groups["controller"]
+
+        - name: Delete Nova Group
+          group:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - nova
+            - libvirt-qemu
+            - libvirt-dnsmasq
+            - libvirt
+          when: inventory_hostname not in groups["controller"]
+
+        - name: Delete Compute Node Nova Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/nova
+            - /etc/nova
+            - /var/lock/nova
+            - /var/log/nova
+          when: inventory_hostname not in groups["controller"]
+
+        - name: Delete Libvirt Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/libvirt
+            - /etc/libvirt
+
+        - name: Register Chrony
+          stat:
+            path: /etc/systemd/system/chrony.service
+          register: chrony
+          when: inventory_hostname not in groups["controller"]
+     
+        - name: Stop Chrony Service
+          service:
+            name: chrony
+            state: stopped
+            enabled: no
+          when: 
+            - inventory_hostname not in groups["controller"]
+            - chrony.stat.exists
+     
+        - name: Delete Chrony
+          apt:
+            name: chrony
+            state: absent
+            purge: true
+          when: inventory_hostname not in groups["controller"]
+           
+        - name: Delete Chrony Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/chrony
+            - /etc/chrony
+          when: inventory_hostname not in groups["controller"]
+     
+        - name: Remove Chrony User
+          user:
+            name: _chrony
+            state: absent
+            remove: true
+          when: inventory_hostname not in groups["controller"]
+     
+        - name: Remove Chrony Group
+          group:
+            name: _chrony
+            state: absent
+          when: inventory_hostname not in groups["controller"]
+     
+    - name: Remove All
+      apt:
+        autoremove: true
+      when: inventory_hostname not in groups["controller"]
+
+    - name: Purge All
+      shell: apt purge $(dpkg --list | grep '^rc' | awk '{print $2}') -y
+      when: inventory_hostname not in groups["controller"]
+
+- name: Delete Controller Node
+  hosts: controller
+  become: true
+  tasks:
+    - name: Delete Controller Node Cinder
+      block:
+        - name: Check cinder-scheduler Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/cinder-scheduler.service
+          register: cinder_scheduler_stat
+
+        - name: Check cinder-volume Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/cinder-volume.service
+          register: cinder_volume_stat
+
+        - name: Check cinder-backup Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/cinder-backup.service
+          register: cinder_backup_stat
+
+        - name: Stop Controller Node Cinder
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - cinder-scheduler
+          when: cinder_scheduler_stat.stat.exists
+
+        - name: Stop Controller Node Cinder
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - cinder-volume
+          when: cinder_volume_stat.stat.exists
+
+        - name: Stop Controller Node Cinder
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - cinder-backup
+          when: cinder_backup_stat.stat.exists
+
+        - name: Delete Controller Node Cinder
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - cinder-scheduler
+            - cinder-volume
+            - cinder-backup
+            - cinder-api
+            - cinder-common
+            - python3-cinder
+            - python3-cinderclient
+
+        - name: Delete Cinder User
+          user:
+            name: cinder
+            state: absent
+            remove: true
+
+        - name: Delete Cinder Group
+          group:
+            name: cinder
+            state: absent
+
+        - name: Delete Cinder Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/cinder
+            - /etc/cinder
+            - /var/lock/cinder
+            - /var/log/cinder
+
+    - name: Delete Controller Node Neutron
+      block:
+        - name: Check neutron-server Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-server.service
+          register: neutron_server_stat
+
+        - name: Check neutron-openvswitch-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-openvswitch-agent.service
+          register: neutron_ovs_stat
+
+        - name: Check neutron-l3-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-l3-agent.service
+          register: neutron_l3_stat
+
+        - name: Check neutron-metadata-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-metadata-agent.service
+          register: neutron_metadata_stat
+
+        - name: Check neutron-dhcp-agent Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/neutron-dhcp-agent.service
+          register: neutron_dhcp_stat
+
+        - name: Stop Controller Node Neutron Server
+          service:
+            name: neutron-server
+            state: stopped
+            enabled: no
+          when: neutron_server_stat.stat.exists
+
+        - name: Stop Controller Node Neutron Openvswitch
+          service:
+            name: neutron-openvswitch-agent
+            state: stopped
+            enabled: no
+          when: neutron_ovs_stat.stat.exists
+
+        - name: Stop Controller Node Neutron-Agent
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-l3-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_l3_stat.stat.exists
+
+        - name: Stop Controller Node Neutron-Agent
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-metadata-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_metadata_stat.stat.exists
+
+        - name: Stop Controller Node Neutron-Agent
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - neutron-l3-agent
+          when: 
+            - inventory_hostname in groups["neutron_agent"]
+            - neutron_dhcp_stat.stat.exists
+
+        - name: Delete Controller Node Neutron-Agent
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - neutron-l3-agent
+            - neutron-metadata-agent
+            - neutron-dhcp-agent
+            - keepalived
+          when: inventory_hostname in groups["neutron_agent"]
+
+        - name: Delete Controller Node Neutron
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - openvswitch-switch
+            - openvswitch-common
+            - python3-openvswitch
+            - neutron-server
+            - neutron-openvswitch-agent
+            - neutron-plugin-ml2
+            - neutron-common
+            - python3-neutron-lib
+            - python3-neutron
+            - python3-neutronclient
+
+        - name: Delete Neutron User
+          user:
+            name: neutron
+            state: absent
+            remove: true
+
+        - name: Delete Neutron Group
+          group:
+            name: neutron
+            state: absent
+
+        - name: Delete Neutron Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/neutron
+            - /etc/neutron
+            - /var/lock/neutron
+            - /var/log/neutron
+
+    - name: Delete Controller Node Nova
+      block:
+        - name: Check nova-api Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-api.service
+          register: nova_api_stat
+
+        - name: Check nova-conductor Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-conductor.service
+          register: nova_conductor_stat
+
+        - name: Check nova-scheduler Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-scheduler.service
+          register: nova_scheduler_stat
+
+        - name: Check nova-novncproxy Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/nova-novncproxy.service
+          register: nova_novncproxy_stat
+
+        - name: Stop Controller Node Nova
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - nova-api
+          when: nova_api_stat.stat.exists
+
+        - name: Stop Controller Node Nova
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - nova-conductor
+          when: nova_conductor_stat.stat.exists
+
+        - name: Stop Controller Node Nova
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - nova-scheduler
+          when: nova_scheduler_stat.stat.exists
+
+        - name: Stop Controller Node Nova
+          service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: no
+          with_items:
+            - nova-novncproxy
+          when: nova_novncproxy_stat.stat.exists
+
+        - name: Delete Controller Node Nova
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - nova-api
+            - nova-conductor
+            - nova-scheduler
+            - nova-novncproxy
+            - nova-common
+            - python3-nova
+            - python3-novaclient
+            - dnsmasq
+
+        - name: Delete Nova User
+          user:
+            name: nova
+            state: absent
+            remove: true
+
+        - name: Delete Nova Group
+          group:
+            name: nova
+            state: absent
+
+        - name: Delete Nova Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/nova
+            - /etc/nova
+            - /var/lock/nova
+            - /var/log/nova
+
+    - name: Delete Controller Node Placement
+      block:
+        - name: Delete Controller Node Placement
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - placement-api
+            - placement-common
+            - python3-placement
+
+        - name: Delete Placement User
+          user:
+            name: placement
+            state: absent
+            remove: true
+
+        - name: Delete Placement Group
+          group:
+            name: placement
+            state: absent
+
+        - name: Delete Placement Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/placement
+            - /etc/placement
+            - /var/lock/placement
+            - /var/log/placement
+
+    - name: Delete Controller Node Glance
+      block:
+        - name: Check glance-api Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/glance-api.service
+          register: glance_api_stat
+
+        - name: Stop Controller Node Glance
+          service:
+            name: glance-api
+            state: stopped
+            enabled: no
+          when: glance_api_stat.stat.exists
+
+        - name: Delete Controller Node Glance
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - glance-api
+            - glance-common
+            - glance
+            - python3-glance-store
+            - python3-glance
+            - python3-glanceclient
+
+        - name: Delete Glance User
+          user:
+            name: glance
+            state: absent
+            remove: true
+
+        - name: Delete Glance Group
+          group:
+            name: glance
+            state: absent
+
+        - name: Delete Glance Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/glance
+            - /etc/glance
+            - /var/lock/glance
+            - /var/log/glance
+
+    - name: Delete Controller Node Keystone
+      block:
+        - name: Delete Controller Node Keystone
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - keystone-common
+            - keystone
+            - python3-keystone
+            - python3-keystoneauth1
+            - python3-keystoneclient
+            - python3-keystonemiddleware
+
+        - name: Delete Keystone User
+          user:
+            name: keystone
+            state: absent
+            remove: true
+
+        - name: Delete Keystone Group
+          group:
+            name: keystone
+            state: absent
+
+        - name: Delete Keystone Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /var/lib/keystone
+            - /etc/keystone
+            - /var/lock/keystone
+            - /var/log/keystone
+
+    - name: Delete Horizon & apache2
+      block:
+        - name: Check apache2 Service
+          stat:
+            path: /etc/systemd/system/multi-user.target.wants/apache2.service
+          register: apache2_stat
+        - name: Stop Controller Node Horizon & apache2
+          service:
+            name: apache2
+            state: stopped
+            enabled: no
+          when: apache2_stat.stat.exists
+
+        - name: Delete Controller Node Horizon & apache2
+          apt:
+            name: "{{ item }}"
+            state: absent
+            purge: true
+            autoremove: true
+          with_items:
+            - openstack-dashboard
+            - openstack-dashboard-common
+            - python3-django-openstack-auth
+            - python3-openstackclient
+            - python3-openstacksdk
+            - apache2
+
+        - name: Delete Horizon & apache2 User
+          user:
+            name: "{{ item }}"
+            state: absent
+            remove: true
+          with_items:
+            - horizon
+            - apache2
+
+        - name: Delete Horizon & apache2 Group
+          group:
+            name: "{{ item }}"
+            state: absent
+          with_items:
+            - horizon
+            - apache2
+
+        - name: Delete Horizon & apache2 Files
+          file:
+            path: "{{ item }}"
+            state: absent
+          with_items:
+            - /etc/openstack-dashboard
+            - /var/lib/openstack-dashboard
+            - /etc/apache2
+            - /var/log/apache2
+            - /etc/openstack
+
+- name: Remove Middleware
+  hosts: controller
+  become: true
+  tasks:
+    - name: Register rabbitmq-server
+      stat:
+        path: /etc/systemd/system/rabbitmq-server.service
+      register: rabbitmq_server
+
+    - name: Stop RabbitMQ Server
+      service:
+        name: rabbitmq-server
+        state: stopped
+        enabled: no
+      when: rabbitmq_server.stat.exists
+
+    - name: Delete RabbitMQ Service
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: true
+      with_items:
+        - rabbitmq-server
+        - librabbitmq4
+        - erlang-ans1
+        - erlang-base
+        - erlang-crypto
+        - erlang-eldap
+        - erlang-ftp
+        - erlang-inets
+        - erlang-mnesia
+        - erlang-os-mon
+        - erlang-parsetools
+        - erlang-public-key
+        - erlang-runtime-tools
+        - erlang-snmp
+        - erlang-ssl
+        - erlang-syntax
+        - erlang-tftp
+        - erlang-tools
+        - erlang-xmerl
+
+    - name: Delete RabbitMQ Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /var/lib/rabbitmq
+        - /etc/rabbitmq
+        - /var/log/rabbitmq
+
+    - name: Delete RabbitMQ User
+      user:
+        name: rabbitmq
+        state: absent
+        remove: true
+
+    - name: Delete RabbitMQ Group
+      group:
+        name: rabbitmq
+        state: absent
+
+    - name: Register Haproxy resource
+      shell: pcs resource status | grep haproxy || true
+      register: haproxy_stat
+      when: inventory_hostname in groups["controller"][0]
+
+    - name: Delete Haproxy Resource
+      shell: pcs resource delete haproxy
+      when: 
+        - inventory_hostname in groups["controller"][0]
+        - "'haproxy' in haproxy_stat.stdout"
+
+    - name: Register Haproxy
+      stat:
+        path: /etc/systemd/system/haproxy.service
+      register: haproxy
+
+    - name: Stop Haproxy Service
+      service:
+        name: haproxy
+        state: stopped
+        enabled: no
+      when: haproxy.stat.exists
+
+    - name: Delete Haproxy Service
+      apt:
+        name: haproxy
+        state: absent
+        purge: true
+
+    - name: Delete Haproxy Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /var/lib/haproxy
+        - /etc/haproxy
+        - /var/log/haproxy
+
+    - name: Delete Haproxy User
+      user:
+        name: haproxy
+        state: absent
+        remove: true
+
+    - name: Delete Haproxy Group
+      group:
+        name: haproxy
+        state: absent
+
+    - name: Register Memcached
+      stat:
+        path: /etc/systemd/system/memcached.service
+      register: memcached
+
+    - name: Stop Memcached Service
+      service:
+        name: memcached
+        state: stopped
+        enabled: no
+      when: memcached.stat.exists
+
+    - name: Delete Memcached Service
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: true
+      with_items:
+        - memcached
+        - python3-memcache
+        - python3-pymemcache
+
+    - name: Delete Memcached Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/memcached.conf
+
+    - name: Delete Memcache User
+      user:
+        name: memcache
+        state: absent
+        remove: true
+
+    - name: Delete Memcache Group
+      group:
+        name: memcache
+        state: absent
+
+    - name: Register int_vip resource
+      shell: pcs resource status | grep int_vip || true
+      register: int_vip_stat
+      when: inventory_hostname in groups["controller"][0]
+
+    - name: Register pub_vip resource
+      shell: pcs resource status | grep pub_vip || true
+      register: pub_vip_stat
+      when: 
+        - internal_vip_address != external_vip_address
+        - inventory_hostname in groups["controller"][0]
+
+    - name: Delete Pacemaker Resource VIP
+      shell: pcs resource delete int_vip
+      when: 
+        - inventory_hostname in groups["controller"][0]
+        - "'int_vip' in int_vip_stat.stdout"
+
+    - name: Delete Pacemaker Resource Ext VIP
+      shell: pcs resource delete pub_vip
+      when:
+        - internal_vip_address != external_vip_address
+        - inventory_hostname in groups["controller"][0]
+        - "'pub_vip' in pub_vip_stat.stdout"
+
+    - name: Register Pcsd
+      stat:
+        path: /etc/systemd/system/pcsd.service
+      register: pcsd
+
+    - name: Register Pacemaker
+      stat:
+        path: /etc/systemd/system/pacemaker.service
+      register: pacemaker
+
+    - name: Register Corosync
+      stat:
+        path: /etc/systemd/system/corosync.service
+      register: corosync
+
+    - name: Stop Pacemaker Service
+      service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      with_items:
+        - pcsd
+      when: pcsd.stat.exists
+
+    - name: Stop Pacemaker Service
+      service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      with_items:
+        - pacemaker
+      when: pacemaker.stat.exists
+
+    - name: Stop Pacemaker Service
+      service:
+        name: "{{ item }}"
+        state: absent
+        purge: true
+      with_items:
+        - coroysnc
+      when: corosync.stat.exists
+
+    - name: Delete Pacemaker Service
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: true
+      with_items:
+        - pacemaker
+        - libpacemaker1
+        - pacemaker-cli-utils
+        - pacemaker-common
+        - pacemaker-resource-agents
+        - corosync
+        - libcorosync-common4
+        - pcs
+
+
+    - name: Delete Pacemaker Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/pacemaker
+        - /etc/corosync
+        - /var/lib/pacemaker
+        - /var/lib/corosync
+        - /var/lib/pcsd
+        - /var/log/pacemaker
+        - /var/log/corosync
+
+    - name: Delete Pacemaker User
+      user:
+        name: hacluster
+        state: absent
+        remove: true
+
+    - name: Delete Pacemaker Group
+      group:
+        name: haclient
+        state: absent
+
+    - name: Delete Overrided Directory
+      shell: dpkg-statoverride --remove "{{ item }}"
+      with_items:
+        - /var/lib/pacemaker/cores
+        - /var/lib/pacemaker/cib
+        - /var/log/pacemaker
+        - /var/lib/pacemaker/pengine
+        - /var/log/pacemaker/bundles
+        - /var/lib/pacemaker/blackbox
+      ignore_errors: true
+
+    - name: Remove All
+      apt:
+        autoremove: true
+
+    - name: Remove Contrabass Env Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /root/contrabass-openrc
+        - /opt/certificate
+
+    - name: sysctl tunning remove
+      blockinfile:
+        state: absent
+        dest: /etc/sysctl.conf
+        marker: "### {mark} okestro kernel tunning ###"
+
+    - name: sysctl apply
+      command: sysctl --system
+
+- name: Confirm whether user really meant to purge the Percona DB
+  hosts: localhost
+  gather_facts: false
+  vars_prompt:
+    - name: purge_percona
+      prompt: Are you sure yo want to purge the Percona DB?
+      default: 'no'
+      private: no
+  tasks:
+    - name: exit playbook, if user did not mean to purge Percona DB Cluster
+      fail:
+        msg: >
+          "Exit to Purge Percona DB Cluster, Not Purged.
+           If You Want to Purge Contrabass Openstack, Say 'yes' on the prompt"
+      when: purge_percona != 'yes'
+
+- name: Delete Percona
+  hosts: controller
+  become: true
+  tasks:
+    - name: Register Percona
+      stat:
+        path: /etc/systemd/system/mysqld.service
+      register: mysql
+
+    - name: Stop Percona DB
+      service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      with_items:
+        - mysql
+        - mysql@bootstrap
+      when: mysql.stat.exists
+
+    - name: Delete Percona DB Service
+      apt:
+        name: "{{ item }}"
+        state: absent
+        purge: true
+      with_items:
+        - percona-xtradb-cluster-client
+        - percona-xtradb-cluster
+        - percona-xtrabackup-80
+        - percona-xtradb-cluster-common
+        - percona-xtradb-cluster-server
+        - python3-pymysql
+        - mysql-common
+
+    - name: Delete Percona DB Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /etc/mysql
+        - /var/lib/mysql
+        - /var/log/mysql
+        - /var/lib/mysql-files
+        - /var/lib/mysql-keyring
+
+    - name: Delete Percona DB User
+      user:
+        name: mysql
+        state: absent
+        remove: true
+
+    - name: Delete Percona DB Group
+      group:
+        name: mysql
+        state: absent
+
+    - name: Register Chrony
+      stat:
+        path: /etc/systemd/system/chrony.service
+      register: chrony
+
+    - name: Stop Chrony Service
+      service:
+        name: chrony
+        state: stopped
+        enabled: no
+      when: chrony.stat.exists
+
+    - name: Delete Chrony
+      apt:
+        name: chrony
+        state: absent
+        purge: true
+      
+    - name: Delete Chrony Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /var/lib/chrony
+        - /etc/chrony
+
+    - name: Remove Chrony User
+      user:
+        name: _chrony
+        state: absent
+        remove: true
+
+    - name: Remove Chrony Group
+      group:
+        name: _chrony
+        state: absent
+
+    - name: Remove All
+      apt:
+        autoremove: true
+
+    - name: Purge All
+      shell: apt purge $(dpkg --list | grep '^rc' | awk '{print $2}') -y

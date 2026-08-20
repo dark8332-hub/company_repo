@@ -1,0 +1,20 @@
+USE mysql;
+CREATE user 'maestro'@'%' identified by 'okestro2018';
+--CREATE user 'keycloak'@'%' identified by 'keycloak';
+--CREATE user 'keycloak'@'contrabass.os' identified by 'keycloak';
+CREATE DATABASE IF NOT EXISTS maestro;
+CREATE DATABASE IF NOT EXISTS cloud_service;
+--CREATE DATABASE IF NOT EXISTS keycloak;
+--GRANT ALL PRIVILEGES ON keycloak.* TO 'keycloak'@'%';
+--GRANT ALL PRIVILEGES ON maestro.* TO 'keycloak'@'%';
+--GRANT ALL PRIVILEGES ON keycloak.* TO 'keycloak'@'contrabass.os';
+--GRANT ALL PRIVILEGES ON maestro.* TO 'keycloak'@'contrabass.os';
+grant ALL PRIVILEGES on *.* to 'maestro'@'%';
+CREATE user 'contrabass'@'%' identified by 'okestro2018';
+CREATE DATABASE IF NOT EXISTS contrabass;
+grant ALL PRIVILEGES on *.* to 'contrabass'@'%';
+CREATE user 'dp_common'@'%' identified by 'okestro2018';
+CREATE DATABASE IF NOT EXISTS dp_common;
+grant ALL PRIVILEGES on *.* to 'dp_common'@'%';
+flush privileges;
+

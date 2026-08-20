@@ -1,0 +1,22 @@
+---
+- name: Ceph Package Install  
+  apt:
+    update-cache: yes
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - ceph-common
+    - python3-rbd 
+  when: ansible_os_family == 'Debian'
+
+- name: Ceph package install
+  dnf:
+    name: "{{ item }}"
+    state: present
+    enablerepo: epel
+  with_items:
+    - ceph-common
+    - python3-rbd
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version == '9'

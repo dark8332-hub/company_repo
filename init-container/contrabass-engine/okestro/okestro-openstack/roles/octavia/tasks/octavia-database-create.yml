@@ -1,0 +1,16 @@
+- name: Create Octavia DB
+  mysql_db:
+    name: octavia
+    state: present
+
+- name: Update mysql octavia password for all octavia accounts
+  no_log: false
+  mysql_user:
+     name: octavia
+     host: "{{ item }}"
+     password: "{{ db_password }}"
+     priv: octavia.*:ALL,GRANT
+     state: present
+  with_items:
+     - localhost
+     - '%'

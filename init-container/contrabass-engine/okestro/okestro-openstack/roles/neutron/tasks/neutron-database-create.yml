@@ -1,0 +1,16 @@
+- name: Create Neutron DB
+  mysql_db:
+    name: neutron
+    state: present
+
+- name: Update mysql neutron password for all glance accounts
+  no_log: false
+  mysql_user:
+     name: neutron
+     host: "{{ item }}"
+     password: "{{ db_password }}"
+     priv: neutron.*:ALL,GRANT
+     state: present
+  with_items:
+     - localhost
+     - '%'

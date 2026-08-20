@@ -1,0 +1,16 @@
+- name: Create placement DB
+  mysql_db:
+    name: placement
+    state: present
+
+- name: Update mysql placement password for all placement accounts
+  no_log: true
+  mysql_user:
+     name: placement
+     host: "{{ item }}"
+     password: "{{ db_password }}"
+     priv: placement.*:ALL,GRANT
+     state: present
+  with_items:
+     - localhost
+     - '%'

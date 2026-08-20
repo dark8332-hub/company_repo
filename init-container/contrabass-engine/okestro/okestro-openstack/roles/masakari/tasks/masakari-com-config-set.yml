@@ -1,0 +1,11 @@
+---
+- name: masakari config file setting
+  template:
+    src: "{{ masakarimonitor_config }}.j2"
+    dest: "{{ masakarimonitor_dir }}/{{ masakarimonitor_config }}"
+    owner: root
+    group: "{{ masakarimonitor_user }}"
+    mode: 0644
+  register: masakari_com_conf
+  notify: 
+  - restart masakari-host

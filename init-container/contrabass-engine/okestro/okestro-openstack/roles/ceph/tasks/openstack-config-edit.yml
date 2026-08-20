@@ -1,0 +1,81 @@
+- name: Opensatck cinder config edit Default Section
+  ini_file:
+    dest: "{{ cinder_dir }}/{{ cinder_config }}"
+    section: DEFAULT
+    option: '{{ item.key }}'
+    value: '{{ item.value }}'
+  with_dict:
+    iscsi_helper: tgtadm
+    backup_ceph_stripe_count: 0
+    restore_discard_excess_bytes: True
+    backup_driver: cinder.backup.drivers.ceph.CephBackupDriver
+    backup_ceph_chunk_size: 134217728
+    enabled_backends: "{{ ceph_back_name }}" 
+    backup_ceph_user: cinder-backup
+    backup_ceph_conf: "{{ ceph_dir }}/{{ ceph_config }}"
+    backup_ceph_pool: backups
+    rados_connect_timeout: -1
+    rados_connection_retries: 600
+    rados_connection_interval: 3
+    backup_ceph_stripe_unit: 0
+    glance_api_version: 2
+  when: inventory_hostname in groups["controller"]
+
+- name: Opensatck cinder config edit Ceph Section
+  ini_file:
+    dest: "{{ cinder_dir }}/{{ cinder_config }}"
+    section: "{{ ceph_back_name }}"    
+    option: '{{ item.key }}'
+    value: '{{ item.value }}'
+  with_dict:
+    backend_host: "{{ cloud }}-cinder"
+    rbd_store_chunk_size: 4
+    rbd_ceph_conf: "{{ ceph_dir }}/{{ ceph_config }}"
+    volume_backend_name: "{{ ceph_back_name }}"    
+    volume_driver: cinder.volume.drivers.rbd.RBDDriver
+    rbd_secret_uuid: ccf49585-2d99-417e-8181-ce765fe61c67
+    glance_api_version: 2
+    rados_connect_timeout: -1
+    rbd_pool: volumes
+    rbd_flatten_volume_from_snapshot: False
+    rbd_max_clone_depth: 5
+    rbd_user: cinder
+  when: inventory_hostname in groups["controller"]
+
+- name: Opensatck glance config edit
+  ini_file:
+    dest: "{{ glance_config_dir }}/{{ glance_config }}"
+    section: glance_store
+    option: '{{ item.key }}'
+    value: '{{ item.value }}'
+  with_dict:
+    stores: rbd
+    default_store: rbd
+    filesystem_store_datadir: "{{ glance_store_dir }}" 
+    rbd_store_chunk_size: 8
+    rados_connect_timeout: 0
+    rbd_store_user: glance
+    rbd_store_ceph_conf: "{{ ceph_dir }}/{{ ceph_config }}"
+    rbd_store_pool: images
+  when: inventory_hostname in groups["controller"]
+
+- name: Opensatck compute config edit
+  ini_file:
+    dest: "{{ nova_dir }}/{{ nova_config }}"
+    section: libvirt
+    option: '{{ item.key }}'
+    value: '{{ item.value }}'
+  with_dict:
+    inject_partition: -2
+    use_virtio_for_bridges: True
+    images_rbd_pool: vms
+    rbd_secret_uuid: ccf49585-2d99-417e-8181-ce765fe61c67
+    virt_type: kvm
+    inject_password: False
+    disk_cachemodes: network=writeback
+    cpu_mode: host-model
+    images_type: rbd
+    images_rbd_ceph_conf: "{{ ceph_dir }}/{{ ceph_config }}"
+    inject_key: False
+    rbd_user: cinder
+  when: inventory_hostname in groups["compute"]

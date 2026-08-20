@@ -1,0 +1,5 @@
+---
+- name: memcached_conf is changed 
+  service:
+    name: memcached
+    state: restarted

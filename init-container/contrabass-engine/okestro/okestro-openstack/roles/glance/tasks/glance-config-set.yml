@@ -1,0 +1,63 @@
+---
+- name: glacne-api config file setting 
+  template:
+    src: "{{ glance_config }}.j2"
+    dest: "{{ glance_config_dir }}/{{ glance_config }}"
+    owner: glance
+    group: glance
+    mode: 0644
+    backup: true
+  register: glance_conf
+
+- include_tasks: glance-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Glance to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_glance ##"
+    insertbefore: "# public"
+    block: |
+      listen int_glance
+        bind {{ internal_vip_address }}:{{ glance_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ glance_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: glance_int_haproxy
+
+- name: Configure External Glance to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_glance ##"
+    insertbefore: EOF
+    block: |
+      listen pub_glance
+        bind {{ external_vip_address }}:{{ glance_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ glance_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: glance_pub_haproxy
+
+- name: Restart Glance
+  service:
+    name: "{{ serv_glance }}"
+    state: restarted
+    enabled: true
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted

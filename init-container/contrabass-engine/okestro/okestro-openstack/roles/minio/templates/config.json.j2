@@ -1,0 +1,12 @@
+{
+        "version": "10",
+        "aliases": {
+                "contrabass": {
+                        "url": "http://{{ internal_vip_address }}:{{ minio_bind_port }}",
+                        "accessKey": "{{ minio_root_user }}",
+                        "secretKey": "{{ minio_root_password }}",
+                        "api": "S3v4",
+                        "path": "auto"
+                }
+        }
+}

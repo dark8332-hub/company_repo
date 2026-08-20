@@ -1,0 +1,44 @@
+---
+- name: Disable Masakari Process Monitor
+  service:
+    name: masakari-process-monitor
+    enabled: no
+    state: stopped
+  when: 
+    - enable_process_monitor == false
+    - ansible_os_family == "Debian"
+
+- name: Disable Masakari Instance Monitor
+  service:
+    name: masakari-instance-monitor
+    enabled: no
+    state: stopped
+  when:
+    - enable_instance_monitor == false
+    - ansible_os_family == "Debian"
+
+- name: Restart Masakari Host Monitor
+  service:
+    name: masakari-host-monitor
+    enabled: yes
+    state: restarted
+  when:
+    - ansible_os_family == "Debian"
+      
+- name: Restart Masakari Process Monitor
+  service:
+    name: masakari-process-monitor
+    enabled: yes
+    state: restarted
+  when:
+    - enable_process_monitor == true
+    - ansible_os_family == "Debian"
+
+- name: Restart Masakari Instance Monitor
+  service:
+    name: masakari-instance-monitor
+    enabled: yes
+    state: restarted
+  when:
+    - enable_instance_monitor == true
+    - ansible_os_family == "Debian"

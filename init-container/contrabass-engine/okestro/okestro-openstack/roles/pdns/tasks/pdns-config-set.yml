@@ -1,0 +1,29 @@
+---
+- name: PowerDNS Schema Setting Ubuntu
+  mysql_db:
+    name: pdns
+    state: import
+    target: "{{ pdns_schema }}" 
+    login_user: pdns
+    login_password: "{{ db_password }}" 
+  when:
+    - ansible_os_family == "Debian"
+    - inventory_hostname in groups["controller"][0]
+  register: pdns_schema
+  failed_when: "'Table 'domains' already exists' not in result.msg"
+  changed_when: "'Table 'domains' already exists' not in result.msg"
+  ignore_errors: true 
+
+- name: PowerDNS Config Settings Ubuntu
+  template:
+    src: "{{ pdns_config }}.j2" 
+    dest: "{{ pdns_config_dir }}/{{ pdns_config }}"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Restart PowerDNS
+  service: 
+    name: pdns
+    state: restarted
+    enabled: true

@@ -1,0 +1,16 @@
+- name: ceph volume pool create
+  command: ceph osd pool create "{{ item.vname }}" "{{ item.size }}"
+  with_items:
+    - { vname: 'images',size: '{{ images_pool }}'}
+    - { vname: 'volumes',size: '{{ volumes_pool }}'}
+    - { vname: 'backups',size: '{{ backups_pool }}'}
+    - { vname: 'vms',size: '{{ vms_pool }}'}
+
+
+- name: Ceph osd pool init
+  command: rbd pool init "{{ item }}"
+  with_items:
+    - images
+    - volumes
+    - backups
+    - vms

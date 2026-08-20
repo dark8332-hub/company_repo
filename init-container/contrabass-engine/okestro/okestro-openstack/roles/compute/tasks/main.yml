@@ -1,0 +1,31 @@
+- name: Setup Server For Hypervisor 
+  setup:
+
+- include_tasks: compute-install.yml 
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: nova-compute-config-set.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: neutron-compute-config-set.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: ovs-init.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: compute-restart.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: compute-discover.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: live-migration-settings.yml
+  when: inventory_hostname in groups["compute"]
+ 
+- include_tasks: resize-settings.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: os_brick-patch.yml
+  when:
+    - inventory_hostname in groups["compute"]
+    - openstack_version <= 'caracal'

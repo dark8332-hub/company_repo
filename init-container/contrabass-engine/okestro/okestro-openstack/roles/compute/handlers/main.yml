@@ -1,0 +1,34 @@
+---
+- import_tasks: neutron-compute-config-set.yml
+- import_tasks: nova-compute-config-set.yml
+
+# restart
+- name: restart nova-compute
+  service: name=nova-compute state=restarted
+  when: 
+    - nova_compute_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart nova-compute
+  service: name=openstack-nova-compute state=restarted
+  when: 
+    - nova_compute_conf is changed
+    - ansible_os_family == "RedHat"
+
+- name: restart neutron-openvswitch-agent
+  service: name=neutron-openvswitch-agent state=restarted
+  when: neutron_compute_conf is changed
+
+# start
+- name: start nova-compute
+  service: name=nova-compute state=started
+
+- name: start neutron-openvswitch-agent
+  service: name=apache2 state=started
+
+# stop
+- name: stop nova-compute
+  service: name=nova-compute state=stopped
+
+- name: stop neutron-openvswitch-agent
+  service: name=neutron-openvswitch-agent state=stopped

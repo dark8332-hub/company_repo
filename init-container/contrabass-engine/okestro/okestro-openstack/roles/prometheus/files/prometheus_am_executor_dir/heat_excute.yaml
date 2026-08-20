@@ -1,0 +1,6 @@
+listen_address: ":9999"
+verbose: false
+# tls_key: "certs/key.pem"
+# tls_crt: "certs/cert.pem"
+commands:
+- cmd: /etc/prometheus-am-executor/heat.sh

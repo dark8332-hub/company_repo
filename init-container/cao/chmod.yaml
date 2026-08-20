@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  ################################## chmod #######################################
+  chmod:
+    container_name: chmod
+    image: localhost:5555/busybox:1.36.1-musl
+    privileged: true
+    volumes:
+      - vault-data:/vault/data:z
+      - ./config/chmod/init.sh:/usr/local/bin/init.sh
+    command: 
+      - /usr/local/bin/init.sh
+    networks:
+      - maestro
+    restart: always
+volumes:
+  vault-data:
+    driver: local
+networks:
+  maestro:
+    driver: bridge
+    external: true

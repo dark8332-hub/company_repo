@@ -1,0 +1,7 @@
+- name: masakari restart
+  service: 
+    name: "{{ item }}"
+    state: restarted
+  with_items: 
+    - "{{ serv_masakari_api }}" 
+    - masakari-engine

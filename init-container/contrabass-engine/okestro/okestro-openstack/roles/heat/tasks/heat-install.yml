@@ -1,0 +1,19 @@
+---
+- name: heat_package_install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_heat_api }}"
+      - "{{ pac_heat_api_cfn }}"
+      - "{{ pac_heat_engine }}"
+      - "{{ pac_heat_dashboard }}"
+    state: present
+
+- name: Enable heat packages
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - "{{ pac_heat_api }}"
+    - "{{ pac_heat_engine }}"
+    - "{{ pac_heat_api_cfn }}"

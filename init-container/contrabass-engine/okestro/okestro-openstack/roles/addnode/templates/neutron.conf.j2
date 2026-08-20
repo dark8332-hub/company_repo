@@ -1,0 +1,130 @@
+[DEFAULT]
+core_plugin = ml2
+allow_overlapping_ips = True
+auth_strategy = keystone
+notify_nova_on_port_status_changes = true
+notify_nova_on_port_data_changes = true
+transport_url = rabbit://{% for item in groups['controller'] %}{{ rabbitmq_name }}:{{ keystone_pass }}@{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{% if not loop.last %},{% endif %}{% endfor %}
+
+control_exchange=neutron
+auth_strategy=keystone
+dhcp_agent_notification=True
+allow_overlapping_ips=True
+global_physnet_mtu=1500
+vlan_transparent=False
+service_plugins=router,qos,segments,trunk,port_forwarding
+allow_automatic_l3agent_failover=True
+dhcp_load_type=networks
+default_availability_zones=
+{% set neutron_agent_count = groups['neutron_agent']|length %}
+{% if neutron_agent_count > 1 %}
+dhcp_agents_per_network = {{ neutron_agent_count }}
+max_l3_agents_per_router = {{ neutron_agent_count }}
+l3_ha = True
+{% else %}
+dhcp_agents_per_network = 1
+max_l3_agents_per_router = 1
+{% endif %}
+
+rpc_backend = rabbit
+
+
+[agent]
+root_helper = sudo /usr/bin/neutron-rootwrap /etc/neutron/rootwrap.conf
+
+[database]
+connection = mysql+pymysql://neutron:{{ db_password }}@{{ internal_vip_address }}:13306/neutron
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_required = true
+{% if use_dns == true %}
+{% if enable_tls_internal == true %}
+www_authenticate_uri = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+www_authenticate_uri = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal == true %}
+www_authenticate_uri = https://{{ internal_vip_address }}:15000
+auth_url = https://{{ internal_vip_address }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+www_authenticate_uri = http://{{ internal_vip_address }}:15000
+auth_url = http://{{ internal_vip_address }}:15000
+{% endif %}
+{% endif %}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:11211{% if not loop.last %},{% endif %}{% endfor %}
+
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = neutron
+password = {{ keystone_pass }}
+
+[oslo_messaging_rabbit]
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_max_retries = 0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 50
+
+[nova]
+{% if use_dns == true %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false  %}
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_vip_address }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_vip_address }}:15000
+{% endif %}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+region_name = RegionOne
+project_name = service
+username = nova
+password = {{ keystone_pass }}
+
+endpoint_type = internal
+live_migration_events = true
+
+[oslo_concurrency]
+lock_path = /var/lib/neutron/tmp
+
+[service_user]
+send_service_user_token = true
+{% if use_dns == true %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_fqdn }}.{{ zone_fqdn }}:15000
+{% endif %}
+{% elif use_dns == false %}
+{% if enable_tls_internal == true %}
+auth_url = https://{{ internal_vip_address }}:15000
+cafile = {{ internal_fqdn_cert }}
+{% elif enable_tls_internal == false %}
+auth_url = http://{{ internal_vip_address }}:15000
+{% endif %}
+{% endif %}
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = neutron
+password = {{ keystone_pass }} 

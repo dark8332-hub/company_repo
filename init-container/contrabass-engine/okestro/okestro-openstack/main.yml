@@ -1,0 +1,178 @@
+---
+- name: Ansible environment initialization
+  become: true
+  hosts: localhost
+  roles:
+    - role: ssh-copy
+      tags: ssh-copy
+
+- name: Server enviornment initialization
+  become: true
+  hosts: alls
+  gather_facts: true 
+  roles:
+    - role: environment
+      tags: 
+        - env
+    - role: certificates
+      tags: 
+        - certificate
+      when: enable_openstack_tls | bool
+  tags:
+    - server-init
+
+- name: Middleware initialization
+  become: true
+  hosts: controller
+  gather_facts: false
+  roles:
+    - role: haproxy
+      tags:
+        - haproxy
+    - role: memcached
+      tags:
+        - memcached
+    - role: percona
+      tags:
+        - percona
+    - role: pdns
+      tags:
+        - pdns
+      when: use_pdns == true | default(false)
+    - role: rabbitmq
+      tags:
+        - rabbitmq
+    - role: minio
+      tags:
+        - minio
+  tags:
+    - middleware
+
+- name: Install contrabass controller
+  become: true
+  hosts: controller
+  gather_facts: false
+  roles:
+    - role: keystone
+      tags: keystone
+    - role: glance
+      tags: glance
+    - role: placement
+      tags: placement
+    - role: nova
+      tags: nova
+    - role: neutron
+      tags: neutron
+    - role: cinder
+      tags: cinder
+    - role: horizon
+      tags: horizon
+    - role: octavia
+      when: enable_octavia == true
+      tags: octavia
+    - role: heat
+      when: enable_heat == true
+      tags: heat
+  tags: controller
+
+- name: Install contrabass compute & settings
+  become: true
+  gather_facts: false
+  hosts: openstack 
+  roles:
+    - role: compute
+  tags: compute
+
+- name: Install ceph using cephadm
+  become: true
+  gather_facts: true
+  hosts: mons,osds,rgws,mdss
+  roles:
+    - role: cephadm
+      when:
+        - cinder_backend == "ceph"
+  tags: cephadm
+
+- name: Connect with ceph
+  become: true
+  gather_facts: false
+  hosts: alls
+  roles:
+    - role: ceph  
+      when: 
+      - cinder_backend == "ceph"     
+      - enable_cinder_custom_backend == false
+  tags: ceph
+
+- name: Configure Octavia
+  become: true
+  gather_facts: false
+  hosts: controller 
+  roles:
+    - role: octavia-set
+      when: enable_octavia == true
+      tags: octavia-set
+
+- name: Configure manila
+  become: true
+  gather_facts: false
+  hosts: 
+    - controller
+    - storage
+  roles:
+    - role: manila
+      when: enable_manila == true
+      tags: manila
+
+- name: Configure Swift
+  become: true
+  hosts:
+    - controller
+    - storage
+  roles:
+    - role: swift
+      when: enable_swift == true
+      tags: swift
+
+- name: Install barbican
+  become: true
+  hosts: controller
+  roles:
+    - role: barbican
+      tags: barbican
+      when: enable_barbican == true
+
+- name: Install masakari
+  become: true
+  hosts: openstack
+  roles:
+    - role: masakari
+      tags: masakari
+      when: enable_masakari == true
+  tags: masakari
+
+- name: Install Prometheus
+  become: true
+  hosts:
+    - openstack
+    - storage 
+    - deploy
+  roles:
+    - role: prometheus
+      tags: prometheus
+
+- name: Install Contrabass
+  become: true
+  hosts: openstack
+  roles:
+    - role: contrabass
+      tags: contrabass
+    
+- name: Create-VM
+  become: true
+  gather_facts: false
+  hosts: openstack
+  roles:
+    - role: create-vm
+      when: Contrabass == true or Viola == true
+  tags: vm

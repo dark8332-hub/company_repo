@@ -1,0 +1,2 @@
+- name: cinder DB sync
+  command: su -s /bin/sh -c "cinder-manage db sync" cinder 

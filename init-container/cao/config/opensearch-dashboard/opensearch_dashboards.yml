@@ -1,0 +1,13 @@
+server.host: "0.0.0.0"
+opensearch.ssl.verificationMode: none
+opensearch.username: "admin"
+opensearch.password: "admin"
+
+opensearch_security.multitenancy.enabled: false
+opensearch_security.readonly_mode.roles: [kibana_read_only]
+opensearch_security.cookie.secure: false
+opensearch_security.session.ttl: 6000000
+
+server.ssl.enabled: true
+server.ssl.certificate: /usr/share/opensearch-dashboards/config/root-cert.pem
+server.ssl.key: /usr/share/opensearch-dashboards/config/root-key.pem

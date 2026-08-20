@@ -1,0 +1,270 @@
+version: '3'
+services:
+  maestro-auth-gateway:
+    container_name: maestro-auth-gateway
+    image: localhost:5555/maestro-auth-gateway:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/maestro-auth-gateway/cm.env
+      - ./config/vault/secret.env  
+    restart: always
+    privileged: true
+
+  maestro-admin-common-api:
+    container_name: maestro-admin-common-api
+    image: localhost:5555/maestro-common-api:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/maestro-admin-common-api/cm.env  
+      - ./config/vault/secret.env  
+    volumes: 
+      - maestro-data:/mnt:z
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-auth-gateway
+  
+  contrabass-api:
+    container_name: contrabass-api
+    image: localhost:5555/contrabass-api:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/contrabass-api/cm.env  
+      - ./config/vault/secret.env  
+    restart: always 
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - notification-adapter-api
+      
+  cloud-service-collector:
+    container_name: cloud-service-collector
+    image: localhost:5555/cloud-service-collector:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/cloud-service-collector/cm.env  
+      - ./config/vault/secret.env  
+    restart: always 
+    privileged: true
+
+  contrabass-scheduler:
+    container_name: contrabass-scheduler
+    image: localhost:5555/contrabass-scheduler:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/contrabass-scheduler/cm.env
+      - ./config/vault/secret.env
+    restart: always 
+    privileged: true
+    depends_on:
+      - contrabass-api
+
+  contrabass-admin-service:
+    container_name: contrabass-admin-service
+    image: localhost:5555/contrabass-admin-service:v1.0.1
+    expose:
+      - 8081
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/contrabass-admin-service/cm.env
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - notification-adapter-api
+      - contrabass-api
+      - contrabass-scheduler
+      - pds-integration-service
+
+  maestro-iam-adapter-api:
+    container_name: maestro-iam-adapter-api
+    image: localhost:5555/maestro-iam-adapter-api:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/maestro-iam-adapter-api/cm.env
+      - ./config/vault/secret.env
+    restart: always 
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      
+  maestro-event-pusher:
+    container_name: maestro-event-pusher
+    image: localhost:5555/maestro-event-pusher:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/maestro-event-pusher/cm.env
+      - ./config/vault/secret.env
+    restart: always 
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - maestro-iam-adapter-api
+      - notification-adapter-api
+
+  cloud-service-api:
+    container_name: cloud-service-api
+    image: localhost:5555/cloud-service-api:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/cloud-service-api/cm.env
+      - ./config/vault/secret.env
+    restart: always 
+    privileged: true
+
+  notification-adapter-api:
+    container_name: notification-adapter-api
+    image: localhost:5555/notification-adapter-api:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/notification-adapter-api/cm.env
+      - ./config/vault/secret.env
+    restart: always 
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - maestro-iam-adapter-api
+  
+  maestro-ml-data-api:
+    container_name: maestro-ml-data-api
+    image: localhost:5555/maestro-ml-data-api:v1.0.1
+    expose:
+      - 8080
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/maestro-ml-data-api/cm.env
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - contrabass-scheduler
+  
+  sym-consolidation-api:
+    container_name: sym-consolidation-api
+    image: localhost:5555/sym-consolidation-api:v1.0.1
+    expose:
+      - 3000
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+  
+  pds-integration-service:
+    container_name: pds-integration-service
+    image: localhost:5555/pds-integration-service:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/pds-integration-service/cm.env
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - contrabass-api
+
+  pds-meta-collector:
+    container_name: pds-meta-collector
+    image: localhost:5555/pds-meta-collector:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/pds-meta-collector/cm.env
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - contrabass-api
+
+  contrabass-collector:
+    container_name: contrabass-collector
+    image: localhost:5555/contrabass-collector:v1.0.1
+    expose:
+      - 8080
+    #user: 10000:10000
+    user: root:root
+    networks:
+      - maestro
+    env_file:
+      - ./config/contrabass-collector/cm.env
+      - ./config/vault/secret.env
+    restart: always
+    privileged: true
+    depends_on:
+      - maestro-admin-common-api
+      - contrabass-api
+
+volumes:
+  maestro-data:
+    driver: local
+networks:
+  maestro:
+    driver: bridge
+    external: true

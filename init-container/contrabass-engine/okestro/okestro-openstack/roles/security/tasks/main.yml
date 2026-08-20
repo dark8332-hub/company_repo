@@ -1,0 +1,5 @@
+- include_tasks: cve-cce-copy.yml
+
+- include_tasks: security-shell.yml
+  #when: inventory_hostname in groups["openstack"]
+

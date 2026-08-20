@@ -1,0 +1,8 @@
+*.emerg                                                    *
+*.alert                                                       /dev/console
+*.alert                                                       /var/adm/alert.log
+*.err                                                         /var/adm/error.log
+mail.info                                                    /var/adm/mail.log
+auth.info                                                    /var/adm/auth.log
+daemon.info                                               /var/adm/daemon.log
+*.emerg;*.alert;*.crit;*.err;*.warning;*.notice;*.info  /var/adm/messages

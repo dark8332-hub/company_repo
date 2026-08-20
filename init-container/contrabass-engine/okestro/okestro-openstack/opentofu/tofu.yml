@@ -1,0 +1,18 @@
+---
+- name: ansible for tofu apply
+  hosts: localhost
+  tasks:
+    - name: tofu init
+      command: tofu init
+      args:
+        chdir: "/root/okestro/okestro-openstack/opentofu/openstack"
+
+    - name: tofu plan
+      command: tofu plan
+      args:
+        chdir: "/root/okestro/okestro-openstack/opentofu/openstack"
+
+    - name: tofu apply
+      command: tofu apply
+      args:
+        chdir: "/root/okestro/okestro-openstack/opentofu/openstack"

@@ -1,0 +1,41 @@
+{% if ansible_os_family == "Debian" %}
+# Run memcached as a daemon. This command is implied, and is not needed for the
+# daemon to run. See the README.Debian that comes with this package for more
+# information.
+-d
+
+# Log memcached's output to /var/log/memcached
+logfile /var/log/memcached.log
+
+# Be verbose
+# -v
+
+# Be even more verbose (print client commands as well)
+# -vv
+
+# Start with a cap of 64 megs of memory. It's reasonable, and the daemon default
+# Note that the daemon will grow to this size, but does not start out holding this much
+# memory
+-m "{{ memcached_memory }}"
+
+# Default connection port is 11211
+-p "{{ memcached_port }}"
+
+# Run the daemon as root. The start-memcached will default to running as root if no
+# -u command is present in this config file
+-u memcache
+
+# Specify which IP address to listen on. The default is to listen on all IP addresses
+# This parameter is one of the only security measures that memcached has, so make sure
+# it's listening on a firewalled interface.
+-l {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+
+# Limit the number of simultaneous incoming connections. The daemon default is 1024
+-c "{{ memcached_connection }}"
+{% elif ansible_os_family == "RedHat" %}
+PORT="{{ memcached_port }}"
+USER="memcached"
+MAXCONN="{{ memcached_connection }}"
+CACHESIZE="{{ memcached_memory }}"
+OPTIONS="-l {{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}"
+{% endif %}

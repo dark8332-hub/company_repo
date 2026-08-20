@@ -1,0 +1,70 @@
+---
+
+- name: PowerDNS Zone Create
+  command: pdnsutil create-zone {{ zone_fqdn }}
+  ignore_errors: true
+
+- name: Register Internal Record
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q {{ internal_vip_address }}
+  register: int_rec_check
+  ignore_errors: true
+
+- name: PowerDNS Internal Record Create
+  command: pdnsutil add-record {{ zone_fqdn }} @ A {{ internal_vip_address }}
+  when: int_rec_check.rc != 0
+
+- name: Register External Record
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q {{ external_vip_address }}
+  register: ext_rec_check
+  when: internal_vip_address != external_vip_address
+  ignore_errors: true
+
+- name: PowerDNS External Record Create
+  command: pdnsutil add-record {{ zone_fqdn }} @ A {{ external_vip_address }}
+  when: 
+    - internal_vip_address != external_vip_address
+    - ext_rec_check.rc != 0
+
+- name: Register External Subdomain
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q {{ external_fqdn }}.{{ zone_fqdn }}
+  register: ext_subdomain_check
+  ignore_errors: true
+
+- name: PowerDNS External Subdomain Create
+  command: pdnsutil add-record {{ zone_fqdn }} {{ external_fqdn }} A {{ external_vip_address }}
+  when: 
+    - ext_subdomain_check.rc != 0
+
+- name: Register Internal Subdomain
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q {{ internal_fqdn }}.{{ zone_fqdn }}
+  register: int_subdomain_check
+  ignore_errors: true
+
+- name: PowerDNS Internal Subdomain Create
+  command: pdnsutil add-record {{ zone_fqdn }} {{ internal_fqdn }} A {{ internal_vip_address }}
+  when: int_subdomain_check.rc != 0
+
+- name: Register Admin Subdomain
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q {{ admin_fqdn }}.{{ zone_fqdn }}
+  register: adm_subdomain_check
+  ignore_errors: true
+
+- name: PowerDNS Admin Subdomain Create
+  command: pdnsutil add-record {{ zone_fqdn }} {{ admin_fqdn }} A {{ internal_vip_address }}
+  when: adm_subdomain_check.rc != 0
+
+- name: Register Nameserver
+  shell: pdnsutil list-zone {{ zone_fqdn }} | grep -q ns1
+  register: ns1_check
+  ignore_errors: true
+
+- name: PowerDNS Nameserver Create
+  command: pdnsutil add-record {{ zone_fqdn }} @ NS ns1.{{ zone_fqdn }}
+  when: ns1_check.rc != 0
+
+- name: Notify DNS
+  command: pdns_control notify {{ zone_fqdn }}
+
+- name: Waiting For DNS TTL
+  wait_for:
+    timeout: 10

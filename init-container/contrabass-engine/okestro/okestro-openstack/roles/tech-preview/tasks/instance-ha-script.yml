@@ -1,0 +1,97 @@
+- name: Create evacuation database
+  block:
+    - name: Create database for instance ha service
+      mysql_db:
+        name: evacuation
+        state: present
+    
+    - name: Update mysql evacuate password for all keystone accounts
+      no_log: true
+      mysql_user:
+         name: root
+         host: "{{ item }}"
+         password: "{{ db_password }}"
+         priv: evacuation.*:ALL,GRANT
+         state: present
+      with_items:
+         - localhost
+         - '%'
+    
+    - name: Copy evacuation table creation dump file
+      template:
+        src: 'evacuation.sql.j2'
+        dest: '/root/evacuation.sql'
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+    
+    - name: Insert table into evacuation database
+      community.mysql.mysql_db:
+        name: evacuation
+        state: import
+        target: '/root/evacuation.sql'
+        force: true
+
+    - name: Delete evacuation table creation template
+      file:
+        path: '/root/evacuation.sql'
+        state: absent
+  when:
+    - inventory_hostname in groups['controller'][0]
+
+- name: Collect ipmi vars
+  shell: ipmitool lan print | grep 'IP Address' | grep -v 'IP Address Source' | awk -F ':' '{print $2}' | sed -e 's/ //g'
+  register: ipmi_ip
+  when: inventory_hostname in groups['openstack']
+
+- name: Set ipmi_ip vars
+  set_fact:
+    ipmi_ip: "{{ ipmi_ip.stdout }}"
+  when: inventory_hostname in groups['openstack']
+
+- name: Instance ha service setting
+  block:
+    - name: Copy instance-ha scripts
+      template:
+        src: "{{ item }}.j2"
+        dest: "/etc/prometheus-am-executor/{{ item }}"
+        owner: 'root'
+        group: 'root'
+        mode: '0755'
+      with_items:
+        - 'host_evacuate.sh'
+        - 'network_evacuate.sh'
+    
+    - name: Copy ceph-network instance-ha scripts
+      template:
+        src: "{{ item }}.j2"
+        dest: "/etc/prometheus-am-executor/{{ item }}"
+        owner: 'root'
+        group: 'root'
+        mode: '0755'
+      with_items:
+        - 'ceph_network_evacuate.sh'
+      when:
+        - cinder_backend == 'ceph'
+    
+    - name: Edit prometheus-am-executor execute file host
+      blockinfile:
+        path: '/etc/prometheus-am-executor/heat_excute.yaml'
+        block: |
+          - cmd: /etc/prometheus-am-executor/host_evacuate.sh
+          - cmd: /etc/prometheus-am-executor/network_evacuate.sh
+          {% if cinder_backend == 'ceph' %}
+          - cmd: /etc/prometheus-am-executor/ceph_network_evacuate.sh
+          {% endif %}
+    
+    - name: Copy prometheus alert rules
+      template:
+        src: "{{ item }}.j2"
+        dest: "/etc/prometheus/rules/{{ item }}"
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+      with_items:
+        - instance_ha_alert_rule.yml
+  when:
+    - inventory_hostname in groups['controller']

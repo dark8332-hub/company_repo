@@ -1,0 +1,23 @@
+[DEFAULT]
+
+[ml2]
+type_drivers = flat,vxlan{% if use_vlan == true | default(false) %},vlan{% endif %}
+
+tenant_network_types = vxlan
+mechanism_drivers = openvswitch,l2population
+extension_drivers = qos,port_security
+
+[ml2_type_vxlan]
+vni_ranges=1:65536
+
+{% if use_vlan == true | default(false) %}
+[ml2_type_vlan]
+network_vlan_ranges={% for item in vlans %}{{ item.name }}:{{ item.range_min }}:{{ item.range_max }}{% if not loop.last %},{% endif %}
+{% endfor %}
+{% endif %}
+
+[ml2_type_flat]
+flat_networks=*
+
+[securitygroup]
+enable_ipset = true

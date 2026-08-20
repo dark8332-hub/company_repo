@@ -1,0 +1,5 @@
+---
+- name: chrony_conf is changed 
+  service:
+    name: "{{ 'chrony' if ansible_facts['os_family'] == 'Debian' else 'chronyd' }}"
+    state: restarted

@@ -1,0 +1,32 @@
+[Unit]
+Description=Prometheus Monitoring
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+TimeoutStopSec=1800
+LimitNOFILE=65536
+Restart=on-failure
+Type=simple
+ExecStart={{ exe_path }}/prometheus \
+    --config.file={{ prometheus_config_dir }}/prometheus.yml \
+    --storage.tsdb.path={{ prometheus_data_dir }} \
+    --storage.tsdb.retention.time={{ prometheus_storage_retention_time }} \
+    --storage.tsdb.retention.size={{ prometheus_storage_retention_size }} \
+{% if monitoring_ha_enable %}
+    --storage.tsdb.min-block-duration=2h \
+    --storage.tsdb.max-block-duration=2h \
+{% endif %}
+    --web.enable-lifecycle \
+    --web.enable-admin-api \
+    --web.console.templates={{ prometheus_config_dir }}/consoles \
+    --web.console.libraries={{ prometheus_config_dir }}/console_libraries \
+{% if monitoring_enable_tls %}
+    --web.config.file={{ prometheus_config_dir }}/web-config.yml \
+{% endif %}
+    --web.listen-address=0.0.0.0:{{ prometheus_port }}
+
+[Install]
+WantedBy=multi-user.target

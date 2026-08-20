@@ -1,0 +1,4 @@
+---
+- name: Restart Haproxy
+  service: name=haproxy state=restarted
+  when: haproxy_conf is changed

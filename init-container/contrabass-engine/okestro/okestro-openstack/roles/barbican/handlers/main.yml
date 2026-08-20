@@ -1,0 +1,50 @@
+---
+- import_tasks: barbican-config-set.yml
+
+# Handlers for Barbican
+
+# restart
+
+- name: restart barbican-worker
+  service: name=barbican-worker state=restarted
+  when:
+    - barbican_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart barbican-keystone-listener 
+  service: name=barbican-keystone-listener state=restarted
+  when:
+    - barbican_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart apache2
+  service: name=apache2 state=restarted
+  when:
+    - barbican_conf is changed
+    - ansible_os_family == "Debian"
+
+- name: restart apache2
+  service: name=httpd state=restarted
+  when:
+    - barbican_conf is changed
+    - ansible_os_family == "RedHat"
+
+
+
+# start
+
+- name: start barbican-worker
+  service: name=barbican-worker state=started
+
+- name: start barbican-keystone-listener
+  service: name=barbican-keystone-listener state=started
+
+
+
+# stop
+
+- name: stop barbican-worker
+  service: name=barbican-worker state=stopped
+
+- name: stop barbican-keystone-listener
+  service: name=barbican-keystone-listener state=stopped

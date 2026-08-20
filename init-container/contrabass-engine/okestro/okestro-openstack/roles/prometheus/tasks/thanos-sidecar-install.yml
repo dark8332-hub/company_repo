@@ -1,0 +1,62 @@
+---
+- name: Register Thanos config dir exists
+  stat:
+    path: '{{ thanos_config_dir }}'
+  register: thanos_config_dir_svc
+  ignore_errors: true
+
+- name: Create Thanos config dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ thanos_config_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+    - { path: '{{ thanos_config_dir }}/config',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+    - { path: '{{ thanos_config_dir }}/buckets',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+    - { path: '{{ thanos_config_dir }}/rules',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not thanos_config_dir_svc.stat.exists
+
+- name: Copy Thanos binary file
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos',dest: '{{ exe_path }}',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Copy Thanos sidecar http config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-http-server-config.yml.j2',dest: '{{ thanos_config_dir }}/config/thanos-http-server-config.yml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-http-client-config.yml.j2',dest: '{{ thanos_config_dir }}/config/thanos-http-client-config.yml',owner: 'root',group: 'root',mode: '0644' }
+  when: monitoring_enable_tls == true
+
+- name: Copy Thanos sidecar bucket and service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-bucket.yml.j2',dest: '{{ thanos_config_dir }}/buckets/thanos-bucket.yml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'thanos-sidecar.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-sidecar.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Thanos sidecar service
+  service:
+    name: thanos-sidecar
+    state: restarted
+    enabled: true

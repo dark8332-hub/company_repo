@@ -1,0 +1,77 @@
+- name: Check ceph cluster exists before bootstrap
+  shell: cephadm ls
+  register: ceph_cluster_check
+
+- name: Ceph boostraping
+  block:
+    - name: Copy ceph init config
+      template:
+        src: 'initial-ceph.conf.j2'
+        dest: "{{ cephadm_dir }}/initial-ceph.conf"
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+    
+    - name: bootstraping ceph
+      shell: "cephadm --image {{ registry_domain }}:{{ registry_port }}/ceph/ceph:v19 bootstrap --mon-ip {{ hostvars[groups['mons'][0]].monitor_addresses }} --cluster-network {{ ceph_cluster_network }} --config {{ cephadm_dir }}/initial-ceph.conf"
+
+    - name: Change ceph dashboard password
+      shell: "cephadm --image {{ registry_domain }}:{{ registry_port }}/ceph/ceph:v19 shell -- echo {{ ceph_dashboard_password }} > dashboard_password.yml && ceph dashboard ac-user-set-password admin -i dashboard_password.yml"
+  when: '"[]" == ceph_cluster_check.stdout'
+
+- name: Copy ceph.pub to authenticate with ssh key
+  shell: "ssh-copy-id -f -i /etc/ceph/ceph.pub root@{{ item }}"
+  loop: "{{ (groups['mons'] | default([]) + groups['rgws'] | default([]) + groups['mdss'] | default([]) + groups['osds'] | default([])) | unique }}"
+
+- name: Add mon host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} {{ hostvars[item].monitor_addresses }} --labels _admin"
+  loop: "{{ groups['mons'] }}"
+
+- name: Add osd host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} {{ hostvars[item].ansible_host }} --labels osds"
+  loop: "{{ groups['osds'] }}"
+  when: item in groups['osds'] and item not in groups['mons']
+
+- name: Add osd label to host in ceph bootstrap cluster
+  shell: "ceph orch host label add {{ item }} osds"
+  loop: "{{ groups['osds'] }}"
+  when: item in groups['osds'] and item in groups['mons']
+
+- name: Add mds host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} {{ hostvars[item].ansible_host }} --labels mdss"
+  loop: "{{ groups['mdss'] }}"
+  when: 
+    - groups['mdss'] | length > 0
+    - item in groups['mdss'] and item not in groups['mons']
+
+- name: Add mds label to host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} --labels mdss"
+  loop: "{{ groups['mdss'] }}"
+  when:
+    - groups['mdss'] | length > 0
+    - item in groups['mdss'] and groups['mons']
+
+- name: Add rgw host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} {{ hostvars[item].ansible_host }} --labels rgws"
+  loop: "{{ groups['rgws'] }}"
+  when: 
+    - groups['rgws'] | length > 0
+    - item in groups['rgws'] and item not in groups['rgws']
+
+- name: Add rgw label to host in ceph bootstrap cluster
+  shell: "ceph orch host add {{ item }} --labels rgws"
+  loop: "{{ groups['rgws'] }}"
+  when:
+    - groups['rgws'] | length > 0
+    - item in groups['rgws'] and groups['mons']
+
+- name: Copy default ceph cluster template
+  template:
+    src: 'ceph-cluster.yaml.j2'
+    dest: "{{ cephadm_dir }}/ceph-cluster.yaml"
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+
+- name: Apply ceph cluster settings
+  shell: "ceph orch apply -i {{ cephadm_dir }}/ceph-cluster.yaml"

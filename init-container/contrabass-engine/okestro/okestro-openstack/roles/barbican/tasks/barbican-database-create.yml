@@ -1,0 +1,21 @@
+- name: Create Barbican DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+    - db: barbican
+
+- name: Update mysql barbican password for all barbican accounts
+  no_log: true
+  mysql_user:
+    name: barbican
+    host: "{{ item.host }}"
+    password: "{{ db_password }}"
+    priv: '{{ item.db }}.*:ALL'
+    state: present
+    append_privs: yes
+  with_items:
+    - db: barbican
+      host: localhost
+    - db: barbican
+      host: '%'

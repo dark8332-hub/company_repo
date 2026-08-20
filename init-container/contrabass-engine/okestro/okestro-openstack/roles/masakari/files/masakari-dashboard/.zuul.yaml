@@ -1,0 +1,15 @@
+- project:
+    templates:
+      - check-requirements
+      - horizon-non-primary-django-jobs
+      - openstack-python3-yoga-jobs
+      - publish-openstack-docs-pti
+      - release-notes-jobs-python3
+      - periodic-stable-jobs
+      - periodic-jobs-with-oslo-master
+    check:
+      jobs:
+        - openstack-tox-linters
+    gate:
+      jobs:
+        - openstack-tox-linters

@@ -1,0 +1,76 @@
+---
+- name: placement config file setting
+  template:
+    src: "{{ item }}"
+    dest: "{{ placement_config_dir }}/{{ placement_config }}"
+    owner: placement
+    group: root
+    mode: 0644
+  with_items:
+  - placement.conf.j2
+  register: placement_conf
+  notify: restart apache2..
+
+- name: placement api config file setting
+  template:
+    src: "{{ item }}"
+    dest: /etc/httpd/conf.d/00-placement-api.conf
+    owner: root
+    group: root
+    mode: 0640
+  with_items:
+    - 00-placement-api.conf
+  register: placement_conf
+  notify: restart apache2..
+  when: ansible_os_family == "RedHat"
+
+- include_tasks: placement-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Placement to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_placement ##"
+    insertbefore: "# public"
+    block: |
+      listen int_placement
+        bind {{ internal_vip_address }}:{{ placement_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ placement_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: placement_int_haproxy
+
+- name: Configure External Placement to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_placement ##"
+    insertbefore: EOF
+    block: |
+      listen pub_placement
+        bind {{ external_vip_address }}:{{ placement_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ placement_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: placement_pub_haproxy
+
+- name: Restart Placement
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted
+  when: placement_conf.changed
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted

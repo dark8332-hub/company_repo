@@ -1,0 +1,59 @@
+- name: Setup server for new compute add
+  setup:
+
+- name: Server Hostname Setting
+  hostname:
+    name: "{{ inventory_hostname }}"
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- include_tasks: copy-host-file.yml
+  when:
+    - inventory_hostname in groups["openstack"] or inventory_hostname in groups["new-compute"]
+
+- include_tasks: server-init.yml
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- include_tasks: certificates.yml
+  when: 
+    - enable_openstack_tls == true
+
+- include_tasks: package-installation.yml
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- include_tasks: migration-settings.yml
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- include_tasks: ceph-connect.yml
+  when:
+    - cinder_backend == "ceph"
+
+- include_tasks: compute-discover.yml
+  when:
+    - inventory_hostname in groups["controller"][0]
+
+- include_tasks: masakari-settings.yml
+  when:
+    - enable_masakari == true
+
+- include_tasks: monitoring-certs-create.yml
+  when:
+    - monitoring_enable_tls == true
+
+- include_tasks: prometheus-config-settings.yml
+  when:
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: node-exporter-install.yml
+  when: inventory_hostname in groups["new-compute"]
+
+- include_tasks: libvirt-exporter-install.yml
+  when: inventory_hostname in groups["new-compute"]
+
+- include_tasks: compute-exporters-install.yml
+  when: inventory_hostname in groups["new-compute"]
+
+- include_tasks: contrabass-mole-settings.yml

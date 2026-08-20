@@ -1,0 +1,18 @@
+{% if ansible_os_family == "Debian" %}
+launch+=gmysql
+{% elif ansible_os_family == "RedHat" %}
+launch=gmysql
+{% endif %}
+
+local-address={{ hostvars[inventory_hostname]['ansible_'~external_api_interface]['ipv4']['address'] }}
+gmysql-host={{ hostvars[inventory_hostname]['ansible_'~int_api_interface]['ipv4']['address'] }}
+gmysql-port={{ percona_port }}
+gmysql-dbname=pdns
+gmysql-user=pdns
+gmysql-password={{ db_password }}
+gmysql-dnssec=yes
+{% if inventory_hostname in groups['controller'] and play_hosts.index(inventory_hostname) == 0 %}
+master=yes
+{% elif inventory_hostname in groups['controller'] and play_hosts.index(inventory_hostname) > 0 %}
+slave=yes
+{% endif %}

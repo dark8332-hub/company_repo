@@ -1,0 +1,76 @@
+[ol8_addons]
+name=ol8_addons
+baseurl=http://{{ package_ip }}/ol8_addons
+enabled=1
+gpgcheck=0
+
+[ol8_appstream]
+name=ol8_appstream
+baseurl=http://{{ package_ip }}/ol8_appstream
+enabled=1
+gpgcheck=0
+
+[ol8_baseos_latest]
+name=ol8_baseos_latest
+baseurl=http://{{ package_ip }}/ol8_baseos_latest
+enabled=1
+gpgcheck=0
+
+[ol8_codeready_builder]
+name=ol8_codeready_builder
+baseurl=http://{{ package_ip }}/ol8_codeready_builder
+enabled=1
+gpgcheck=0
+
+[ol8_distro_builder]
+name=ol8_distro_builder
+baseurl=http://{{ package_ip }}/ol8_distro_builder
+enabled=1
+gpgcheck=0
+
+[ol8_kvm_appstream]
+name=ol8_kvm_appstream
+baseurl=http://{{ package_ip }}/ol8_kvm_appstream
+enabled=1
+gpgcheck=0
+
+[ol8_UEKR6_RDMA]
+name=ol8_UEKR6_RDMA
+baseurl=http://{{ package_ip }}/ol8_UEKR6_RDMA
+enabled=1
+gpgcheck=0
+[centos-nfv-openvswitch]
+name=centos-nfv-openvswitch
+baseurl=http://{{ package_ip }}/centos-nfv-openvswitch
+enabled=1
+gpgcheck=0
+
+[centos-rabbitmq-38]
+name=centos-rabbitmq-38
+baseurl=http://{{ package_ip }}/centos-rabbitmq-38
+enabled=1
+gpgcheck=0
+
+[openstack-yoga]
+name=openstack-yoga
+baseurl=http://{{ package_ip }}/openstack-yoga
+enabled=1
+gpgcheck=0
+
+[powerdns-auth-48]
+name=powerdns-auth-48
+baseurl=http://{{ package_ip }}/powerdns-auth-48
+enabled=1
+gpgcheck=0
+
+[prel-release-noarch]
+name=prel-release-noarch
+baseurl=http://{{ package_ip }}/prel-release-noarch
+enabled=1
+gpgcheck=0
+
+[pxc-80-release-x86_64]
+name=pxc-80-release-x86_64
+baseurl=http://{{ package_ip }}/pxc-80-release-x86_64
+enabled=1
+gpgcheck=0

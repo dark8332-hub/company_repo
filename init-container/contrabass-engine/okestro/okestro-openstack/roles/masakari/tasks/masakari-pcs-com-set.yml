@@ -1,0 +1,70 @@
+- block:
+  - name: Start pcsd
+    service:
+      name: pcsd
+      state: started
+
+  - name: pcs remote check
+    command: crm_verify --live-check
+    register: pcs_remote
+    when: inventory_hostname in groups["compute"]
+    ignore_errors: true
+  
+  - name: stop pacemaker-remote
+    service:
+      name: "{{ item }}"
+      state: stopped
+    with_items:
+      - pacemaker_remote
+    when: 
+      - ("Transport endpoint is not connected" in pcs_remote.stderr)
+  
+  - name: hauser password change
+    user:
+      name: hacluster
+      password: "{{ haproxy_pwd | password_hash('sha512')}}"
+      update_password: always
+    when:
+      - ("Transport endpoint is not connected" in pcs_remote.stderr)
+  
+  - name: Initializing remote node before clustering
+    command: pcs cluster destroy
+    when:
+      - ("Transport endpoint is not connected" in pcs_remote.stderr)
+  when: remote_process == "remote"
+
+- block:
+  - name: Start pcsd
+    service:
+      name: pcsd
+      state: started
+
+  - name: pcs cluster check
+    command: crm_verify --live-check
+    register: pcs_cluster
+    when: inventory_hostname in groups["compute"]
+    ignore_errors: true
+
+  - name: stop pacemaker
+    service:
+      name: "{{ item }}"
+      state: stopped
+    with_items:
+      - pacemaker
+      - corosync
+    when:
+      - ("config not valid" in pcs_cluster.stderr)
+
+  - name: hauser password change
+    user:
+      name: hacluster
+      password: "{{ haproxy_pwd | password_hash('sha512')}}"
+      update_password: always
+    when:
+      - ("config not valid" in pcs_cluster.stderr) or ("Transport endpoint is not connected" in pcs_cluster.stderr)
+
+  - name: Initializing cluster node before clustering
+    command: pcs cluster destroy
+    when:
+      - ("config not valid" in pcs_cluster.stderr)
+  when: remote_process == "cluster"

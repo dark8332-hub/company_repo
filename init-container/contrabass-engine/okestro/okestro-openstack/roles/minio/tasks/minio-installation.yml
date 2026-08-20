@@ -1,0 +1,90 @@
+- name: Create minio directory for use minio object store
+  file:
+    path: '/mnt/monitoring-store'
+    state: directory
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Create a xfs filesystem on minio device
+  community.general.filesystem:
+    fstype: xfs
+    dev: "{{ minio_device }}"
+    opts: "-L miniodisk"
+
+- name: Mount minio device to minio directory
+  ansible.posix.mount:
+    path: '/mnt/monitoring-store'
+    src: "LABEL=miniodisk"
+    fstype: xfs
+    state: mounted
+
+- name: Copy minio related files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: 'root'
+    group: 'root'
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'minio', dest: '/usr/local/bin/minio', mode: '0750' }
+    - { src: 'minio.service', dest: '/etc/systemd/system/minio.service', mode: '0644' }
+    - { src: 'mc', dest: '/usr/local/bin/mc', mode: '0750' }
+
+- name: Copy minio environment template
+  template:
+    src: 'minio.j2'
+    dest: '/etc/default/minio'
+    owner: 'root'
+    group: 'root'
+    mode: '0644'
+  register: minio_env
+
+- name: Reload daemon
+  ansible.builtin.systemd_service:
+    name: minio
+    daemon_reload: true
+
+- name: Start minio service
+  service:
+    name: minio
+    state: restarted
+    enabled: true
+  when: minio_env.changed
+
+- name: Configure MinIO to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} MinIO Cluster ##"
+    insertbefore: "# public"
+    block: |
+      listen int_minio_cluster
+        bind {{ internal_vip_address }}:{{ minio_bind_port }}
+
+        balance leastconn
+        mode http
+        option tcpka
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_' + int_api_interface].ipv4.address }}:{{ minio_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: minio_proxy
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+  when: minio_proxy.changed
+
+- name: Check minio alias exists
+  shell: '/usr/local/bin/mc alias ls'
+  register: mc_alias
+
+- name: Minio alias set
+  template:
+    src: 'config.json.j2'
+    dest: '/root/.mc/config.json'
+    owner: 'root'
+    group: 'root'
+    mode: '0600'
+  when: "'contrabass-monitoring' not in mc_alias.stdout"

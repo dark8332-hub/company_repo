@@ -1,0 +1,24 @@
+[ req ]
+default_bits = 2048
+default_md = sha256
+prompt = no
+distinguished_name = dn
+req_extensions = req_ext
+
+[ dn ]
+C  = KR
+ST = Seoul
+L  = Yeouido
+O  = {{ cloud }} 
+CN = openstack 
+
+[ req_ext ]
+subjectAltName = @alt_names
+
+[ alt_names ]
+{% if endpoint_type == "domain" %}
+DNS.1 = {{ internal_endpoint }}
+DNS.2 = {{ admin_endpoint }}
+{% elif endpoint_type == "vip" %}
+IP.1 = {{ internal_endpoint }}
+{% endif %}

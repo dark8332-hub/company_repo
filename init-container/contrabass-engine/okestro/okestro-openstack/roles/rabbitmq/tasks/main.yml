@@ -1,0 +1,21 @@
+---
+- name: Setup Server For RabbitMQ 
+  setup:
+
+- include_tasks: rabbitmq-install.yml
+
+- include_tasks: erlang_cookie.yml
+  when: rabbitmq_create_cluster
+
+- include_tasks: config.yml
+
+- include_tasks: service.yml
+
+- include_tasks: cluster.yml
+  when: rabbitmq_create_cluster == true
+
+- include_tasks: create_users.yml
+  when: inventory_hostname == groups["controller"][0]
+
+#- include_tasks: enable_queue_ha.yml
+#  when: inventory_hostname == groups["controller"][0]

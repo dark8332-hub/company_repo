@@ -1,0 +1,62 @@
+- name: Create promtail directory
+  file:
+    path: '/etc/promtail'
+    state: directory
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+
+- name: Create prometheus directory for ipmi-exporter
+  file:
+    path: '/etc/prometheus'
+    state: directory
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy prometheus web config file
+  template:
+    src: '/root/okestro/okestro-openstack/roles/prometheus/templates/prometheus-web-config.yml.j2'
+    dest: '/etc/prometheus/web-config.yml'
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+
+- name: Copy exporter binaries
+  copy:
+    src: "{{ item }}"
+    dest: '/usr/local/bin/'
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+  with_items:
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/promtail'
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/ovs-exporter'
+    - '/root/okestro/okestro-openstack/roles/prometheus/files/ipmi-exporter'
+
+- name: Copy exporter revelant files
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items:
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/promtail.service.j2', dest: '/etc/systemd/system/promtail.service' }
+    - { src: 'promtail-config.yaml.j2', dest: '/etc/promtail/promtail-config.yaml' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/ovs-exporter.service.j2', dest: '/etc/systemd/system/ovs-exporter.service' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/templates/ipmi-exporter.service.j2', dest: '/etc/systemd/system/ipmi-exporter.service' }
+    - { src: '/root/okestro/okestro-openstack/roles/prometheus/files/ipmi-exporter.yml', dest: '/etc/prometheus/ipmi-exporter.yml' }
+
+- name: Daemon-reload
+  command: systemctl daemon-reload
+
+- name: Start promtail
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: yes
+  with_items:
+    - 'promtail'
+    - 'ovs-exporter'
+    - 'ipmi-exporter'

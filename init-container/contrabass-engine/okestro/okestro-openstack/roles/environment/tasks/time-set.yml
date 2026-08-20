@@ -1,0 +1,27 @@
+---
+- name: timezone set Seoul
+  timezone:
+    name: "{{ timezone }}"
+
+- name: NTP Service install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+       - chrony
+    state: present
+
+- name: NTP Config Settings
+  template:
+    src: "{{ chrony_config }}.j2"
+    dest: "{{ chrony_config_path }}"
+    owner: root
+    group: root
+    mode: 0644
+  register: chrony_conf
+  notify: chrony_conf is changed
+
+- name: Restart Chrony
+  service:
+    name: chronyd
+    state: restarted
+    enabled: yes

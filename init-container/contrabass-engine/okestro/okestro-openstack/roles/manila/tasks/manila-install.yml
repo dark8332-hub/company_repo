@@ -1,0 +1,26 @@
+- name: manila package install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_manila_api }}"
+      - "{{ pac_manila_scheduler }}"
+      - "{{ pac_manila_share }}"
+      - python3-manilaclient
+      - "{{ pac_manila_ui }}"
+    state: present
+
+- name: Enable manila packages
+  service:
+    name: "{{ item }}"
+    enabled: true
+  with_items:
+    - "{{ serv_manila_api }}"
+    - "{{ serv_manila_scheduler }}"
+    - "{{ serv_manila_share }}"
+
+- name: Create Manila Oslo Directory
+  file:
+    path: /var/lock/manila
+    state: directory
+    owner: manila
+    group: manila

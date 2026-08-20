@@ -1,0 +1,27 @@
+- name: SSH key initialize
+  community.crypto.openssh_keypair:
+    path: /root/.ssh/id_rsa
+
+- name: Create config files
+  file:
+    path: "{{ item }}"
+    state: touch
+    owner: root
+    group: root
+    mode: 0600
+  with_items:
+    - "/root/.ssh/config"
+    - "/root/.ssh/ansible-user-password.txt"
+
+- name: SSH env configuration
+  lineinfile:
+    path: "{{ item.path }}"
+    line: "{{ item.line }}"
+  with_items:
+    - { path: "/root/.ssh/config", line: "StrictHostKeyChecking no" }
+    - { path: "/root/.ssh/ansible-user-password.txt", line: "{{ server_password }}" }
+
+- name: SSH key copy
+  shell: "sshpass -f '/root/.ssh/ansible-user-password.txt' ssh-copy-id {{ hostvars[item].ansible_host }}"
+  with_items:
+    - "{{ groups['alls'] }}"

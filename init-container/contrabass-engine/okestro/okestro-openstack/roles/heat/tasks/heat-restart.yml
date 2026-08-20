@@ -1,0 +1,20 @@
+---
+- name: heat restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - heat-api
+    - heat-engine
+    - heat-api-cfn
+  when: ansible_os_family == "Debian"
+
+- name: heat restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - openstack-heat-api
+    - openstack-heat-api-cfn
+    - openstack-heat-engine
+  when: ansible_os_family == "RedHat"

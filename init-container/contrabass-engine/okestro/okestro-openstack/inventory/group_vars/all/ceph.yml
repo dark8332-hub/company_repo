@@ -1,0 +1,17 @@
+# cephadm vars
+registry_domain: 'private-registry.local'
+registry_dir: '/var/lib/registry'
+registry_port: '6666'
+cephadm_dir: '/tmp/cephadm'
+# cephadm
+ceph_monitor_interface: ens8
+ceph_monitor_network: '10.255.199.0/24'
+ceph_cluster_network: '10.255.199.0/24'
+ceph_dashboard_password: 'cloud1234'
+osd_devices:
+  - /dev/vdb
+rgw_port: '8090'
+mgr_port: '8443'
+ceph_exporter_port: '9926'
+mgr_exporter_port: '9283'
+mgr_bind_port: '18443'

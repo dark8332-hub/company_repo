@@ -1,0 +1,77 @@
+---
+- name: Register Alertmanager data dir exists
+  stat:
+    path: '{{ alertmanager_data_dir }}'
+  register: alertmanager_data_dir_svc
+  ignore_errors: true
+
+- name: Create Alertmanager data dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ alertmanager_data_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not alertmanager_data_dir_svc.stat.exists
+
+- name: Register Alertmanager config dir exists
+  stat:
+    path: '{{ alertmanager_config_dir }}'
+  register: alertmanager_config_dir_svc
+  ignore_errors: true
+
+- name: Create Alertmanager config dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ alertmanager_config_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not alertmanager_config_dir_svc.stat.exists
+
+- name: Copy Alertmanager config directory and file
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'alertmanager_dir/alertmanager',dest: '{{ exe_path }}',owner: 'root',group: 'root',mode: '0755' }
+    - { src: 'alertmanager_dir/amtool',dest: '{{ exe_path }}',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Copy Alertmanager web and cluster config file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'alertmanager-web-config.yml.j2',dest: '{{ alertmanager_config_dir }}/web-config.yml',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'alertmanager-cluster-tls-config.yml.j2',dest: '{{ alertmanager_config_dir }}/alertmanager-cluster-tls-config.yml',owner: 'root',group: 'root',mode: '0644' }
+  when: monitoring_enable_tls == true
+
+- name: Copy Alertmanager service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'alertmanager.service.j2',dest: '{{ alertmanager_service_daemon_path }}/alertmanager.service',owner: 'root',group: 'root',mode: '0644' }
+    - { src: 'alertmanager.yml.j2', dest: '{{ alertmanager_config_dir }}/alertmanager.yml', owner: 'root', group: 'root', mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Alertmanager service
+  service:
+    name: alertmanager
+    state: restarted
+    enabled: true

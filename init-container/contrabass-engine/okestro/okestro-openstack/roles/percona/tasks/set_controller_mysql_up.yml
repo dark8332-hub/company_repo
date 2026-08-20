@@ -1,0 +1,13 @@
+- name: Down mysql@bootstrap service
+  service:
+    name: 'mysql@bootstrap'
+    state: stopped
+
+- name: Wait for update cluster state
+  wait_for:
+    timeout: 10
+
+- name: Start mysql service
+  service:
+    name: mysql
+    state: started

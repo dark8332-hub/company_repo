@@ -1,0 +1,18 @@
+---
+- name: Setup Server For Percona 
+  setup:
+
+- include_tasks: install_password_setting.yml
+
+- include_tasks: config_setting.yml
+
+- include_tasks: primary_boot.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: non_primary_boot.yml
+  when: inventory_hostname in groups["controller"][1:]
+
+- include_tasks: set_controller_mysql_up.yml
+  when: 
+    - inventory_hostname in groups["controller"][0]
+    - groups["controller"] | length > 1

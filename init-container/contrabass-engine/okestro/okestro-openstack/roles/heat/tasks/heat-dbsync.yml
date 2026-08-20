@@ -1,0 +1,4 @@
+---
+    - name: DB Sync
+      changed_when: no
+      command: /bin/sh -c "heat-manage db_sync"

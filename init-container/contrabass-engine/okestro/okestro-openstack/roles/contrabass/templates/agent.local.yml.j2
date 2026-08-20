@@ -1,0 +1,162 @@
+Log:
+  LogLevel: debug
+  Path: /var/log/contrabass/mole/mole.log
+  MaxSize: 100 # megabytes
+  MaxBackups: 5
+  MaxAge: 28 # days
+Server:
+  RunMode: debug
+  HTTPContextPath: /c-agent/service
+  HTTPServerIP: 0.0.0.0
+  HTTPPort: 8888
+  ReadTimeout: 60
+  WriteTimeout: 60
+MulticastServer:
+  BindIP: 224.0.0.250
+  BindPort: 7100
+
+OpenStack:
+  Release: {{ openstack_version }}
+  VolumeBackend:
+    Path: /etc/cinder/cinder.conf
+  Nova:
+    Path: /etc/nova/nova.conf
+  Neutron:
+    OpenVSwitchAgentPath: /etc/neutron/plugins/ml2/openvswitch_agent.ini
+    NeutronConfPath: /etc/neutron/neutron.conf
+  DefaultValues:
+    CpuAllocationRatio: 16.0
+    RamAllocationRatio: 1.0
+GetOperationSystemVersion:
+  OS: ubuntu
+  Command: lsb_release -a
+Database:
+  Dsn: root:ENC({{ db_encrypt_password }})@tcp({{ internal_vip_address }}:{{ percona_bind_port }})/?parseTime=true
+IPMI:
+  User: {{ ipmi_user }}
+  Password: ENC({{ ipmi_encrypt_password }})
+Node:
+  Backup:
+    DB:
+      UserID: root
+      Password: ENC({{ db_encrypt_password }})
+      BackupDir: /root/contrabass-backup/db-backup
+      FullDir: full
+      IncrementalDir: incremental
+      BackupScriptPath: /etc/contrabass/mole/node-backup-db-backup.sh
+      RemoveScriptPath: /etc/contrabass/mole/node-backup-db-remove.sh
+    Config:
+      BackupDir: /root/contrabass-backup/config-backup
+      BackupScriptPath: /etc/contrabass/mole/node-backup-config-backup.sh
+  # Log directories of OpenStack services
+  SearchLogPaths:
+    - /var/log/keystone/
+    - /var/log/glance/
+    - /var/log/placement/
+    - /var/log/nova/
+    - /var/log/neutron/
+    - /var/log/cinder/
+{% if enable_manila %}
+    - /var/log/manila/
+{% endif %}
+{% if enable_octavia %}
+    - /var/log/octavia/
+{% endif %}
+{% if enable_barbican %}
+    - /var/log/barbican/
+{% endif %}
+{% if enable_heat %}
+    - /var/log/heat
+{% endif %}
+{% if enable_masakari %}
+    - /var/log/masakari
+    - /var/log/masakarimonitors
+{% endif %}
+
+  ControlNodes:
+{% for item in groups['controller'] %}
+    - {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}
+{% endfor %}
+
+EnvironmentVars:
+  - PYTHONIOENCODING=utf8
+  - OS_PROJECT_DOMAIN_NAME=Default
+  - OS_USER_DOMAIN_NAME=Default
+  - OS_PROJECT_NAME=admin
+  - OS_USERNAME=admin
+  - OS_PASSWORD=ENC({{ keystone_encrypt_password }})
+  - OS_AUTH_URL={{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/
+{% if internal_endpoint_protocol == 'https' %}
+  - OS_CERT={{ internal_fqdn_cert }}
+{% endif %}
+  - OS_IDENTITY_API_VERSION=3
+  - OS_IMAGE_API_VERSION=2
+  - OS_INTERFACE=internal
+  - OS_MANILA_ENDPOINT_TYPE=internal
+
+#### DB 벡업 설정 ############################################################################
+DbBackup:
+  SupportedTypes: [S3, Local]   # s3, local
+  S3:
+    Kind: aws
+    Addr: http://{{ internal_vip_address }}:{{ minio_bind_port }}
+    Region: us-west-1
+    AccessKey: {{ s3_access_key }}
+    SecretKey: {{ s3_secret_key }}
+  Local:
+    BackupPath: /root/contrabass-backup/db-backup
+  Setting:
+    DbUserID: root
+    DbPassword: ENC({{ db_encrypt_password }})
+    S3TempPath: /tmp/contrabass/mole
+#### DB 벡업 설정 (끝)
+#### Config 벡업 설정 #########################################################################
+ConfigBackup:
+  SupportedTypes: [S3, Local]   # s3, local
+  S3:
+    Kind: aws
+    Addr: http://{{ internal_vip_address }}:{{ minio_bind_port }}
+    Region: us-west-1
+    AccessKey: {{ s3_access_key }}
+    SecretKey: {{ s3_secret_key }}
+  Local:
+    BackupPath: /root/contrabass-backup/config-backup
+  Setting:
+    ListFile: /etc/contrabass/mole/config-backup-list.cfg
+    S3TempPath: /tmp/contrabass/mole
+    LocalBackupScriptFile: /etc/contrabass/mole/node-backup-config-backup.sh
+    RamainDays: 31
+    RamainCount: 5
+#### Config 벡업 설정 (끝)
+
+#### 기타 설정 #########################################################################
+# DisableChcpu : 무중단 증설 기능을 사용할 때, VM 의 OS 가 'cpu hotplug' 를 지원할 경우 아래 값을 true 로 설정하세요. (false 로 설정되어도 동작에는 영향이 없지만, mole 로그에 error 로그가 추가 기록됩니다)
+# HANetworkInterfacesFilter : [HA고도화] Host 등록 시, 화면에 표출해주는 네트워크 인터페이스 필터링 설정
+#   다음 단계로 필터링 됩니다.
+#   1. IncludePrefixes 정규식에 매칭되는 인터페이스만 포함 (공백이면 모두 포함)
+#   2. ExcludePrefixes 정규식에 매칭되는 인터페이스는 제외
+#   3. 1, 2 단계를 거쳐 남은 인터페이스만 화면에 표출
+Etc:
+  DisableChcpu: false
+  GpuMigInstanceExtraSpecsPrefix: CUSTOM_VGPU
+  GpuPassthroughInstanceExtraSpecsPrefix: CUSTOM_PGPU
+  HANetworkInterfacesFilter:
+    IncludePrefixes: [ens, enp, eth, bond, br, vlan]
+    ExcludePrefixes: [lo]
+#### 기타 설정 (끝)
+
+#### Metric Exporter 설정 #########################################################################
+Exporter:
+  BindPort: 9102
+  DcgmExporterPortInInstance: 9400
+  UseMoleExporter: true
+  UseDcgmExporter: true
+  UseNfvExporter: true
+  UseAutoRegisterNfvListener: true
+  AutoRegisterNfvListenerIntervalSec: 10
+HostMetric:
+  NetworkBlacklistInterface: "`^(lo|docker|veth|br-|brq|tap|qbr|qvb|qvo|qr-|qg-|ovs-system|ovs|br-int|br-ex|br-tun|int-br|phy-br|vxlan_sys_|genev_sys_).*`"
+  # NetworkIncludeInterface: 포함(화이트리스트) 정규식
+  # 비어있으면 기본값으로 ens* 인터페이스만 수집("^ens")
+  NetworkWhitelistInterface: "^ens"
+### Metric Exporter 설정 (끝)

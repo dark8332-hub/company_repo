@@ -1,0 +1,11 @@
+---
+- name: Add manila info to ceph.conf
+  blockinfile:
+    path: "{{ ceph_dir }}/{{ ceph_config }}"
+    insertafter: EOF
+    block: |
+      [client.manila]
+      client mount uid = 0
+      client mount gid = 0
+      log file = /opt/stack/logs/ceph-client.manila.log
+      keyring = /etc/ceph/ceph.client.manila.keyring

@@ -1,0 +1,5 @@
+- name: Setup server for tech-priview
+  setup:
+
+- include_tasks: instance-ha-script.yml
+  when: enable_instance_ha == true

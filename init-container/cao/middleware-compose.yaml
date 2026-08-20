@@ -1,0 +1,277 @@
+version: '3'
+
+services:
+  ################################## mariadb #######################################
+  mariadb-maestro:
+    container_name: mariadb
+    image: localhost:5555/mariadb:10.11-jammy
+    volumes:
+      - mariadb-data:/var/lib/mysql:z
+        #      - /cao_db/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql
+        #      - /cao_db/01-board_ddl.sql:/docker-entrypoint-initdb.d/01-board_ddl.sql
+        #      - /cao_db/02-cloud_service.sql:/docker-entrypoint-initdb.d/02-cloud_service.sql
+        #      - /cao_db/03-keycloak.sql:/docker-entrypoint-initdb.d/03-keycloak.sql
+        #      - /cao_db/04-maestro.sql:/docker-entrypoint-initdb.d/04-maestro.sql
+        #      - /cao_db/05-contrabass.sql:/docker-entrypoint-initdb.d/05-contrabass.sql
+        #      - /cao_db/06-authority_240528.sql:/docker-entrypoint-initdb.d/06-authority_240528.sql
+        #      - /cao_db/07-board_dml.sql:/docker-entrypoint-initdb.d/07-board_dml.sql
+        #      - /cao_db/08-cmp_ai.sql:/docker-entrypoint-initdb.d/08-cmp_ai.sql
+        #      - /cao_db/09-endpoint_240528.sql:/docker-entrypoint-initdb.d/09-endpoint_240528.sql
+        #      - /cao_db/10-event_pusher.sql:/docker-entrypoint-initdb.d/10-event_pusher.sql
+        #      - /cao_db/11-folder.sql:/docker-entrypoint-initdb.d/11-folder.sql
+        #      - /cao_db/12-log_tag.sql:/docker-entrypoint-initdb.d/12-log_tag.sql
+        #      - /cao_db/13-menu.sql:/docker-entrypoint-initdb.d/13-menu.sql
+        #      - /cao_db/14-notification.sql:/docker-entrypoint-initdb.d/14-notification.sql
+        #      - /cao_db/15-role_240528.sql:/docker-entrypoint-initdb.d/15-role_240528.sql
+        #      - /cao_db/16-service_request.sql:/docker-entrypoint-initdb.d/16-service_request.sql
+        #      - /cao_db/17-solution.sql:/docker-entrypoint-initdb.d/17-solution.sql
+        #      - /cao_db/18-custom_by_solution.sql:/docker-entrypoint-initdb.d/18-custom_by_solution.sql
+        #      - /cao_db/19-delete_finops.sql:/docker-entrypoint-initdb.d/19-delete_finops.sql
+        #      - /cao_db/20-log_tag_updated.sql:/docker-entrypoint-initdb.d/20-log_tag_updated.sql
+        #      - /cao_db/21-pds_integration.sql:/docker-entrypoint-initdb.d/21-pds_integration.sql
+      - ./config/mariadb/conf.d:/etc/mysql/conf.d
+    environment:
+    - MARIADB_ROOT_PASSWORD=okestro2018
+    ports:
+      - "3308:3306"
+    networks:
+      - maestro
+
+  ################################## redis #######################################
+  redis:
+    container_name: redis 
+    image: localhost:5555/redis:latest
+    expose:
+      - 6379
+    command:
+      - redis-server
+      - /usr/local/etc/redis/redis.conf
+    environment:
+      MASTER: "true"
+    networks:
+      - maestro
+
+    volumes: 
+      -  redis-data:/data:z    
+      - ./config/redis/redis.conf:/usr/local/etc/redis/redis.conf
+  ################################## vault #######################################
+  vault:
+    container_name: vault
+    image: localhost:5555/vault:1.14.1
+    ports:
+      - 8200:8200
+    volumes:
+      - ./config/vault/storageconfig.hcl:/vault/data/config/storageconfig.hcl
+      - ./config/vault/backup.sh:/vault/data/backup.sh
+      - ./config/vault/restore.sh:/vault/data/restore.sh
+      - ./config/vault/unsealer.sh:/vault/data/unsealer.sh
+      - vault-data:/vault/data:z
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_API_ADDR: http://vault:8200
+      VAULT_CLUSTER_ADDR: http://vault:8201
+    cap_add:
+      - IPC_LOCK
+    command:
+      - server
+      - -config=/vault/data/config/storageconfig.hcl
+    networks:
+      - maestro
+
+    restart: always
+  ################################## oauth2-proxy #######################################
+  oauth2-proxy:
+    container_name: oauth2-proxy
+    image: localhost:5555/oauth2-proxy:v1
+    expose:
+      - 4180
+    command:
+      - --config=/tmp/oauth2-proxy.cfg
+      - --whitelist-domain=contrabass.os:9443
+      - --skip-provider-button=true
+      - --cookie-samesite=lax
+      - --ssl-upstream-insecure-skip-verify=true
+      - --provider=keycloak
+      - --login-url=https://contrabass.os:9443/auth/realms/maestro-admin/protocol/openid-connect/auth
+      - --redeem-url=http://keycloak:9443/auth/realms/maestro-admin/protocol/openid-connect/token
+      - --profile-url=http://keycloak:9443/auth/realms/maestro-admin/protocol/openid-connect/userinfo
+      - --validate-url=http://keycloak:9443/auth/realms/maestro-admin/protocol/openid-connect/userinfo
+      - --scope=openid email profile
+      - --session-store-type=redis
+      - --redis-connection-url=redis://oauth2-redis:6379
+      - --skip-jwt-bearer-tokens=true
+      - --skip-auth-strip-headers=false
+      - --pass-authorization-header=true
+      - --set-authorization-header=true
+      - --set-xauthrequest=true
+      - --cookie-secure=true
+      - --cookie-csrf-per-request=true #수정
+    volumes:
+      - ./config/oauth2-proxy/oauth2-proxy.cfg:/tmp/oauth2-proxy.cfg
+    networks:
+      - maestro
+
+    depends_on:
+      - oauth2-redis
+      - keycloak
+  oauth2-redis:
+    container_name: oauth2-redis
+    image: localhost:5555/redis:latest 
+    expose:
+      - 6379
+    command:
+      - redis-server
+      - /redis-master/redis.conf
+    environment:
+      MASTER: "true"
+    networks:
+      - maestro
+    volumes: 
+      - ./config/oauth2-redis/redis.conf:/redis-master/redis.conf
+      - oauth2-redis-data:/redis-master-data:z
+  ################################## keycloak #######################################
+  keycloak:
+    container_name: keycloak
+    image: localhost:5555/keycloak:20.0.2
+    expose:
+      - 9443 #keycloak
+    volumes:
+      - ./config/keycloak/contrabass-realm.json:/opt/keycloak/data/import/contrabass-realm.json 
+        #- ./config/keycloak/contrabass-realm-client.json:/opt/keycloak/data/import/contrabass-realm-client.json 
+      - ./config/keycloak/keycloak.conf:/opt/keycloak/conf/keycloak.conf
+      - ./config/keycloak/disable-theme-cache.cli:/opt/startup-scripts/disable-theme-cache.cli
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: okestro2018
+    command:
+      - start
+      - --features=docker,token-exchange,admin-fine-grained-authz
+      - --spi-login-protocol-openid-connect-suppress-logout-confirmation-screen=true
+      - --import-realm
+    networks:
+      - maestro
+
+    depends_on:
+      - mariadb-keycloak
+  mariadb-keycloak:
+    container_name: mariadb-keycloak
+    image: localhost:5555/mariadb:10.11-jammy
+    expose:
+     - 3306
+    volumes:
+      - mariadb-keycloak-data:/var/lib/mysql:z
+      - ./config/keycloak/init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      MYSQL_ROOT_PASSWORD: okestro2018
+    networks:
+      - maestro
+
+    healthcheck:
+      test: mysqladmin ping -uroot -pokestro2018
+      interval: 10s
+      timeout: 10s
+      start_period: 30s
+      retries: 5    
+
+  ############################## zookeeper #########################################
+  zookeeper:
+    container_name: zookeeper
+    image: localhost:5555/zookeeper:3.5.10
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ALLOW_ANONYMOUS_LOGIN: yes
+    networks:
+      - maestro
+
+  ################################# kafka ##########################################
+  kafka:
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    image: localhost:5555/kafka:3.5.1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+    networks:
+      - maestro
+
+  ################################# opensearch ##########################################
+  opensearch:
+    image: localhost:5555/opensearch:2.6.0
+    container_name: opensearch
+    environment:
+      - cluster.name=opensearch-cluster
+      - node.name=opensearch-node1
+      - discovery.type=single-node  # 싱글 노드 설정
+      - bootstrap.memory_lock=true  # 메모리 락 활성화 (스왑 방지)
+      - "OPENSEARCH_SSL_ENABLED=true"  # SSL 연결활성화
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data  # 데이터 저장
+      - ./config/opensearch/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./config/opensearch/jvm.options:/usr/share/opensearch/config/jvm.options
+    ports:
+      - "9200:9200"  # OpenSearch REST API 포트
+      - "9600:9600"  # 내부 모니터링 포트
+    restart: always  # 자동 재시작
+    networks:
+      - maestro
+
+  opensearch-dashboard:
+    image: localhost:5555/opensearch-dashboard:latest
+    container_name: opensearch-dashboard
+    environment:
+      - OPENSEARCH_HOSTS=https://opensearch:9200  # OpenSearch 연결 주소
+      #- "DISABLE_SECURITY_DASHBOARDS_PLUGIN=true"
+      - OPENSEARCH.USERNAME="admin"
+      - OPENSEARCH.PASSWORD="admin"
+      - "server.ssl.enabled=true"
+      - "server.ssl.certificate=/usr/share/opensearch-dashboards/config/root-cert.pem"
+      - "server.ssl.key=/usr/share/opensearch-dashboards/config/root-key.pem"
+    ports:
+      - "5601:5601"  # OpenSearch Dashboards 포트
+    volumes:
+      - ./config/opensearch-dashboard/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml # 컨피그
+      - ./config/opensearch-dashboard/root-cert.pem:/usr/share/opensearch-dashboards/config/root-cert.pem
+      - ./config/opensearch-dashboard/root-key.pem:/usr/share/opensearch-dashboards/config/root-key.pem
+    depends_on:
+      - opensearch  # OpenSearch가 먼저 실행되도록 설정
+    restart: always  # 자동 재시작
+    privileged: true
+    networks:
+      - maestro
+
+volumes:
+  vault-data:
+    driver: local
+  maestro-mariadb-data:
+    driver: local
+  redis-data:
+    driver: local
+  mariadb-data:
+    driver: local
+  mariadb-keycloak-data:
+    driver: local
+  oauth2-redis-data:
+    driver: local
+  opensearch-data:
+    driver: local
+networks:
+  maestro:
+    driver: bridge
+    external: true

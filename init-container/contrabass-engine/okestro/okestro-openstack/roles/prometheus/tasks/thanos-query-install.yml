@@ -1,0 +1,63 @@
+---
+- name: Copy Thanos query service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-query.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-query.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Thanos query service
+  service:
+    name: thanos-query
+    state: restarted
+    enabled: true
+
+- name: Configure Internal Thanos query to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_thanos_query ##"
+    insertbefore: "# public"
+    block: |
+      listen int_thanos_query
+        bind {{ internal_vip_address }}:{{ thanos_query_http_loadbalance_port }} {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+        balance  source
+        option tcpka
+        option httpchk
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ thanos_query_http_port }} check inter 2000 rise 2 fall 5 {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+      {% endfor %}
+
+- name: Configure External Thanos query to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_thanos_query ##"
+    insertbefore: EOF
+    block: |
+      listen pub_thanos_query
+        bind {{ external_vip_address }}:{{ thanos_query_http_loadbalance_port }} {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+        balance  source
+        option tcpka
+        option httpchk
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ thanos_query_http_port }} check inter 2000 rise 2 fall 5 {% if monitoring_enable_tls %}ssl crt {{ monitoring_certs_dir }}/monitoring-server.pem ssl verify none{% endif %}
+
+      {% endfor %}
+  when:
+    - internal_vip_address != external_vip_address
+
+- name: Restart HAProxy service
+  service:
+    name: haproxy
+    state: restarted
+  ignore_errors: true

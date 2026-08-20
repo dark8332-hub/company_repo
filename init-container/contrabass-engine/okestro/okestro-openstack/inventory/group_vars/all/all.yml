@@ -1,0 +1,375 @@
+#ENVIRONMENT
+cloud: "contrabass"
+openstack_version: "yoga"
+repo_file: "{{ 'sources.list' if ansible_os_family == 'Debian' else 'local.repo' }}"
+repo_dir: "{{ '/etc/apt' if ansible_os_family == 'Debian' else '/etc/yum.repos.d' }}"
+repo_key_dir: "{{ '/etc/apt/trusted.gpg.d/' if ansible_os_family == 'Debian' else '/etc/pki/rpm-gpg/' }}"
+host_file: "/etc/hosts"
+timezone: "Asia/Seoul"
+chrony_config: "chrony.conf"
+chrony_config_path: "{{ '/etc/chrony/chrony.conf' if ansible_os_family == 'Debian' else '/etc/chrony.conf' }}"
+ntp_allow_network: "0/0"
+ceph_ansible_dir: "/root/okestro/ceph-ansible"
+
+#CERTIFICATE
+certificates_dir: "/opt/certificate"
+root_dir: "{{ certificates_dir }}/rootCA"
+root_key: "rootCA.key"
+root_crt: "rootCA.crt"
+root_pem: "rootCA.pem"
+external_dir: "{{ certificates_dir }}/external"
+internal_dir: "{{ certificates_dir }}/internal"
+openstack_int_key: "{{ cloud }}_int.key"
+openstack_int_csr: "{{ cloud }}_int.csr"
+openstack_int_crt: "{{ cloud }}_int.crt"
+openstack_int_pem: "{{ cloud }}_int.pem"
+openstack_int_cert_config: "openssl-internal.cnf"
+openstack_int_key_pem: "{{ cloud }}_int_key.pem"
+openstack_int_crt_pem: "{{ cloud }}_int_crt.pem"
+openstack_ext_key: "{{ cloud }}_ext.key"
+openstack_ext_csr: "{{ cloud }}_ext.csr"
+openstack_ext_crt: "{{ cloud }}_ext.crt"
+openstack_ext_pem: "{{ cloud }}_ext.pem"
+openstack_ext_cert_config: "openssl-external.cnf"
+openstack_ext_key_pem: "{{ cloud }}_ext_key.pem"
+openstack_ext_crt_pem: "{{ cloud }}_ext_crt.pem"
+internal_pem: "internal.pem"
+external_pem: "external.pem"
+local_trusted_cert_dir: "{{ '/usr/local/share/ca-certificates/' if ansible_os_family == 'Debian' else '/etc/pki/ca-trust/source/anchors/' }}"
+local_trusted_cert: "{{ 'update-ca-certificates' if ansible_os_family == 'Debian' else 'update-ca-trust extract' }}"
+local_trust_cert_dir: "{{ '/etc/ssl/certs' if ansible_os_family == 'Debian' else '/etc/pki/ca-trust/extracted/pem' }}"
+local_trust_cert: "{{ root_pem if ansible_os_family == 'Debian' else root_crt }}"
+libvirt_ca_dir: "/etc/pki/libvirt"
+root_ca_dir: "/etc/pki/CA"
+tls_migration_dir: "/opt/certificate/libvirt"
+
+
+#Clustering
+haproxy_dir: "/etc/haproxy"
+haproxy_file: "haproxy.cfg"
+haproxy_stat_port: '8999'
+corosync_config_dir: "/etc/corosync"
+corosync_config: "corosync.conf"
+cluster_hosts: "{{ groups['controller'] | join (' ') }}"
+
+#Memcached
+pac_memcached: "memcached"
+pac_python3_memcached: "{{ 'python3-memcache' if ansible_os_family == 'Debian' else 'python3-memcached' }}"
+memcached_memory: "2048"
+memcached_port: "11211"
+memcached_connection: "4096"
+memcached_config_dir: "{{ '/etc' if ansible_os_family == 'Debian' else '/etc/sysconfig' }}"
+memcached_config: "{{ 'memcached.conf' if ansible_os_family == 'Debian' else 'memcached' }}"
+
+#Percona
+pac_percona_pymysql: "{{ 'python3-pymysql' if ansible_os_family == 'Debian' else 'python3-PyMySQL' }}"
+pac_percona_mysqldb: "{{ 'python3-mysqldb' if ansible_os_family == 'Debian' else 'python3-PyMySQL' }}"
+pac_percona_cluster: "{{ 'percona-xtradb-cluter-57' if percona_version == '5.7' else 'percona-xtradb-cluster' }}"
+pac_percona_xtrabackup: "{{ 'percona-xtrabackup-57' if percona_version == '5.7' else 'percona-xtrabackup-80' }}"
+mysql_config: "{{ '/etc/mysql/my.cnf' if ansible_os_family == 'Debian' else '/etc/my.cnf' }}"
+mysql_bootstrap: "{{ '/etc/init.d/mysql bootstrap-pxc' if percona_version == '5.7' else 'systemctl start mysql@bootstrap' }}"
+mysql_unix_socket: "{{ '/var/run/mysqld/mysqld.sock' if ansible_os_family == 'Debian' else '/var/lib/mysql/mysql.sock' }}"
+percona_port: "3306"
+percona_bind_port: "13306"
+percona_version: "8"
+
+#PowerDNS
+pdns_schema: "{{ '/usr/share/pdns-backend-mysql/schema/schema.mysql.sql' if ansible_os_family == 'Debian' else '/usr/share/doc/pdns-backend-mysql/schema.mysql.sql' }}"
+pdns_config_dir: "{{ '/etc/powerdns/pdns.d' if ansible_os_family == 'Debian' else '/etc/pdns' }}"
+pdns_config: "pdns.local.gmysql.conf"
+
+#RabbitMQ
+rabbitmq_erlang_cookie: WKRBTTEQRYPTQOPUKSVF
+rabbitmq_tls_port: '5671'
+rabbitmq_amqp_port: "{{ rabbitmq_tls_port if enable_tls_rabbitmq else '5672' }}"
+rabbitmq_epmd_port: '4369'
+rabbitmq_node_port: '25672'
+rabbitmq_management_port: '15672'
+cacertfile_dest: "/etc/ssl/certs/rootCA.pem"
+certfile_dest: "/opt/certificate/{{ cloud }}-internal.pem"
+keyfile_dest: "/opt/certificate/{{ cloud }}-internal.pem"
+tls_fail_if_no_peer_cert: false
+tls_verify: "verify_none"
+rabbitmq_name: 'openstack'
+rabbitmq_create_cluster: true
+
+#Keystone
+internal_endpoint_protocol: "{{ 'https' if enable_openstack_tls and enable_tls_internal else 'http' }}"
+internal_endpoint: "{{ (internal_fqdn ~ '.' ~ zone_fqdn) if endpoint_type == 'domain' else internal_vip_address }}"
+admin_endpoint_protocol: "{{ 'https' if enable_openstack_tls and enable_tls_internal else 'http' }}"
+admin_endpoint: "{{ (admin_fqdn ~ '.' ~ zone_fqdn) if endpoint_type == 'domain' else internal_vip_address }}"
+public_endpoint_protocol: "{{ 'https' if enable_openstack_tls and enable_tls_external else 'http' }}"
+public_endpoint: "{{ (external_fqdn ~ '.' ~ zone_fqdn) if endpoint_type == 'domain' else external_vip_address }}"
+pac_keystone: "{{ 'keystone' if ansible_os_family == 'Debian' else 'openstack-keystone' }}"
+pac_apache: "{{ 'apache2' if ansible_os_family == 'Debian' else 'httpd' }}"
+apache_conf: "{{ '/etc/apache2/apache2.conf' if ansible_os_family == 'Debian' else '/etc/httpd/conf/httpd.conf' }}"
+pac_wsgi: "{{ 'libapache2-mod-wsgi-py3' if ansible_os_family == 'Debian' else 'python3-mod_wsgi' }}"
+keystone_dir: "/etc/keystone"
+keystone_config: "keystone.conf"
+keystone_fernet_path_0: "/etc/keystone/fernet-keys/0"
+keystone_fernet_path_1: "/etc/keystone/fernet-keys/1"
+keystone_credential_path: "/etc/keystone/credential-keys"
+cloud_dir: "/etc/openstack"
+internal_fqdn_cert: "{{ certificates_dir }}/{{ cloud }}-internal.pem"
+external_fqdn_cert: "{{ certificates_dir }}/{{ cloud }}-external.pem"
+region_one: "RegionOne"
+keystone_port: "5000"
+keystone_bind_port: "15000"
+
+#Glance
+pac_glance: "{{ 'glance' if ansible_os_family == 'Debian' else 'openstack-glance' }}"
+serv_glance: "{{ 'glance-api' if ansible_os_family == 'Debian' else 'openstack-glance-api' }}"
+glance_config_dir: "/etc/glance"
+glance_config: "glance-api.conf"
+glance_store_dir: "/var/lib/glance/images/"
+enable_glance_image_cache: "false"
+glance_cache_max_size: "10737418240"
+glance_port: "9292"
+glance_bind_port: "19292"
+
+#Placement
+pac_placement: "{{ 'placement-api' if ansible_os_family == 'Debian' else 'openstack-placement-api' }}"
+placement_config_dir: "/etc/placement"
+placement_config: "placement.conf"
+placement_port: "8778"
+placement_bind_port: "18778"
+
+#Nova
+pac_nova_api: "{{ 'nova-api' if ansible_os_family == 'Debian' else 'openstack-nova-api' }}"
+pac_nova_conductor: "{{ 'nova-conductor' if ansible_os_family == 'Debian' else 'openstack-nova-conductor' }}"
+pac_nova_scheduler: "{{ 'nova-scheduler' if ansible_os_family == 'Debian' else 'openstack-nova-scheduler' }}"
+pac_nova_novncproxy: "{{ 'nova-novncproxy' if ansible_os_family == 'Debian' else 'openstack-nova-novncproxy' }}"
+pac_nova_compute: "{{ 'nova-compute' if ansible_os_family == 'Debian' else 'openstack-nova-compute' }}"
+pac_libvirt_daemon: "{{ 'libvirt-daemon' if ansible_os_family == 'Debian' else 'libvirt-daemon-kvm' }}"
+nova_dir: "/etc/nova"
+nova_config: "nova.conf"
+nova_compute_config: "nova-compute.conf"
+libvirt_dir: "/etc/libvirt"
+libvirt_config: "libvirtd.conf"
+nova_port: "8774"
+nova_bind_port: "18774"
+novnc_port: "6080"
+novnc_bind_port: "16080"
+nova_metadata_port: "8775"
+nova_metadata_bind_port: "18775"
+
+#Neutron
+pac_neutron: "{{ 'neutron-server' if ansible_os_family == 'Debian' else 'openstack-neutron' }}"
+pac_neutron_openvswitch: "{{ 'neutron-openvswitch-agent' if ansible_os_family == 'Debian' else 'openstack-neutron-openvswitch' }}"
+pac_openvswitch: "{{ 'openvswitch-switch' if ansible_os_family == 'Debian' else 'openvswitch' }}"
+pac_neutron_dhcp_agent: "{{ 'neutron-dhcp-agent' if ansible_os_family == 'Debian' else 'openstack-neutron-ml2' }}"
+pac_neutron_l3_agent: "{{ 'neutron-l3-agent' if ansible_os_family == 'Debian' else 'openstack-neutron-ml2' }}"
+pac_neutron_metadata_agent: "{{ 'neutron-metadata-agent' if ansible_os_family == 'Debian' else 'openstack-neutron-ml2' }}"
+pac_iptables: "{{ 'iptables' if ansible_os_family == 'Debian' else 'ebtables' }}"
+neutron_dir: "/etc/neutron"
+neutron_plugin_dir: "{{ neutron_dir }}/plugins/ml2"
+neutron_config: "neutron.conf"
+ml2_config: "ml2_conf.ini"
+ovs_config: "openvswitch_agent.ini"
+dhcp_config: "dhcp_agent.ini"
+metadata_config: "metadata_agent.ini"
+l3_config: "l3_agent.ini"
+neutron_tenant_type: "vxlan"
+neutron_port: "9696"
+neutron_bind_port: "19696"
+
+#Cinder
+pac_cinder_api: "{{ 'cinder-api' if ansible_os_family == 'Debian' else 'openstack-cinder' }}"
+pac_cinder_scheduler: "{{ 'cinder-scheduler' if ansible_os_family == 'Debian' else 'openstack-cinder' }}"
+pac_cinder_volume: "{{ 'cinder-volume' if ansible_os_family == 'Debian' else 'openstack-cinder' }}"
+pac_cinder_backup: "{{ 'cinder-backup' if ansible_os_family == 'Debian' else 'openstack-cinder' }}"
+pac_tgt: "{{ 'tgt' if ansible_os_family == 'Debian' else 'targetcli' }}"
+serv_cinder_api: "{{ 'apache2' if ansible_os_family == 'Debian' else 'openstack-cinder-api' }}"
+serv_cinder_scheduler: "{{ 'cinder-scheduler' if ansible_os_family == 'Debian' else 'openstack-cinder-scheduler' }}"
+serv_cinder_volume: "{{ 'cinder-volume' if ansible_os_family == 'Debian' else 'openstack-cinder-volume' }}"
+serv_cinder_backup: "{{ 'cinder-backup' if ansible_os_family == 'Debian' else 'openstack-cinder-backup' }}"
+cinder_dir: "/etc/cinder"
+cinder_config: "cinder.conf"
+cinder_port: "8776"
+cinder_bind_port: "18776"
+
+#Horizon
+horizon_dir: "/etc/openstack-dashboard"
+horizon_config: "{{ 'local_settings.py' if ansible_os_family == 'Debian' else 'local_settings' }}"
+horizon_protocol: "{{ 'https' if enable_openstack_tls and enable_horizon_tls else 'http' }}"
+horizon_owner: "{{ 'horizon' if ansible_os_family == 'Debian' else 'apache' }}"
+
+#VM-Create
+instance_image_path: "/root/ubuntu22.04-3"
+instance_image_name: "ubuntu-22.04-qemu.qcow2"
+instance_image: "ubuntu_22.04.03"
+API_Network_address: "{{ external_vip_address }}"
+API_Network_cidr: "{{ external_vip_cidr }}"
+VM_API_SUBNET: "{{ network_range }}"
+VM_API_NAME: "VM_API"
+VM_API_SUBNET_START: "{{ API_SUBNET_START }}"
+VM_API_SUBNET_END: "{{ API_SUBNET_END }}"
+VM_Ceph_NAME: "VM_Ceph"
+VM_Ceph_SUBNET: "{{ public_network }}"
+VM_Ceph_SUBNET_START: "{{ Ceph_SUBNET_START }}"
+VM_Ceph_SUBNET_END: "{{ Ceph_SUBNET_END }}"
+network_type: "{{ Network_Type }}"
+segmentation_id: "{{ Vlan_Tag }}"
+physical_network: "{{ Provider_Name }}" 
+
+#Manila
+pac_manila_api: "{{ 'manila-api' if ansible_os_family == 'Debian' else 'openstack-manila' }}"
+pac_manila_scheduler: "{{ 'manila-scheduler' if ansible_os_family == 'Debian' else 'openstack-manila' }}"
+pac_manila_share: "{{ 'manila-share' if ansible_os_family == 'Debian' else 'openstack-manila-share' }}"
+pac_manila_ui: "{{ 'python3-manila-ui' if ansible_os_family == 'Debian' else 'openstack-manila-ui' }}"
+serv_manila_api: "{{ 'manila-api' if ansible_os_family == 'Debian' else 'openstack-manila-api' }}"
+serv_manila_scheduler: "{{ 'manila-scheduler' if ansible_os_family == 'Debian' else 'openstack-manila-scheduler' }}"
+serv_manila_share: "{{ 'manila-share' if ansible_os_family == 'Debian' else 'openstack-manila-share' }}"
+manila_dir: "/etc/manila"
+manila_config: "manila.conf"
+client_py: "{{ '/usr/lib/python3/dist-packages/manilaclient/v2/client.py' if ansible_os_family == 'Debian' else '/usr/lib/python3.6/site-packages/manilaclient/v2/client.py' }}"
+base_py: "{{ '/usr/lib/python3/dist-packages/keystoneclient/auth/identity/base.py' if ansible_os_family == 'Debian' else '/usr/lib/python3.6/site-packages/keystoneclient/auth/identity/base.py' }}"
+manila_port: "8786"
+manila_bind_port: "18786"
+
+#Octavia
+pac_octavia_api: "{{ 'octavia-api' if ansible_os_family == 'Debian' else 'openstack-octavia-api' }}"
+pac_octavia_health_manager: "{{ 'octavia-health-manager' if ansible_os_family == 'Debian' else 'openstack-octavia-health-manager' }}"
+pac_octavia_housekeeping: "{{ 'octavia-housekeeping' if ansible_os_family == 'Debian' else 'openstack-octavia-housekeeping' }}"
+pac_octavia_worker: "{{ 'octavia-worker' if ansible_os_family == 'Debian' else 'openstack-octavia-worker' }}"
+pac_octavia_dashboard: "{{ 'python3-octavia-dashboard' if ansible_os_family == 'Debian' else 'openstack-octavia-ui' }}"
+pac_octavia_dhclient: "{{ 'isc-dhcp-client' if ansible_os_family == 'Debian' else 'dhclient' }}"
+octavia_dir: "/etc/octavia"
+octavia_config: "octavia.conf"
+octavia_health_manager_ip: >-
+  {{- (inventory_hostname == groups["controller"][0] and '172.16.0.2' or
+      inventory_hostname == groups["controller"][1] and '172.16.0.3' or
+      inventory_hostname == groups["controller"][2] and '172.16.0.4') -}}
+octavia_health_manager_port_name: "octavia-health-manager-listen-port-{{ inventory_hostname }}"
+OCTAVIA_NETWORK_NAME: "lb-mgmt-net"
+OCTAVIA_MGMT_SUBNET_NAME: "lb-mgmt-subnet"
+SECURITY_GROUP_NAME: "lb-mgmt-sec-grp"
+H_SECURITY_GROUP_NAME: "lb-health-mgr-sec-grp"
+octavia_amphora_img_path: "/root/amphora-img"
+octavia_amphora_img_name: "octavia-amphora-haproxy-2024.1-qemu.qcow2"
+octavia_python_path: "{{ '/usr/lib/python3/dist-packages/octavia' if ansible_os_family == 'Debian' else '/usr/lib/python3.9/site-packages/octavia' }}"
+octavia_port: "9876"
+octavia_bind_port: "19876"
+
+#Ceph
+ceph_dir: "/etc/ceph"
+ceph_config: "ceph.conf"
+images_pool: 4
+volumes_pool: 8
+backups_pool: 4
+vms_pool: 4
+  #images_pool: 32
+  #volumes_pool: 64
+  #backups_pool: 32
+  #vms_pool: 64
+ceph_back_name: "{{ cinder_backend_name }}"
+
+#Swift
+radosgw_port: "8090"
+radosgw_bind_port: "28090"
+swift_bind_port: "18090"
+radosgw_interface: "{{ ceph_monitor_interface }}"
+
+#Masakari
+masakari_dir: "/etc/masakari"
+masakari_config: "masakari.conf"
+masakari_owner: "{{ 'masakari' if ansible_os_family == 'Debian' else 'root' }}"
+masakarimonitor_dir: "/etc/masakarimonitors"
+masakarimonitor_config: "masakarimonitors.conf"
+serv_masakari_api: "{{ 'apache2' if ansible_os_family == 'Debian' else 'masakari-api' }}"
+pac_resource_agent: "{{ 'pacemaker-resource-agents' if ansible_os_family == 'Debian' else 'resource-agents' }}"
+serv_pacemaker_remote: "{{ 'pacemaker-remote' if ansible_os_family == 'Debian' else 'pacemaker_remote' }}"
+masakarimonitor_user: "{{ 'masakarimonitors' if ansible_os_family == 'Debian' else 'root' }}"
+remote_process: "{{ 'cluster' if (groups['controller'] | intersect(groups['compute'])) | length > 0 else 'remote' }}"
+
+masakari_member: "{{ groups['compute'] | difference(groups['controller']) | join(' ') }}"
+masakari_dashboard: >
+  {% if openstack_version == 'yoga' %}
+  masakari-dashboard
+  {% elif openstack_version == 'wallaby' %}
+  masakari-dashboard-wallaby
+  {% endif %}
+
+enable_process_monitor: false
+enable_instance_monitor: false
+masakari_port: "15868"
+masakari_bind_port: "15900"
+
+#Heat
+pac_heat_api: "{{ 'heat-api' if ansible_os_family == 'Debian' else 'openstack-heat-api' }}"
+pac_heat_api_cfn: "{{ 'heat-api-cfn' if ansible_os_family == 'Debian' else 'openstack-heat-api-cfn' }}"
+pac_heat_engine: "{{ 'heat-engine' if ansible_os_family == 'Debian' else 'openstack-heat-engine' }}"
+pac_heat_dashboard: "{{ 'python3-heat-dashboard' if ansible_os_family == 'Debian' else 'openstack-heat-ui' }}"
+heat_dir: "/etc/heat"
+heat_config: "heat.conf"
+heat_port: "8004"
+heat_bind_port: "18004"
+heat_cfn_port: "8000"
+heat_cfn_bind_port: "18000"
+
+#Barbican
+pac_barbican_api: "{{ 'barbican-api' if ansible_os_family == 'Debian' else 'openstack-barbican-api' }}"
+pac_barbican_worker: "{{ 'barbican-worker' if ansible_os_family == 'Debian' else 'openstack-barbican-worker' }}"
+pac_barbican_keystone_listener: "{{ 'barbican-keystone-listener' if ansible_os_family == 'Debian' else 'openstack-barbican-keystone-listener' }}"
+serv_barbican_api: "{{ 'apache2' if ansible_os_family == 'Debian' else 'openstack-barbican-api' }}"
+barbican_dir: "/etc/barbican"
+barbican_config: "barbican.conf"
+barbican_port: "9311"
+barbican_bind_port: "19311"
+
+
+#Prometheus
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_service_daemon_path: /etc/systemd/system
+prometheus_storage_retention_time: 15d
+prometheus_storage_retention_size: 20GB
+prometheus_port: 9090
+prometheus_am_executor_port: "9999"
+prometheus_am_executor_dir: "/etc/prometheus-am-executor"
+
+#Mole
+mole_install_dir: "/tmp/contrabass-mole"
+mole_tar_file: "contrabass-mole.tar.gz"
+mole_installer: "contrabass-mole-install.sh"
+mole_port: "8888"
+mole_bind_port: "28888"
+contrabass_mole_exporter_port: '9102'
+
+#Developing
+# - rabbitmq tls
+rabbitmq_tls_only: false
+enable_tls_rabbitmq: false
+
+# - thanos / monitoring tls
+monitoring_cert_alt_ips:
+  - "192.168.34.48"
+  - "182.168.34.1"
+monitoring_cert_alt_names:
+  - "prometheus.{{ zone_fqdn }}"
+  - "alertmanager.{{ zone_fqdn }}"
+  - "thanos-front.{{ zone_fqdn }}"
+  - "s3.{{ zone_fqdn }}"
+# Monitoring Thanos Config
+monitoring_ha_enable: true
+monitoring_bucket: 'thanos'
+monitoring_certs_dir: '/opt/monitoring-certs'
+thanos_bind_port: '11909'
+loki_port: '3100'
+loki_bind_port: '13100'
+loki_bucket: 'loki'
+# MinIO
+minio_port: '8070'
+minio_console_port: '8071'
+minio_console_bind_port: '18071'
+minio_bind_port: '18070'
+#Exporters
+node_exporter_port: '9100'
+openstack_exporter_port: '9280'
+memcached_exporter_port: '9150'
+ha_cluster_exporter_port: '9664'
+mysqld_exporter_port: '9104'
+haproxy_exporter_port: '9101'
+rabbitmq_exporter_port: '9419'
+ovs_exporter_port: '9475'
+ipmi_exporter_port: '9290'

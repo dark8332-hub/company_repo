@@ -1,0 +1,10 @@
+---
+- name:  Pulling Ceph Config files
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: true
+  with_items:
+    - { src: "{{ ceph_dir }}/ceph.client.cinder.keyring",dest: roles/ceph/files/ceph.client.cinder.keyring }
+    - { src: "{{ ceph_dir }}/ceph.client.cinder-backup.keyring",dest: roles/ceph/files/ceph.client.cinder-backup.keyring }
+    - { src: "{{ ceph_dir }}/ceph.client.glance.keyring",dest: roles/ceph/files/ceph.client.glance.keyring }

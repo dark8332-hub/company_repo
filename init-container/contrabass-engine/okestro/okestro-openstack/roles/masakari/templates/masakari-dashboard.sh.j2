@@ -1,0 +1,9 @@
+cd /root/masakari-dashboard
+git config --global --add safe.directory /root/masakari-dashboard
+python3 setup.py install
+cp /root/masakari-dashboard/masakaridashboard/local/enabled/_50_masakaridashboard.py /usr/share/openstack-dashboard/openstack_dashboard/enabled/
+cp /root/masakari-dashboard/masakaridashboard/local/local_settings.d/_50_masakari.py /usr/share/openstack-dashboard/openstack_dashboard/local/local_settings.d/
+cp /root/masakari-dashboard/masakaridashboard/conf/masakari_policy.yaml /usr/share/openstack-dashboard/openstack_dashboard/conf/
+cd /usr/share/openstack-dashboard/
+python3 manage.py collectstatic --noinput
+python3 manage.py compress

@@ -1,0 +1,17 @@
+---
+- name: Enable Openstack Message Queue HA
+  #  no_log: true
+  rabbitmq_policy:
+    name: contrabass
+    vhost: "/"
+    pattern: '^(?!(amq\.)|(._fanout_)|(reply_)).'
+  args:
+    tags:
+      alternate-exchange: unroutable
+      expires: 3600000
+      ha-mode: all
+      ha-promote-on-failure: always
+      ha-promote-on-shutdown: always
+      ha-sync-mode: automatic
+      message-ttl: 600000
+      queue-master-locator: min-masters 

@@ -1,0 +1,21 @@
+---
+- name: bootstrap copy
+  template:
+    src: "bootstrap.sh.j2"
+    dest: /root/bootstrap.sh
+    owner: root
+    group: root
+    mode: 0755
+
+- name: start bootstrap
+  shell: ./bootstrap.sh 
+  args:
+    chdir: /root
+        
+- name: remove files and directories
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+  - /root/bootstrap.sh
+

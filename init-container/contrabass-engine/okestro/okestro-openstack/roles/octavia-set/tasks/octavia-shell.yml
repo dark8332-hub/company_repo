@@ -1,0 +1,25 @@
+- name: Copy scripts
+  template:
+    src: sub-create.sh.j2 
+    dest: /root/sub-create.sh
+    owner: root
+    group: root
+    mode: 0755
+
+- name: Run Script
+  shell: /root/sub-create.sh
+
+- name: Delete Script
+  file:
+    path: /root/sub-create.sh
+    state: absent
+
+- name: Copy octavia conf scripts
+  copy:
+    src: octavia.conf.sh
+    dest: /root/octavia.conf.sh
+    owner: root
+    group: root
+    mode: 0755
+
+

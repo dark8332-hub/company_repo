@@ -1,0 +1,12 @@
+- name: octavia-env
+  template:
+    src: "cloud.yml.j2"
+    dest: "{{ cloud_dir }}/clouds.yaml"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: install dhclient
+  ansible.builtin.package:
+    name: "{{ pac_octavia_dhclient }}" 
+    state: present

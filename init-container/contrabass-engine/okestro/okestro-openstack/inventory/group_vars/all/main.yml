@@ -1,0 +1,154 @@
+##################
+# Baremetal init #
+##################
+Endpoint Type: 'vip'
+# If you configure endpoint_type to domain, check dns settings
+endpoint_type: vip
+int_api_interface: ens3
+internal_vip_address: 10.255.191.150
+internal_vip_cidr: 24
+external_api_interface: ens4
+external_vip_address: 10.255.192.150
+external_vip_cidr: 24
+package_ip: 10.255.115.10/ubuntu-24.04-1
+#package_ip: 101.202.40.5/suse-9.4
+ntp_server: 10.255.191.151
+# This openstack-deploy ansible support only "caracal" version
+openstack_version: 'caracal'
+
+###############################################################
+# API and Ceph Network Subnet & Create VM Contrabass or Viola #
+###############################################################
+#Define API & Ceph VM Network
+API_SUBNET_START: 10.255.191.1 # Define API-Network Subnet Start & End
+API_SUBNET_END: 10.255.191.254
+Ceph_SUBNET_START: 10.255.197.1 # Define Ceph-Network Subnet Start & End
+Ceph_SUBNET_END: 10.255.197.254
+
+#Deploy Contrabass or Viola Instance Option
+Contrabass: false # If you Create Contrabass VM define True
+Viola: false # if you Create Viola VM define True
+
+####################
+# Password setting #
+####################
+# "server_password" must set baremetal root password (For ssh copy)
+ipmi_user: Administrator #[BMC ID]
+ipmi_password: Cloud1234 #[BMC password]
+server_password: Cloud1234 #[OS root password]
+db_password: Cloud1234 #[Percona DB password]
+haproxy_pwd: Cloud1234 #[hacluster user password]
+rabbitmq_password: Cloud1234 #[RabbitMQ openstack user password]
+keystone_pass: Cloud1234 #[Keystone admin password]
+minio_root_user: minioadmin #[MinIO admin user ID]
+minio_root_password: Cloud1234 #[MinIO admin user password]
+s3_access_key: monitoring #[MinIO object bucket access key]
+s3_secret_key: Cloud1234 #[MinIO object bucket secret key]
+
+###########################
+# MinIO S3 device setting #
+###########################
+# Must set one physical device
+minio_device: /dev/sdc #[MinIO Object store physical device]
+
+###########
+# neutron #
+###########
+bridges:
+    - name: external #[Openstack provider network alias]
+      bridge: br-ex #[OVS bridge]
+      port: ens9 #[OVS bridge mapped physical port]
+#   vlan: 1000 #[Vlan tag if provider network need vlan tag]
+# - name: nas
+#   bridge: br-nas
+#   port: ens37
+#   ...
+
+#### If use VLAN, Define VLAN VALUES ####
+use_vlan: false
+vlans:
+    - name: external #[Openstack provider network alias]
+      range_min: 500 #[Vlan minimum range]
+      range_max: 999 #[Vlan maximum range]
+# - name: mgmt
+#   range_min: 300
+#   range_max: 300
+#   ...
+###### Create Network on openstack of use Vlan or Flat Guide #####
+Provider_Name: external # Copy neutron briges name               #
+Network_Type: vlan # Define Openstack Network Type              #
+Vlan_Tag: 20 # Define Network Vlan Tag                        #
+##################################################################
+
+################
+# nova-compute #
+################
+cpu_allocation_ratio: 2.0 #[CPU virtualization ratio]
+
+##########
+# cinder #
+##########
+cinder_backend: 'ceph' #[Cinder backend section]
+cinder_backend_name: 'kjs-ceph' #[Cinder-volume backend name]
+############### Define Contrabass Storage Backend ###################
+# [ Storage List : Dell(DL),Netapp(NA),HPE,IBM,Ceph,Hitach... ]     #
+# Example : [Main or DR]_[Company]_[Model]_[Pool Type]_[env]_[Num]  #
+# ex) : Main_HPE_ceph_01_ssd_prd, DR_DL,powerflex_ssd_stg...        #
+#####################################################################
+enable_cinder_backend_nfs: false
+enable_cinder_custom_backend: false
+cinder_custom_conf: |
+
+###############################
+# Openstack component enables #
+###############################
+# Default enabled components: keystone, glance, placement, nova, neutron, cinder, horizon
+enable_swift: false
+enable_manila: true
+enable_octavia: true
+enable_barbican: false
+enable_masakari: true
+enable_horizon_tls: flase
+enable_heat: true
+enable_contrabass_portal: false #[Use baremetal manager deploy or testing manager]
+
+###############
+# Certificate #
+###############
+# If "enable_openstack_tls" Set False, No TLS certificate for all services
+# If "monitorying_enable_tls" set true, prometheus service configure all tls
+enable_openstack_tls: false
+enable_tls_external: false
+enable_tls_internal: false
+monitoring_enable_tls: false
+
+####################
+# perocna settings #
+####################
+# If you use percona-xtradb-cluster-57, configure version 5.7
+#percona_version:          ## Default: 8
+
+#########################
+# tech-preview settings #
+#########################
+enable_instance_ha: true
+vm_service_interface: ens9
+
+###############
+# DNS Setting #
+###############
+# If you set endpoint_type to domain, this variables must be configured
+# If You need to use local DNS(PowerDNS), Define value "true" (Default = false)
+# zone_fqdn = Main Domain
+# external,admin,internal fqdn = Sub Domain
+use_pdns: false
+zone_fqdn: openstack.cld
+external_fqdn: public
+internal_fqdn: internal
+admin_fqdn: admin
+
+###############
+# GPU Setting #
+###############
+vendor_id: vendor
+product_id: product

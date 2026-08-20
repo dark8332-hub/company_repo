@@ -1,0 +1,15 @@
+---
+- name: apache2 restart
+  service: 
+    name: "{{ pac_apache }}"
+    state: restarted
+
+- name: Permission secret_key settings
+  file:
+    path: /var/lib/openstack-dashboard/secret_key
+    owner: "{{ horizon_owner }}"
+    group: "{{ horizon_owner }}"
+    mode: 0600
+  when:
+    - enable_horizon_tls | bool
+

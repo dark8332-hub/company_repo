@@ -1,0 +1,7 @@
+---
+- name: Horizon Install
+  ansible.builtin.package:
+    update_cache: yes
+    name: 
+      - openstack-dashboard
+    state: present

@@ -1,0 +1,62 @@
+---
+- name: Create img Directory
+  file:
+    path: "{{ octavia_amphora_img_path }}"
+    state: directory
+
+- name: Copy amphora image
+  copy:
+    src: "{{ octavia_amphora_img_name }}"
+    dest: "{{ octavia_amphora_img_path }}/{{ octavia_amphora_img_name }}"
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Create amphora flavor
+  openstack.cloud.compute_flavor:
+    cloud: contrabass-octavia
+    interface: internal
+    name: amphora
+    disk: 2
+    flavorid: 200
+    ram: 2048
+    vcpus: 2
+    is_public: true
+   
+- name: Upload amphora image
+  openstack.cloud.image:
+    cloud: contrabass-octavia
+    state: present
+    container_format: bare
+    disk_format: qcow2
+    tags: amphora
+    filename: "{{ octavia_amphora_img_path }}/{{ octavia_amphora_img_name }}"
+    name: "{{ octavia_amphora_img_name }}"
+    properties:
+      os_distro: 'ubuntu'
+      hw_qemu_guest_agent: 'true'
+      hw_require_fsfreeze: 'yes'
+    interface: internal
+
+- name: Delete used images
+  ansible.builtin.shell:
+    cmd: rm -rf "{{ octavia_amphora_img_path }}"
+  when: 
+    - not (cinder_backend_name == "ceph")
+
+- name: Checking pub_key
+  stat:
+    path: /root/.ssh/id_rsa.pub
+  register: pubkey_check
+  ignore_errors: true
+
+- name: Create Public Keys
+  command: ssh-keygen -t rsa -f /root/.ssh/id_rsa -C "" -N ""
+  when: not pubkey_check.stat.exists 
+
+- name: Create amphora SSH Keys
+  openstack.cloud.keypair:
+    cloud: contrabass-octavia
+    interface: internal
+    name: octavia-ssh-key 
+    public_key_file: /root/.ssh/id_rsa.pub

@@ -1,0 +1,23 @@
+---
+- name: Change Nova User Bash Shell
+  shell: usermod -s /bin/bash nova
+
+- name: Create Nova ssh Dir
+  file:
+    path: /var/lib/nova/.ssh
+    state: directory
+    owner: nova
+    group: nova
+
+- name: Copy Nova SSH Files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: nova
+    group: nova
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: '../files/id_rsa',dest: '/var/lib/nova/.ssh/id_rsa',mode: '0600' }
+    - { src: '../files/id_rsa.pub',dest: '/var/lib/nova/.ssh/id_rsa.pub',mode: '0644' }
+    - { src: '../files/config',dest: '/var/lib/nova/.ssh/config',mode: '0644' }
+    - { src: '../files/authorized_keys',dest: '/var/lib/nova/.ssh/authorized_keys',mode: '0644' }

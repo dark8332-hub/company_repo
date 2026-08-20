@@ -1,0 +1,11 @@
+- name: Setup Server For Horizon 
+  setup:
+
+- include_tasks: horizon-install.yml
+
+- include_tasks: ssl-module-set.yml
+
+- include_tasks: horizon-config-set.yml
+
+- include_tasks: apache2-restart.yml
+

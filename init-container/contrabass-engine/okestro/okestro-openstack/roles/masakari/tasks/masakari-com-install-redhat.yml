@@ -1,0 +1,86 @@
+- name: Register masakarimonitor
+  stat:
+    path: /usr/local/bin/masakari-hostmonitor
+  register: masakari_hostmonitor
+  ignore_errors: true
+
+- name: Register masakarimonitor service
+  stat:
+    path: /etc/systemd/system/masakari-host-monitor
+  register: masakari_hostmonitor_svc
+  ignore_errors: true
+
+- name: Install Masakari monitors
+  block:
+    - name: Create Masakari Log Directory
+      file:
+        path: /var/log/masakarimonitors
+        state: directory
+        owner: root
+        group: root
+    
+    - name: Copy Masakarimonitor python files
+      copy:
+        src: masakari-monitors.tar
+        dest: /root/
+
+    - name: Unarchive masakari files
+      ansible.builtin.unarchive:
+        src: 'masakari-monitors.tar'
+        dest: '/root/'
+    
+    - name: Copy Masakari Install Script
+      template:
+        src: masakarimonitor.sh.j2
+        dest: /root/masakarimonitor.sh
+        owner: root
+        group: root
+        mode: 0755
+    
+    - name: Masakari Python Install
+      shell: /root/masakarimonitor.sh
+    
+    - name: Delete Install files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - '/root/masakarimonitor.sh'
+        - '/root/masakari-monitors.tar'
+        - '/root/masakari-monitors'
+    
+    - name: Copy Masakari monitor service file
+      copy:
+        src: "masakari-host-monitor.service"
+        dest: "/etc/systemd/system/masakari-host-monitor.service"
+        owner: root
+        group: root
+        mode: 0644
+    
+    - name: Reload Daemon
+      command: systemctl daemon-reload
+
+    - name: Masakari-monitor check
+      stat:
+        path: '/usr/local/lib/python3.9/site-packages/masakarimonitors'
+      register: masakarimonitors_check
+
+    - name: Masakari-monitor settings
+      block:
+        - name: Check masakari-monitor exists in python path
+          stat:
+            path: '/usr/lib/python3.9/site-packages/masakarimonitors'
+          register: python_masakarimonitors_check
+
+        - name: Copy masakari-monitor to python3.9 path
+          copy:
+            src: "{{ item }}"
+            dest: '/usr/lib/python3.9/site-packages/'
+            remote_src: true
+          with_items:
+            - '/usr/local/lib/python3.9/site-packages/masakarimonitors'
+            - '/usr/local/lib/python3.9/site-packages/masakari_monitors-17.0.2.dev2-py3.9.egg-info'
+          when: not python_masakarimonitors_check.stat.exists
+      when: masakarimonitors_check.stat.exists
+  when:
+    - not masakari_hostmonitor.stat.exists or not masakari_hostmonitor_svc.stat.exists

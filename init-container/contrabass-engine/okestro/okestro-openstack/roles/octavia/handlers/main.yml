@@ -1,0 +1,47 @@
+---
+# Handlers for octavia
+- name: restart octavia-api
+  service: name=octavia-api state=restarted
+  when: 
+    - octavia_conf is changed
+
+- name: restart octavia-health-manager
+  service: name=octavia-health-manager state=restarted
+  when: 
+    - octavia_conf is changed
+
+- name: restart octavia-housekeeping
+  service: name=octavia-housekeeping state=restarted
+  when: 
+    - octavia_conf is changed
+
+- name: restart octavia-worker
+  service: name=octavia-worker state=restarted
+  when: 
+    - octavia_conf is changed
+
+# start
+- name: start octavia-api
+  service: name=octavia-api state=started
+
+- name: start octavia-health-manager
+  service: name=octavia-health-manager state=started
+
+- name: start octavia-housekeeping
+  service: name=octavia-housekeeping state=started
+
+- name: start octavia-worker
+  service: name=octavia-worker state=started
+
+# stop
+- name: stop octavia-api
+  service: name=octavia-api state=stopped
+
+- name: stop octavia-health-manager
+  service: name=octavia-health-manager state=stopped
+
+- name: stop octavia-housekeeping
+  service: name=octavia-housekeeping state=stopped
+
+- name: stop octavia-worker
+  service: name=octavia-worker state=stopped

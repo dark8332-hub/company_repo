@@ -1,0 +1,19 @@
+---
+- name: Create Octavia Network
+  openstack.cloud.network:
+    cloud: contrabass-octavia
+    state: present
+    name: "{{ OCTAVIA_NETWORK_NAME }}"
+    interface: internal
+
+- name: Create Octavia Network Subnet
+  openstack.cloud.subnet:
+    cloud: contrabass-octavia
+    network_name: "{{ OCTAVIA_NETWORK_NAME }}"
+    state: present
+    name: "{{ OCTAVIA_MGMT_SUBNET_NAME }}"
+    cidr: "{{ OCTAVIA_MGMT_SUBNET }}"
+    allocation_pool_start: "{{ OCTAVIA_MGMT_SUBNET_START }}"
+    allocation_pool_end: "{{ OCTAVIA_MGMT_SUBNET_END }}"
+    no_gateway_ip: true
+    interface: internal

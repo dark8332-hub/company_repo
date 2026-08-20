@@ -1,0 +1,8 @@
+---
+- name: Notify Domain
+  command: pdns_control notify {{ zone_fqdn }} 
+
+- name: Restart PowerDNS
+  service:
+    name: pdns
+    state: restarted

@@ -1,0 +1,144 @@
+- name: nova-api config file setting
+  template:
+    src: "{{ nova_config }}.j2" 
+    dest: "{{ nova_dir }}/{{ nova_config }}"
+    owner: nova
+    group: nova
+    mode: 0644
+  register: nova_conf
+  notify: 
+    - restart nova-api
+    - restart nova-scheduler
+    - restart nova-conductor
+    - restart nova-novncproxy
+
+- include_tasks: nova-dbsync.yml
+  when: inventory_hostname in groups['controller'][0]
+
+- name: Configure Internal Nova to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_nova ##"
+    insertbefore: "# public"
+    block: |
+      listen int_nova_cluster 
+        bind {{ internal_vip_address }}:{{ nova_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ nova_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: nova_int_haproxy
+
+- name: Configure External Nova to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_nova ##"
+    insertbefore: EOF
+    block: |
+      listen pub_nova_cluster
+        bind {{ external_vip_address }}:{{ nova_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ nova_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: nova_pub_haproxy
+
+- name: Configure Internal Nova_Metadata to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_nova_metadata ##"
+    insertbefore: "# public"
+    block: |
+      listen int_nova_metadata
+        bind {{ internal_vip_address }}:{{ nova_metadata_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ nova_metadata_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: nova_metadata_int_haproxy
+
+- name: Configure External Nova_Metadata to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_nova_metadata ##"
+    insertbefore: EOF
+    block: |
+      listen pub_nova_metadata
+        bind {{ external_vip_address }}:{{ nova_metadata_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ nova_metadata_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: nova_metadata_pub_haproxy
+
+- name: Configure Internal Nova_vncproxy to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_nova_vncproxy ##"
+    insertbefore: "# public"
+    block: |
+      listen int_nova_vncproxy
+        bind {{ internal_vip_address }}:{{ novnc_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ novnc_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  register: novnc_int_haproxy
+
+- name: Configure External Nova_vncproxy to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_nova_vncproxy ##"
+    insertbefore: EOF
+    block: |
+      listen pub_nova_vncproxy
+        bind {{ external_vip_address }}:{{ novnc_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ novnc_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  register: novnc_pub_haproxy
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Restart Nova
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - "{{ pac_nova_api }}"
+    - "{{ pac_nova_conductor }}"
+    - "{{ pac_nova_scheduler }}"
+    - "{{ pac_nova_novncproxy }}"

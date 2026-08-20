@@ -1,0 +1,6 @@
+- name: Security Settings
+  become: true
+  hosts: alls
+  roles:
+    - { role: security }
+  tags: security

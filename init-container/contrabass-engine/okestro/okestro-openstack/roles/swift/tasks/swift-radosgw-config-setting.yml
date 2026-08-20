@@ -1,0 +1,16 @@
+---
+- name: Add keystone integrate option to ceph radosgw
+  shell: "ceph config set global {{ item }}"
+  with_items:
+    - "rgw_keystone_api_version 3"
+    - "rgw_keystone_url {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}"
+    - "rgw_keystone_verify_ssl false"
+    - "rgw_keystone_admin_user admin"
+    - "rgw_keystone_admin_password {{ keystone_pass }}"
+    - "rgw_keystone_admin_domain default"
+    - "rgw_keystone_admin_project admin"
+    - "rgw_keystone_accepted_roles admin"
+    - "rgw_keystone_token_cache_size 0"
+
+- name: Radosgw restart
+  shell: 'ceph orch restart rgw.radosgw'

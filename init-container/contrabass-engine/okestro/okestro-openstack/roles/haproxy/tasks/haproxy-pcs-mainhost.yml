@@ -1,0 +1,72 @@
+---
+- name: Import Register
+  import_tasks: haproxy-pcs-allhost.yml
+
+- name: HA cluster user integration
+  command: pcs host auth {{ cluster_hosts }} -u hacluster -p {{ haproxy_pwd }}
+  register: pcs_member
+
+- name: Checking File Corosync Auth file
+  stat:
+    path: /etc/corosync/authkey 
+  register: corosync_auth  
+
+- name: Corosync Auth Generate
+  command: corosync-keygen
+  when: not corosync_auth.stat.exists
+
+- name: Checking File Corosync pcsd known-hosts file
+  stat:
+    path: /var/lib/pcsd/known-hosts
+  register: pcsd_known_hosts
+
+- name: HA cluster auth setup
+  command: pcs cluster auth -u hacluster -p {{ haproxy_pwd }}
+  when: not pcsd_known_hosts.stat.exists
+
+- name: wating for HA cluster known files
+  wait_for:
+    timeout: 10
+
+- name: HA cluster setup
+  command: pcs cluster setup openstack {{ cluster_hosts }} --force
+
+- name: pcs start all && enable
+  command: "{{ item }}"
+  with_items:
+  - pcs cluster start --all
+  - pcs cluster enable --all
+
+- name: resource create
+  command: "{{ item }}"
+  with_items:
+  - pcs property set stonith-enabled=false
+  - pcs property set no-quorum-policy=ignore
+
+- name: create internal vip
+  command: "{{ item }}"
+  with_items:
+  - pcs resource create int_vip ocf:heartbeat:IPaddr2 ip={{ internal_vip_address }} nic={{ int_api_interface }} cidr_netmask={{ internal_vip_cidr }} op monitor interval=10s
+
+- name: create external vip
+  command: "{{ item }}"
+  with_items:
+  - pcs resource create pub_vip ocf:heartbeat:IPaddr2 ip={{ external_vip_address }} nic={{ external_api_interface }} cidr_netmask={{ external_vip_cidr }} op monitor interval=10s
+  when: internal_vip_address != external_vip_address 
+
+- name: haproxy interanl resource && clone
+  command: "{{ item }}"
+  with_items:
+  - pcs resource create haproxy systemd:haproxy op monitor interval=20s timeout=20
+  - pcs constraint order start int_vip then haproxy kind=Optional
+  - pcs constraint colocation add haproxy with int_vip
+
+
+- name: haproxy external resource && clone
+  command: "{{ item }}"
+  with_items:
+  - pcs constraint order start pub_vip then int_vip kind=Optional
+  - pcs constraint order start pub_vip then haproxy kind=Optional
+  - pcs constraint colocation add int_vip with pub_vip
+  - pcs constraint colocation add haproxy with pub_vip
+  when: internal_vip_address != external_vip_address 

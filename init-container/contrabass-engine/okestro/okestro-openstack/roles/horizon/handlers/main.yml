@@ -1,0 +1,15 @@
+---
+- import_tasks: horizon-config-set.yml
+# Handlers for keystone
+- name: restart apache2
+  service: 
+    name: "{{ pac_apache }}" 
+    state: restarted
+  when: 
+    - horizon_conf is changed
+
+- name: start apache2
+  service: name=apache2 state=started
+
+- name: stop apache2
+  service: name=apache2 state=stopped

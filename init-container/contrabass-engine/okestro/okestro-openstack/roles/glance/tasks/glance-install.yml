@@ -1,0 +1,11 @@
+- name: Module enable before glance package install
+  command: dnf module enable -y python36
+  when: 
+     - ansible_os_family == "RedHat"
+     - ansible_facts['distribution_major_version'] is version('9','<')
+
+- name: glance package install  
+  ansible.builtin.package:
+    update_cache: yes
+    name: "{{ pac_glance }}"
+    state: present

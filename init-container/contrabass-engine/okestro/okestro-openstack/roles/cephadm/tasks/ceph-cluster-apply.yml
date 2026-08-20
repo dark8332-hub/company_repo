@@ -1,0 +1,49 @@
+#- name: Set osd devices
+#  block:
+#    - name: Check device path info
+#      shell: "udevadm info {{ item }} | grep -o '/dev/disk/by-path/[^ ]*'"
+#      register: ceph_osd_by_path_result
+#      with_items:
+#        - "{{ osd_devices }}"
+#
+#    - name: Set fact for device alias to physical path
+#      set_fact:
+#        ceph_osd_by_path: "{{ ceph_osd_by_path_result.results | map(attribute='stdout') | list }}"
+#  when: inventory_hostname in groups['osds']
+
+- name: Applying ceph cluster
+  block:
+    #    - name: Copy cluster osd configuration
+    #      template:
+    #        src: ceph-osd.yml.j2
+    #        dest: "/tmp/cephadm/ceph-osd.yml"
+    #        mode: 0644
+    #        owner: root
+    #        group: root
+
+    - name: Apply ceph osd devices
+      shell: "ceph orch apply -i /tmp/cephadm/ceph-osd.yml"
+
+    - name: Create mds fs
+      block:
+        - name: Check cephfs exists
+          shell: "ceph fs ls"
+          register: cephfs_list
+
+        - name: Create cephfs filesystem
+          shell: "ceph fs volume create cephfs"
+          when: "'No filesystems enabled' == cephfs_list.stdout"
+      when: groups['mdss'] | length > 0
+
+    - name: Check ceph orchestration service list
+      shell: 'ceph orch ls'
+      register: ceph_orch_ls
+
+    - name: Disable ceph-prometheus for using contrabass-prometheus
+      shell: "ceph orch rm {{ item }}"
+      with_items:
+        - prometheus
+        - alertmanager
+        - node-exporter
+      when: "item in ceph_orch_ls.stdout"
+  when: inventory_hostname in groups['mons'][0]

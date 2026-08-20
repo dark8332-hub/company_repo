@@ -1,0 +1,125 @@
+---
+- name: Create Monitoring certificate dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ monitoring_certs_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+
+- name: Fetch monitoring ca certificates
+  fetch:
+    src: "{{ item }}"
+    dest: "{{ item }}"
+    flat: true
+  with_items:
+    - "{{ monitoring_certs_dir }}/monitoring-ca.crt"
+    - "{{ monitoring_certs_dir }}/monitoring-ca.key"
+  run_once: true
+  when: inventory_hostname in groups['controller']
+
+- name: Create monitoring-server certificate for new compute hosts
+  block:
+    - name: Create monitoring-server key
+      openssl_privatekey:
+        path: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.key"
+        size: '2048'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create monitoring-server csr
+      openssl_csr:
+        path: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.csr"
+        privatekey_path: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.key"
+        C: "KR"
+        ST: "Seoul"
+        L: "Yeouido"
+        O: "{{ cloud }}"
+        OU: 'contrabass'
+        CN: 'monitoring'
+        subject_alt_name: "DNS:{{ item }},IP:{{ internal_vip_address }},IP:{{ hostvars[item]['ansible_' ~ int_api_interface]['ipv4']['address'] }}{% if internal_vip_address != external_vip_address %},IP:{{ external_vip_address }},IP:{{ hostvars[item]['ansible_' ~ external_api_interface]['ipv4']['address'] }}{% endif %}"
+        extended_key_usage:
+          - clientAuth
+          - serverAuth
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create monitoring-server crt
+      openssl_certificate:
+        path: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.crt"
+        csr_path: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.csr"
+        ownca_path: "{{ monitoring_certs_dir }}/monitoring-ca.crt"
+        ownca_privatekey_path: "{{ monitoring_certs_dir }}/monitoring-ca.key"
+        provider: ownca
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform monitoring-server key to pem
+      shell: /usr/bin/openssl rsa -in "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.key" -text > "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}-key.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Transform monitoring-server crt to pem
+      shell: /usr/bin/openssl x509 -inform PEM -in "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.crt" > "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}-crt.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+
+    - name: Create monitoring-server key&cert merged pem file
+      shell: cat "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}-key.pem" "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}-crt.pem" > "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.pem"
+      with_items:
+        - "{{ groups['new-compute'] }}"
+  when:
+    - inventory_hostname in groups['deploy']
+
+- name: Copy monitoring-server certificates
+  block:
+    - name: Copy root certificates
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - { src: "{{ monitoring_certs_dir }}/monitoring-ca.key", dest: "{{ monitoring_certs_dir }}/monitoring-ca.key", mode: '0600' }
+        - { src: "{{ monitoring_certs_dir }}/monitoring-ca.crt", dest: "{{ monitoring_certs_dir }}/monitoring-ca.crt", mode: '0600' }
+
+    - name: Copy monitoring-server key
+      copy:
+        src: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.key"
+        dest: "{{ monitoring_certs_dir }}/monitoring-server.key"
+        mode: '0600'
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+      when:
+        - inventory_hostname == item
+
+    - name: Copy monitoring-server certificate
+      copy:
+        src: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.crt"
+        dest: "{{ monitoring_certs_dir }}/monitoring-server.crt"
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+      when:
+        - inventory_hostname == item
+
+    - name: Copy monitoring-server pem
+      copy:
+        src: "{{ monitoring_certs_dir }}/monitoring-server-{{ item }}.pem"
+        dest: "{{ monitoring_certs_dir }}/monitoring-server.pem"
+        mode: '0644'
+        owner: 'root'
+        group: 'root'
+      with_items:
+        - "{{ groups['new-compute'] }}"
+      when:
+        - inventory_hostname == item
+  when:
+    - inventory_hostname in groups['new-compute']

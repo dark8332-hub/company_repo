@@ -1,0 +1,261 @@
+---
+- name: Ubuntu masakari installation
+  block:
+    - name: masakari package install
+      apt:
+        update-cache: yes
+        name:
+          - masakari-host-monitor
+          - masakari-instance-monitor
+          - masakari-process-monitor
+  when:
+    - ansible_os_family == 'Debian'
+    - inventory_hostname in groups['new-compute']
+    
+- name: Pacemaker installation
+  ansible.builtin.package:
+    name:
+      - pcs
+      - "{{ 'pacemaker' if remote_process == 'cluster' else 'pacemaker-remote' if remote_process == 'remote' }}"
+  when:
+    - inventory_hostname in groups['new-compute']
+
+- name: Start pcsd
+  service:
+    name: pcsd
+    state: started
+    enabled: yes
+  when:
+    - inventory_hostname in groups['new-compute']
+
+- name: RedHat masakari installation
+  block:
+    - name: Create masakari directory
+      file:
+        path: '/var/log/masakarimonitors'
+        state: directory
+        owner: 'root'
+        group: 'root'
+
+    - name: Unarchive masakari-monitor source code
+      ansible.builtin.unarchive:
+        src: '/root/okestro/okestro-openstack/roles/masakari/files/masakari-monitors.tar'
+        dest: '/root/'
+
+    - name: Copy masakari-monitor install script
+      template:
+        src: '/root/okestro/okestro-openstack/roles/masakari/templates/masakarimonitor.sh.j2'
+        dest: '/root/masakarimonitor.sh'
+        owner: 'root'
+        group: 'root'
+        mode: '0755'
+
+    - name: Install masakari-monitor source code
+      shell: '/root/masakarimonitor.sh'
+
+    - name: Delete masakari-monitor install files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - '/root/masakari-monitors.tar'
+        - '/root/masakarimonitor.sh'
+        - '/root/masakari-monitors'
+
+    - name: Copy masakri-monitor source code to python directory
+      copy:
+        src: "{{ item }}"
+        dest: '/usr/lib/python3.9/site-packages/'
+        remote_src: true
+      with_items:
+        - '/usr/local/lib/python3.9/site-packages/masakarimonitors'
+        - '/usr/local/lib/python3.9/site-packages/masakari_monitors-17.0.2.dev2-py3.9.egg-info'
+
+    - name: Copy masakari-host-monitor service unit file
+      copy:
+        src: '/root/okestro/okestro-openstack/roles/masakari/files/masakari-host-monitor.service'
+        dest: '/etc/systemd/system/masakari-host-monitor.service'
+        owner: 'root'
+        group: 'root'
+        mode: '0644'
+  when:
+    - ansible_os_family == 'RedHat'
+    - inventory_hostname in groups['new-compute']
+
+
+- name: masakari config file setting
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: "{{ masakarimonitor_user }}"
+    mode: 0644
+  with_items:
+    - { src: '/root/okestro/okestro-openstack/roles/masakari/templates/masakarimonitors.conf.j2',dest: '/etc/masakarimonitors/masakarimonitors.conf' }
+    - { src: '/root/okestro/okestro-openstack/roles/masakari/templates/process_list.yaml.j2',dest: '/etc/masakarimonitors/process_list.yaml' }
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- name: pcs remote check
+  command: crm_verify --live-check
+  register: pcs_remote
+  ignore_errors: true
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- name: stop pacemaker
+  service:
+    name: "{{ item }}"
+    state: stopped
+  with_items:
+    - pacemaker
+    - corosync
+  when:
+    - inventory_hostname in groups["new-compute"]
+    - ("config not valid" in pcs_remote.stderr)
+    - remote_process == "cluster"
+
+- name: stop pacemaker-remote
+  service:
+    name: "{{ item }}"
+    state: stopped
+  with_items:
+    - pacemaker-remote
+  when:
+    - inventory_hostname in groups["new-compute"]
+    - ("Transport endpoint is not connected" in pcs_remote.stderr)
+    - remote_process == "remote"
+
+- name: hauser password change
+  user:
+    name: hacluster
+    password: "{{ haproxy_pwd | password_hash('sha512')}}"
+    update_password: always
+  when:
+    - inventory_hostname in groups["new-compute"]
+
+- name: Destory Default Cluster
+  command: pcs cluster destroy
+  when:
+    - inventory_hostname in groups["new-compute"]
+    - inventory_hostname not in groups["controller"]
+
+- name: Check Before Remote Clustering New Compute Nodes
+  command: pcs cluster node remove-remote "{{ item }}" --skip-offline --force
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  ignore_errors: true
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "remote"
+
+- name: Check Before Clustering New Compute Nodes
+  command: pcs cluster node remove "{{ item }}" --skip-offline --force
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  ignore_errors: true
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "cluster"
+
+- name: HA cluster user intigration
+  command: pcs host auth "{{ item }}" -u hacluster -p {{ haproxy_pwd }}
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  when:
+    - inventory_hostname in groups["controller"][0]
+
+- name: pcs add remote node
+  command: pcs cluster node add-remote "{{ item }}"
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  register: already_remote
+  ignore_errors: true
+  failed_when: ("already exists" in  already_remote.stderr)
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "remote"
+
+- name: pcs add node
+  command: pcs cluster node add "{{ item }}"
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  register: already_remote
+  ignore_errors: true
+  failed_when: ("already exists" in  already_remote.stderr)
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - remote_process == "cluster"
+
+- name: start pcs cluster
+  command: pcs cluster start --all
+  when: 
+    - inventory_hostname in groups['controller'][0]
+    - remote_process == "cluster"
+
+- name: enable pcs cluster
+  command: pcs cluster enable --all
+  when: 
+    - inventory_hostname in groups['controller'][0]
+    - remote_process == "cluster"
+
+- name: Enable Cluster Daemons
+  service:
+    name: "{{ item }}"
+    enabled: yes
+  with_items:
+    - corosync
+    - pcsd
+    - pacemaker
+  when:
+    - inventory_hostname in groups['new-compute']
+    - remote_process == "cluster"
+
+- name: Enable Pacemaker-Remote Daemon
+  service:
+    name: "{{ item }}"
+    enabled: yes
+  with_items:
+    - pacemaker-remote
+    - pcsd
+  when:
+    - inventory_hostname in groups['new-compute']
+    - remote_process == "remote"
+
+- name: pcs haproxy resource ban
+  command: pcs resource ban haproxy "{{ item }}"
+  with_items:
+    - "{{ groups['new-compute'] }}"
+  when:
+    - inventory_hostname in groups["controller"][0]
+    - item not in groups["controller"]
+
+- name: Disable other monitors
+  block:
+    - name: Disable Masakari Process Monitor
+      service:
+        name: masakari-process-monitor
+        enabled: no
+        state: stopped
+      when:
+        - inventory_hostname in groups["new-compute"]
+        - enable_process_monitor == false
+    
+    - name: Disable Masakari Instance Monitor
+      service:
+        name: masakari-instance-monitor
+        enabled: no
+        state: stopped
+      when:
+        - inventory_hostname in groups["new-compute"]
+        - enable_instance_monitor == false
+  when:
+    - ansible_os_family == 'Debian'
+
+- name: Restart Masakari Host Monitor
+  service:
+    name: masakari-host-monitor
+    state: restarted
+    enabled: yes
+  when:
+    - inventory_hostname in groups["new-compute"]

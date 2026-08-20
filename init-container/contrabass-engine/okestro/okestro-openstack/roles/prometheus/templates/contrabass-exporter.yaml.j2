@@ -1,0 +1,4 @@
+- targets:
+{% for host in groups['compute'] %}
+  - {{ hostvars[host]['ansible_'~int_api_interface].ipv4.address }}:{{ contrabass_exporter_port }}
+{% endfor %}

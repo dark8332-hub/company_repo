@@ -1,0 +1,2 @@
+os_dir: "/{{ ansible_user }}/htkim_os_security_08_17"
+contrabass_dir: "/{{ ansible_user }}/contrabass-sec"

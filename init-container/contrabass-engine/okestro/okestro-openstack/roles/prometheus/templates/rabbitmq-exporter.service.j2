@@ -1,0 +1,12 @@
+[Unit]
+Description=Prometheus RabbitMQ Exporter
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/rabbitmq-exporter \
+          -config-file /etc/rabbitmq/rabbitmq-exporter.json
+
+[Install]
+WantedBy=multi-user.target

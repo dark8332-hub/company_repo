@@ -1,0 +1,66 @@
+# Global Vars
+exe_path: /usr/local/bin
+monitoring_certs_dir: /opt/monitoring-certs
+haproxy_file: /etc/haproxy/haproxy.cfg
+
+# Prometheus Vars
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+prometheus_service_daemon_path: /etc/systemd/system
+prometheus_storage_retention_time: 15d
+prometheus_storage_retention_size: 20GB
+prometheus_port: 9090
+prometheus_loadbalance_port: 19090
+
+# Alertmanager Vars
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+alertmanager_service_daemon_path: /etc/systemd/system
+alertmanager_data_retention: 120h
+alertmanager_web_port: 9093
+alertmanager_cluster_listen_port: 9094
+alertmanager_web_loadbalance_port: 19093
+
+# Node-exporter Vars
+node_exporter_config_dir: /etc/node-exporter
+node_exporter_data_dir: /var/lib/node-exporter
+node_exporter_service_daemon_path: /etc/systemd/system
+node_exporter_port: 9100
+
+# Contrabass-exporter Vars
+contrabass_exporter_service_daemon_path: /etc/systemd/system
+contrabass_exporter_port: 9000
+contrabass_libvirt_uri: /var/run/libvirt/libvirt-sock
+
+# OpenStack-exporter Vars
+openstack_exporter_config_dir: /etc/openstack
+openstack_exporter_service_daemon_path: /etc/systemd/system
+openstack_exporter_port: 9280
+openstack_exporter_loadbalance_port: 19280
+
+# Ceph Vars
+ceph_fsid: >-
+  {{
+    (ceph_conf_result.stdout | trim)
+    if (ceph_conf_result.rc | default(1)) == 0 and (ceph_conf_result.stdout | trim) != ''
+    else 'default'
+  }}
+
+# Thanos Vars
+thanos_config_dir: /etc/thanos
+thanos_store_data_dir: /var/lib/thanos-store
+thanos_rule_data_dir: /var/lib/thanos-rule
+thanos_service_daemon_path: /etc/systemd/system
+thanos_sidecar_grpc_port: 10901
+thanos_sidecar_http_port: 10902
+thanos_store_grpc_port: 10903
+thanos_store_http_port: 10904
+thanos_store_http_loadbalance_port: 11904
+thanos_rule_grpc_port: 10905
+thanos_rule_http_port: 10906
+thanos_rule_http_loadbalance_port: 11906
+thanos_query_grpc_port: 10907
+thanos_query_http_port: 10908
+thanos_query_http_loadbalance_port: 11908
+thanos_query_front_http_port: 10909
+thanos_query_front_http_loadbalance_port: 11909

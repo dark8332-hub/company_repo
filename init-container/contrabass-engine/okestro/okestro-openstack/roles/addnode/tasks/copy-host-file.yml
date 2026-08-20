@@ -1,0 +1,10 @@
+---
+- name: Copy /etc/hosts
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+    - { src: 'hosts.j2',dest: '/etc/hosts' }

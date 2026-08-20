@@ -1,0 +1,66 @@
+---
+- name: Setup server for prometheus
+  setup:
+
+- include_tasks: monitoring-certs-create.yml
+  when:
+    - monitoring_enable_tls == true
+
+- include_tasks: prometheus-install.yml
+  when:
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: alertmanager-install.yml
+  when:
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: monitoring-all-exporter-install.yml
+  when:
+    - inventory_hostname in groups["openstack"]
+
+- include_tasks: monitoring-controller-exporter-install.yml
+  when:
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: node-exporter-install.yml
+  when: inventory_hostname in groups["openstack"]
+
+- include_tasks: libvirt-exporter-install.yml
+  when: inventory_hostname in groups["compute"]
+
+- include_tasks: openstack-exporter-install.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: thanos-sidecar-install.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: thanos-store-install.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: thanos-rule-install.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: thanos-query-install.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: thanos-query-front-install.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: restart-thanos-all.yml
+  when:
+    - monitoring_ha_enable == true
+    - inventory_hostname in groups["controller"]
+
+- include_tasks: prometheus-am-executor-install.yml
+  when:
+    - inventory_hostname in groups["controller"]

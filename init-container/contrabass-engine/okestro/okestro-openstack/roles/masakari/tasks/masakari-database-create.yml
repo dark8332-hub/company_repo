@@ -1,0 +1,18 @@
+- name: Create masakari DB
+  mysql_db:
+    name: "{{ item.db }}"
+    state: present
+  with_items:
+     - db: masakari 
+
+- name: Update mysql masakari password for all masakari accounts
+  no_log: true
+  mysql_user:
+     name: masakari
+     host: "{{ item }}"
+     password: "{{ db_password }}"
+     priv: masakari.*:ALL,GRANT
+     state: present
+  with_items:
+     - localhost
+     - '%'

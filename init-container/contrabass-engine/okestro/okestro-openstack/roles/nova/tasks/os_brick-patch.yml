@@ -1,0 +1,25 @@
+---
+- name: Copy os_brick wheel file to target server
+  ansible.builtin.copy:
+    src: /root/okestro/okestro-openstack/roles/nova/files/os_brick-6.7.3-py3-none-any.whl
+    dest: /tmp/os_brick-6.7.3-py3-none-any.whl
+    mode: '0644'
+
+- name: Package Install
+  ansible.builtin.package:
+    update_cache: yes
+    name: python3-pip
+    state: present
+
+- name: Update OS_Brick File of Ubuntu
+  command: "pip3 install --break-system-packages --no-deps /tmp/os_brick-6.7.3-py3-none-any.whl"
+  when: ansible_facts['os_family'] == "Debian"
+
+- name: Update OS Brick File of Suse
+  command: "pip3 install /tmp/os_brick-6.7.3-py3-none-any.whl"
+  when: ansible_facts['os_family'] == "RedHat"
+
+- name: Clean up the wheel file
+  ansible.builtin.file:
+    path: /tmp/os_brick-6.7.3-py3-none-any.whl
+    state: absent

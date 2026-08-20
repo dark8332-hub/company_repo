@@ -1,0 +1,48 @@
+---
+- name: Create Image Directory
+  file:
+      path: '{{ instance_image_path }}'
+      state: directory
+
+- name: Copy Ubuntu Image
+  copy:
+      src: '{{ instance_image_name }}'
+      dest: '{{ instance_image_path}}//{{ instance_image_name }}'
+      owner: root
+      group: root
+      mode: 644
+
+### Create Contrabass Instance Flavor ###
+- name: Create Contrabass Flavor
+  openstack.cloud.compute_flavor:
+      cloud: contrabass
+      interface: internal
+      name: 2C_2G
+      disk: 0
+      flavorid: 300
+      ram: '{{ Contrabass_memory }}'
+      vcpus: '{{ Contrabass_vcpu }}'
+      is_public: true
+
+### Create Viola Bastion,Master,Worker Instance Flavor ###
+- name: Create Viola Master Flavor
+  openstack.cloud.compute_flavor:
+      cloud: contrabass
+      interface: internal
+      name: 4C_8G
+      disk: 0
+      flavorid: 310
+      ram: '{{ Viola_memory }}'
+      vcpus: '{{ Viola_vcpu }}'
+      is_public: true
+
+### Upload to Openstack Ubuntu Image ###
+- name: Upload Ubuntu Image
+  openstack.cloud.image:
+      cloud: contrabass
+      state: present
+      container_format: bare
+      disk_format: qcow2
+      filename: '{{ instance_image_path}}//{{ instance_image_name }}'
+      name: ubuntu_22.04.03
+      interface: internal

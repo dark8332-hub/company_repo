@@ -1,0 +1,11 @@
+---
+- name: rabbitmq service started and enabled
+  service:
+    name: rabbitmq-server
+    enabled: yes
+    state: started
+
+- name: Enable rabbitmq management
+  community.rabbitmq.rabbitmq_plugin:
+    names: rabbitmq_management
+    state: enabled

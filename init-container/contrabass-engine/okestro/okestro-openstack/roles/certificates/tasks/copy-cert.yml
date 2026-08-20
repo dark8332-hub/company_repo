@@ -1,0 +1,31 @@
+- name: Cert Dir Create 
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  with_items:
+    - "{{ certificates_dir }}"
+    - "{{ internal_dir }}"
+    - "{{ external_dir }}"
+
+- name: Certificates Copy
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: "{{ internal_pem }}",dest: "{{ internal_dir }}/{{ internal_pem }}",owner: 'root',group: 'root',mode: '0644' }
+    - { src: "{{ external_pem }}",dest: "{{ external_dir }}/{{ external_pem }}",owner: 'root',group: 'root',mode: '0644' }
+    - { src: "{{ root_crt }}",dest: '{{ local_trusted_cert_dir }}/{{ root_crt }}',owner: 'root',group: 'root',mode: '0644' }
+    - { src: "{{ root_pem }}",dest: '{{ local_trusted_cert_dir }}/{{ root_pem }}',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Update to trust new Certs
+  command: "{{ local_trusted_cert }}"
+
+- name: Configuring internal ssl certification root signed pem file
+  shell: "cat {{ internal_dir }}/{{ internal_pem }} {{ local_trusted_cert_dir }}/{{ local_trust_cert }} > {{ internal_fqdn_cert }}"
+
+- name: Configuring external ssl certification root signed pem file
+  shell: "cat {{ external_dir }}/{{ external_pem }} {{ local_trusted_cert_dir }}/{{ local_trust_cert }} > {{ external_fqdn_cert }}"

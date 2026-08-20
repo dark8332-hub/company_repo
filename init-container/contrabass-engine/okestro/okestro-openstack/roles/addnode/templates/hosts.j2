@@ -1,0 +1,23 @@
+127.0.0.1 localhost {% if enable_contrabass_portal and inventory_hostname == groups['controller'][0] %}contrabass.os{% endif %}
+
+#127.0.1.1 {{ansible_hostname}}
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+
+{% for item in groups['openstack'] %}
+{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }} {{ hostvars[item]['inventory_hostname'] }}
+{% endfor %}
+
+{% if endpoint_type == "domain" %}
+{% if internal_vip_address == external_vip_address %}
+{{ internal_vip_address }} {{ internal_endpoint }} {{ admin_endpoint }} {{ public_endpoint }}
+{% else %}
+{{ internal_vip_address }} {{ internal_endpoint }} {{ admin_endpoint }}
+{{ external_vip_address }} {{ public_endpoint }}
+{% endif %}
+{% endif %}

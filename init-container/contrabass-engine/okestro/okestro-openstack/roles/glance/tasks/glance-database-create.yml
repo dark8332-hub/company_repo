@@ -1,0 +1,17 @@
+- name: Create glance DB
+  mysql_db:
+    name: glance
+    state: present
+
+- name: Update mysql glance password for all glance accounts
+  no_log: true
+  mysql_user:
+     name: glance
+     host: "{{ item }}"
+     password: "{{ db_password }}"
+     priv: glance.*:ALL,GRANT
+     state: present
+  with_items:
+     - localhost
+     - '%'
+

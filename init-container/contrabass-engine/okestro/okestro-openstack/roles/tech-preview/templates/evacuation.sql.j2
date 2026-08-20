@@ -1,0 +1,15 @@
+create table if not exists server_status (
+hostname varchar(255),
+maintance tinyint(1)
+);
+create table if not exists vmservice_network (
+hostname varchar(255),
+maintance tinyint(1)
+);
+{% if cinder_backend == 'ceph' %}
+create table if not exists ceph_network (
+hostname varchar(255),
+maintance tinyint(1)
+);
+{% endif %}
+~

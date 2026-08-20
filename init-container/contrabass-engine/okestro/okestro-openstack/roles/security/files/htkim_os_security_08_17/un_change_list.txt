@@ -1,0 +1,259 @@
+================================================ start 1-5.root_UID.sh ================================================
+================================================ end 1-5.root_UID.sh ================================================
+
+================================================ start 1-6.root_su.sh ================================================
+GROUPADD WHEEL PLEASE COMMUNICATE WITH CUSTOMER FOR USE SU GROUP
+================================================ end 1-6.root_su.sh ================================================
+
+================================================ start 1-11.rootgroup_minuser.sh ================================================
+================================================ end 1-11.rootgroup_minuser.sh ================================================
+
+================================================ start 1-12.nongroup_user.sh ================================================
+root
+daemon
+bin
+sys
+tty
+disk
+lp
+mail
+news
+uucp
+man
+proxy
+kmem
+dialout
+fax
+voice
+floppy
+tape
+audio
+www-data
+backup
+operator
+list
+irc
+src
+gnats
+shadow
+utmp
+video
+sasl
+staff
+games
+users
+nogroup
+systemd-journal
+systemd-network
+systemd-resolve
+input
+crontab
+syslog
+messagebus
+mlocate
+uuidd
+ssh
+landscape
+xorms
+memcache
+epmd
+rabbitmq
+mysql
+keystone
+ssl-cert
+glance
+kvm
+nova
+zvmsdk
+rdma
+libvirt-dnsmasq
+neutron
+haproxy
+cinder
+horizon
+_chrony
+wheel
+================================================ end 1-12.nongroup_user.sh ================================================
+
+================================================ start 1-13.duplecate_uid.sh ================================================
+================================================ end 1-13.duplecate_uid.sh ================================================
+
+================================================ start 2-2.file_owner.sh ================================================
+========== start nosuer ==========
+========== end nosuer ==========
+========== start group ==========
+========== end group ==========
+================================================ end 2-2.file_owner.sh ================================================
+
+================================================ start 1-5.root_UID.sh ================================================
+================================================ end 1-5.root_UID.sh ================================================
+
+================================================ start 1-6.root_su.sh ================================================
+================================================ end 1-6.root_su.sh ================================================
+
+================================================ start 1-11.rootgroup_minuser.sh ================================================
+================================================ end 1-11.rootgroup_minuser.sh ================================================
+
+================================================ start 1-12.nongroup_user.sh ================================================
+root
+daemon
+bin
+sys
+tty
+disk
+lp
+mail
+news
+uucp
+man
+proxy
+kmem
+dialout
+fax
+voice
+floppy
+tape
+audio
+www-data
+backup
+operator
+list
+irc
+src
+gnats
+shadow
+utmp
+video
+sasl
+staff
+games
+users
+nogroup
+systemd-journal
+systemd-network
+systemd-resolve
+input
+crontab
+syslog
+messagebus
+mlocate
+uuidd
+ssh
+landscape
+xorms
+memcache
+epmd
+rabbitmq
+mysql
+keystone
+ssl-cert
+glance
+kvm
+nova
+zvmsdk
+rdma
+libvirt-dnsmasq
+neutron
+haproxy
+cinder
+horizon
+_chrony
+wheel
+================================================ end 1-12.nongroup_user.sh ================================================
+
+================================================ start 1-13.duplecate_uid.sh ================================================
+================================================ end 1-13.duplecate_uid.sh ================================================
+
+================================================ start 2-2.file_owner.sh ================================================
+========== start nosuer ==========
+========== end nosuer ==========
+========== start group ==========
+========== end group ==========
+================================================ end 2-2.file_owner.sh ================================================
+
+================================================ start 1-5.root_UID.sh ================================================
+================================================ end 1-5.root_UID.sh ================================================
+
+================================================ start 1-6.root_su.sh ================================================
+================================================ end 1-6.root_su.sh ================================================
+
+================================================ start 1-11.rootgroup_minuser.sh ================================================
+================================================ end 1-11.rootgroup_minuser.sh ================================================
+
+================================================ start 1-12.nongroup_user.sh ================================================
+root
+daemon
+bin
+sys
+tty
+disk
+lp
+mail
+news
+uucp
+man
+proxy
+kmem
+dialout
+fax
+voice
+floppy
+tape
+audio
+www-data
+backup
+operator
+list
+irc
+src
+gnats
+shadow
+utmp
+video
+sasl
+staff
+games
+users
+nogroup
+systemd-journal
+systemd-network
+systemd-resolve
+input
+crontab
+syslog
+messagebus
+mlocate
+uuidd
+ssh
+landscape
+xorms
+memcache
+epmd
+rabbitmq
+mysql
+keystone
+ssl-cert
+glance
+kvm
+nova
+zvmsdk
+rdma
+libvirt-dnsmasq
+neutron
+haproxy
+cinder
+horizon
+_chrony
+wheel
+================================================ end 1-12.nongroup_user.sh ================================================
+
+================================================ start 1-13.duplecate_uid.sh ================================================
+================================================ end 1-13.duplecate_uid.sh ================================================
+
+================================================ start 2-2.file_owner.sh ================================================
+========== start nosuer ==========
+========== end nosuer ==========
+========== start group ==========
+========== end group ==========
+================================================ end 2-2.file_owner.sh ================================================
+

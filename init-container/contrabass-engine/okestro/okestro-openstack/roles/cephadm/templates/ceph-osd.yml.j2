@@ -1,0 +1,14 @@
+{% for host in groups['osds'] %}
+---
+service_type: osd
+service_id: {{ host }}.osd
+placement:
+  hosts:
+    - {{ host }}
+spec:
+  data_devices:
+    paths:
+{% for path in hostvars[host].ceph_osd_by_path %}
+      - {{ path }}
+{% endfor %}
+{% endfor %}

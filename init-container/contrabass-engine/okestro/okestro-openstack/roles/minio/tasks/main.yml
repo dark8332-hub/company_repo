@@ -1,0 +1,7 @@
+- name: Setup server for minio
+  setup:
+
+- include_tasks: minio-installation.yml
+
+- include_tasks: minio-bucket-set.yml
+  when: inventory_hostname in groups['controller'][0]

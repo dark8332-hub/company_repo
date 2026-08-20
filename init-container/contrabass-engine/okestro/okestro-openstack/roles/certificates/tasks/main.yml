@@ -1,0 +1,4 @@
+- name: Setup Server For Certification 
+  setup:
+
+- include_tasks: create_cert.yml 

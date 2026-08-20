@@ -1,0 +1,137 @@
+- name: masakari pakage install
+  apt:
+    update-cache: yes
+    name:
+      - masakari-api
+      - masakari-engine
+      - python3-masakariclient
+      - python3-masakari-dashboard
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Register Python-masakari stat
+  stat:
+    path: /usr/local/bin/masakari-api
+  register: python_masakari
+  when: ansible_os_family == "RedHat"
+
+- name: Register Masakari stat
+  stat:
+    path: /etc/systemd/system/masakari-engine
+  register: masakari_engine
+  when: ansible_os_family == "RedHat"
+
+- name: Install Masakari
+  block:
+    - name: Create masakari directories
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - /etc/masakari
+        - /var/log/masakari
+   
+    - name: copy masakari python files
+      copy:
+        src: "{{ item }}"
+        dest: '/root/'
+      with_items:
+        - 'masakari.tar'
+      when: 
+        - not python_masakari.stat.exists
+
+    - name: Unarchive masakari files
+      ansible.builtin.unarchive:
+        src: "{{ item }}"
+        dest: '/root/'
+      with_items:
+        - 'masakari.tar'
+      when: 
+        - not python_masakari.stat.exists
+    
+    - name: Copy Masakari install script
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: 0755
+      with_items:
+        - { src: 'masakari.sh.j2', dest: '/root/masakari.sh' }
+        - { src: 'masakari-dashboard.sh.j2', dest: '/root/masakari-dashboard.sh' }
+      when:
+        - not masakari_engine.stat.exists
+        - not python_masakari.stat.exists
+    
+    - name: Install Python Masakari
+      shell: "{{ item }}"
+      with_items:
+        - '/root/masakari.sh'
+        - '/root/masakari-dashboard.sh'
+      when: 
+        - not masakari_engine.stat.exists
+        - not python_masakari.stat.exists
+
+    - name: Restart httpd
+      service:
+        name: httpd
+        state: restarted
+    
+    - name: Register Python-masakari stat
+      stat:
+        path: /usr/local/bin/masakari-api
+      register: python_masakari
+    
+    - name: Copy Daemon files
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        owner: root
+        group: root
+        mode: 0644
+      with_items:
+        - { src: masakari-api.service, dest: /etc/systemd/system/masakari-api.service }
+        - { src: masakari-engine.service, dest: /etc/systemd/system/masakari-engine.service }
+      when:
+        - python_masakari.stat.exists
+    
+    - name: Delete Masakari installation files
+      file:
+        path: "{{ item }}" 
+        state: absent
+      with_items:
+        - '/root/masakari.sh'
+        - '/root/masakari.tar'
+        - '/root/python-masakariclient.tar'
+        - '/root/masakari'
+        - '/root/python-masakariclient'
+        - '/root/masakari-dashboard'
+        - '/root/masakari-dashboard.sh'
+      when:
+        - python_masakari.stat.exists
+
+    - name: Masakari Service Reload
+      command: systemctl daemon-reload
+      when:
+        - python_masakari.stat.exists
+    
+    - name: enable masakari service
+      service:
+        name: "{{ item }}"
+        enabled: true
+      with_items:
+        - masakari-api
+        - masakari-engine
+
+    - name: Copy masakariclient to python3.9 path
+      copy:
+        src: "{{ item }}"
+        dest: '/usr/lib/python3.9/site-packages/'
+        remote_src: true
+      with_items:
+        - '/usr/local/lib/python3.9/site-packages/masakariclient'
+        - '/usr/local/lib/python3.9/site-packages/python_masakariclient-8.7.0.dev1-py3.9.egg-info'
+        - '/usr/local/lib/python3.9/site-packages/masakari'
+        - '/usr/local/lib/python3.9/site-packages/masakari-17.0.1.dev3-py3.9.egg-info'
+  when:
+    - ansible_distribution == 'RedHat'

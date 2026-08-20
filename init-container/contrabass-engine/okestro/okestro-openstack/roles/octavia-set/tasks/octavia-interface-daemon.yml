@@ -1,0 +1,33 @@
+---
+- name: copy interface script
+  template:
+    src: octavia-interface.sh.j2
+    dest: /usr/local/bin/octavia-interface.sh
+    owner: root
+    group: root
+    mode: 0755
+
+- name: copy o-hm0.network
+  copy:
+    src: o-hm0.network
+    dest: /etc/systemd/network/o-hm0.network
+    owner: root
+    group: root
+    mode: 0644
+  when: ansible_os_family == 'Debian'
+
+- name: copy octavia-interface.service 
+  copy:
+    src: octavia-interface.service
+    dest: /etc/systemd/system/octavia-interface.service
+    owner: root
+    group: root
+    mode: 0644
+
+- name: reload
+  command: systemctl daemon-reload
+
+- name: Start octavia-interface creator
+  service:
+    name: octavia-interface
+    enabled: true

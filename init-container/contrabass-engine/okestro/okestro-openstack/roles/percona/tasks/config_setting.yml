@@ -1,0 +1,39 @@
+---
+- name: Stop all instances
+  service: name=mysql state=stopped
+
+- name: Configures for my.cnf setting Ubuntu
+  template:
+    src: percona-xtradb-cluster.cnf.j2
+    dest: "{{ mysql_config }}" 
+    owner: root
+    group: root
+    mode: 0644
+
+- name: Configure Percona to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} Percona_XtraDB_Cluster ##"
+    insertbefore: "# public"
+    block: |
+      listen int_percona_cluster
+        bind {{ internal_vip_address }}:{{ percona_bind_port }}
+
+        balance  source
+        mode tcp
+        option tcpka
+        option tcplog
+        maxconn 20000
+        timeout server 10800s
+        timeout client 10800s
+        server {{ hostvars[groups['controller'][0]]['ansible_hostname'] }} {{ hostvars[groups['controller'][0]]['ansible_' + int_api_interface].ipv4.address }}:{{ percona_port }} check inter 2000 rise 2 fall 5
+      {% for item in groups['controller'][1:] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_' + int_api_interface].ipv4.address }}:{{ percona_port }} check inter 2000 rise 2 fall 5 backup
+      {% endfor %}
+  register: percona_int_haproxy
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted
+  when: percona_int_haproxy.changed

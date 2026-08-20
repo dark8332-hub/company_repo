@@ -1,0 +1,25 @@
+[Unit]
+Description=Prometheus Pacemaker HA clusters Exporter
+After=network.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/ha_cluster-exporter \
+          --web.listen-address=:{{ ha_cluster_exporter_port }} \
+          --web.telemetry-path=/metrics \
+{% if monitoring_enable_tls %}
+          --web.config.file=/etc/prometheus/web-config.yml \
+{% endif %}
+          --crm-mon-path=/usr/sbin/crm_mon \
+          --cibadmin-path=/usr/sbin/cibadmin \
+          --corosync-cfgtoolpath-path=/usr/sbin/corosync-cfgtool \
+          --corosync-quorumtool-path=/usr/sbin/corosync-quorumtool \
+          --log.level=info \
+          --log.format=logfmt
+ExecReload=/bin/kill -HUP $MAINPID
+
+[Install]
+WantedBy=multi-user.target

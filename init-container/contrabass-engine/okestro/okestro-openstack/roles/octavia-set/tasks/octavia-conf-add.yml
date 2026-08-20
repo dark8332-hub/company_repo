@@ -1,0 +1,22 @@
+---
+- name: Add Octavia-interface Information in octavia-conf
+  lineinfile:
+    path: "{{ octavia_dir}}/{{ octavia_config }}"
+    insertafter: '^\[health_manager\]'    
+    line: "controller_ip_port_list = {{ '172.16.0.1:5555' if groups['controller'] | length == 1 else '172.16.0.2:5555,172.16.0.3:5555,172.16.0.4:5555' }}"
+
+- name: Run Script
+  shell: /root/octavia.conf.sh
+
+- name: Delete Script
+  file:
+    path: /root/octavia.conf.sh
+    state: absent
+
+- name: Fix creating octavia health monitor with ping check
+  copy:
+    src: 'base.j2'
+    dest: "{{ octavia_python_path }}/common/jinja/haproxy/combined_listeners/templates/base.j2" 
+    owner: 'root'
+    group: 'root'
+    mode: '0644'

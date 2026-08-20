@@ -1,0 +1,17 @@
+- name: Setup Server For Neutron 
+  setup:
+
+- include_tasks: neutron-database-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: neutron-install.yml 
+
+- include_tasks: neutron-config-set.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: neutron-init.yml 
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: ovs-init.yml
+  when: inventory_hostname in groups["neutron_agent"]
+

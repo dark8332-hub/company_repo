@@ -1,0 +1,69 @@
+---
+- name: Octavia User Create
+  openstack.cloud.identity_user:
+    cloud: contrabass
+    state: present
+    name: octavia 
+    password: "{{ keystone_pass }}"
+    domain: default
+    interface: internal
+    default_project: service
+
+- name: Octavia Role Create
+  openstack.cloud.identity_role:
+    cloud: contrabass
+    state: present
+    name: "{{ item }}"
+    interface: internal
+  with_items:
+    - load-balancer_admin
+    - load-balancer_observer
+    - load-balancer_member
+
+- name: Octavia user role assignment 
+  openstack.cloud.role_assignment:
+    cloud: contrabass
+    user: "{{ item.user }}"
+    role: "{{ item.role }}"
+    project: "{{ item.project }}"
+    interface: internal
+  with_items:
+    - { user: 'admin', role: 'admin',project: 'admin' }
+    - { user: 'admin', role: 'load-balancer_admin',project: 'admin' }
+    - { user: 'admin', role: 'load-balancer_observer',project: 'admin' }
+    - { user: 'admin', role: 'load-balancer_member',project: 'admin' }
+    - { user: 'octavia', role: 'admin',project: 'admin' }
+    - { user: 'octavia', role: 'load-balancer_admin',project: 'admin' }
+    - { user: 'octavia', role: 'load-balancer_observer',project: 'admin' }
+    - { user: 'octavia', role: 'load-balancer_member',project: 'admin' }
+    - { user: 'admin', role: 'admin',project: 'service' }
+    - { user: 'admin', role: 'load-balancer_admin',project: 'service' }
+    - { user: 'admin', role: 'load-balancer_observer',project: 'service' }
+    - { user: 'admin', role: 'load-balancer_member',project: 'service' }
+    - { user: 'octavia', role: 'admin',project: 'service' }
+    - { user: 'octavia', role: 'load-balancer_admin',project: 'service' }
+    - { user: 'octavia', role: 'load-balancer_observer',project: 'service' }
+    - { user: 'octavia', role: 'load-balancer_member',project: 'service' }
+
+- name: Create Service Project
+  openstack.cloud.catalog_service:
+    cloud: contrabass
+    state: present
+    name: octavia
+    description: OpenStack Octavia
+    enabled: True
+    service_type: load-balancer 
+    interface: internal
+
+- name: Octavia endpoint create
+  openstack.cloud.endpoint:
+    cloud: contrabass
+    service: octavia
+    endpoint_interface: "{{ item.interface }}"
+    url: "{{ item.interface_protocol }}://{{ item.endpoint }}:{{ octavia_bind_port }}"
+    region: RegionOne
+    state: present
+  with_items:
+    - { interface: "internal", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ internal_endpoint }}" }
+    - { interface: "admin", interface_protocol: "{{ internal_endpoint_protocol }}", endpoint: "{{ admin_endpoint }}" }
+    - { interface: "public", interface_protocol: "{{ public_endpoint_protocol }}", endpoint: "{{ public_endpoint }}" }

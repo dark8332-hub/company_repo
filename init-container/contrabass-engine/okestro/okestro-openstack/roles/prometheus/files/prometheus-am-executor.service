@@ -1,0 +1,11 @@
+[Unit]
+Description=prometheus-am-executor
+After=network-online.target prometheus.service
+
+[Service]
+ExecStart=/etc/prometheus-am-executor/prometheus-am-executor -f /etc/prometheus-am-executor/heat_excute.yaml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

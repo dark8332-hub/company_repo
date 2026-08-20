@@ -1,0 +1,29 @@
+---
+- name: sleep
+  wait_for:
+    timeout: 10
+
+- name: Create Service Project
+  openstack.cloud.project:
+    cloud: "{{ cloud }}"
+    state: present
+    name: service
+    enabled: true
+    description: Service Project
+    domain_id: default
+    interface: internal
+
+- name: admin user role assignment to service project
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud }}"
+    user: admin
+    role: admin
+    project: service
+    interface: internal
+
+- name: Create Service Role
+  openstack.cloud.identity_role:
+    cloud: "{{ cloud }}"
+    state: present
+    name: service
+    interface: internal

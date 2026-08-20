@@ -1,0 +1,50 @@
+- name: Create prometheus-am-executor directory
+  file:
+    path: "{{ prometheus_am_executor_dir }}"
+    state: directory
+    mode: 0755
+    owner: root
+    group: root
+
+- name: Copy prometheus-am-executor files
+  copy:
+    src: "prometheus_am_executor_dir/"
+    dest: "{{ prometheus_am_executor_dir }}"
+
+- name: Check prometheus-am-executor binary
+  stat:
+    path: "{{ prometheus_am_executor_dir }}/prometheus-am-executor"
+  register: executor_bin
+
+- name: Copy prometheus-am-executor binary
+  copy:
+    src: "prometheus-am-executor"
+    dest: "{{ prometheus_am_executor_dir }}/prometheus-am-executor"
+    mode: 0755
+    owner: root
+    group: root
+  when: not executor_bin.stat.exists
+
+- name: Check prometheus-am-executor service file
+  stat:
+    path: /etc/systemd/system/prometheus-am-executor.service
+  register: executor_service
+
+- name: Copy prometheus-am-executor service file
+  copy:
+    src: prometheus-am-executor.service
+    dest: /etc/systemd/system/prometheus-am-executor.service
+    mode: 0644
+    owner: root
+    group: root
+  when: not executor_service.stat.exists
+
+- name: Reload daemon
+  command: systemctl daemon-reload
+  when: not executor_service.stat.exists
+
+- name: Enable and start prometheus-am-executor
+  service:
+    name: prometheus-am-executor
+    state: started
+    enabled: true

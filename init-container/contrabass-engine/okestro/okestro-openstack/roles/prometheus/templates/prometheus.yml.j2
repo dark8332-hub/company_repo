@@ -1,0 +1,265 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  scrape_timeout: 20s
+{% if monitoring_ha_enable %}
+  external_labels:
+    prometheus: monitoring-cluster
+    prometheus_replica: prometheus-{{ hostvars[inventory_hostname]['ansible_hostname'] }}
+{% endif %}
+
+alerting:
+{% if monitoring_ha_enable %}
+  alert_relabel_configs:
+    - regex: prometheus_replica
+      action: labeldrop
+{% endif %}
+
+  alertmanagers:
+{% if monitoring_enable_tls %}
+    - scheme: https
+      tls_config:
+        cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+        key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+        ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+        insecure_skip_verify: false
+{% else %}
+    - scheme: http
+{% endif %}
+      static_configs:
+        - targets:
+{% for item in groups['controller'] %}
+          - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+
+rule_files:
+  - "./rules/*.yml"
+
+scrape_configs:
+- job_name: "prometheus"
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ prometheus_port }}"
+{% endfor %}
+
+- job_name: "alertmanager"
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ alertmanager_web_port }}"
+{% endfor %}
+
+- job_name: "node_exporter"
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/node-exporter.yaml"
+
+- job_name: "contrabass_exporter"
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-exporter.yaml"
+
+- job_name: "openstack_exporter"
+  scrape_interval: 30s
+  scrape_timeout: 20s
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/openstack-exporter.yaml"
+
+{% if monitoring_ha_enable %}
+- job_name: "thanos-sidecar"
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  static_configs:
+    - targets:
+{% for item in groups['controller'] %}
+      - "{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ thanos_sidecar_http_port }}"
+{% endfor %}
+
+{% endif %}
+- job_name: memcached-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/memcached-exporter.yaml"
+
+- job_name: mysqld-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/mysqld-exporter.yaml"
+
+- job_name: ha_cluster-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/ha_cluster-exporter.yaml"
+
+- job_name: haproxy-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/haproxy-exporter.yaml"
+
+- job_name: rabbitmq-exporter
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/rabbitmq-exporter.yaml"
+
+- job_name: ovs-exporter
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ovs-exporter.yaml"
+
+- job_name: ipmi-exporter
+  metrics_path: /metrics
+{% if monitoring_enable_tls %}
+  scheme: https
+  tls_config:
+    cert_file: {{ monitoring_certs_dir }}/monitoring-server.crt
+    key_file: {{ monitoring_certs_dir }}/monitoring-server.key
+    ca_file: {{ monitoring_certs_dir }}/monitoring-ca.crt
+    insecure_skip_verify: false
+{% else %}
+  scheme: http
+{% endif %}
+  file_sd_configs:
+  - files:
+    - "./sd_files/ipmi-exporter.yaml"
+
+- job_name: mole_exporter
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+- job_name: mole_nfv_exporter
+  metrics_path: /metrics_nfv
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+- job_name: mole_dcgm_exporter
+  metrics_path: /metrics_dcgm
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/contrabass-mole-exporter.yaml"
+
+{% if cinder_backend == "ceph" %}
+- job_name: ceph-exporter
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ceph-exporter.yaml"
+
+- job_name: ceph
+  metrics_path: /metrics
+  scheme: http
+  file_sd_configs:
+  - files:
+    - "./sd_files/ceph-mgr.yaml"
+{% endif %}

@@ -1,0 +1,6 @@
+{% for host in groups['openstack'] %}
+- targets:
+  - {{ hostvars[host]['ansible_'~int_api_interface].ipv4.address }}:{{ node_exporter_port }}
+  labels:
+    nodename: "{{ host }}"
+{% endfor %}

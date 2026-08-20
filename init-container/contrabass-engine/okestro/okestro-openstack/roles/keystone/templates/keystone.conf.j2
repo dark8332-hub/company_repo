@@ -1,0 +1,66 @@
+[DEFAULT]
+log_dir = /var/log/keystone
+transport_url = rabbit://{% for host in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ rabbitmq_amqp_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+[application_credential]
+[assignment]
+[auth]
+[cache]
+[catalog]
+[cors]
+[credential]
+[database]
+connection = mysql+pymysql://keystone:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/keystone
+
+[domain_config]
+[endpoint_filter]
+[endpoint_policy]
+[eventlet_server]
+[extra_headers]
+Distribution = Ubuntu
+[federation]
+[fernet_receipts]
+[fernet_tokens]
+[healthcheck]
+[identity]
+[identity_mapping]
+[jwt_tokens]
+[ldap]
+[memcache]
+[oauth1]
+[oslo_messaging_amqp]
+[oslo_messaging_kafka]
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+[oslo_messaging_rabbit]
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 100
+kombu_missing_consumer_retry_timeout = 30
+heartbeat_timeout_threshold = 30
+enable_cancel_on_failover = true
+heartbeat_rate = 2
+kombu_failover_strategy = shuffle
+
+[oslo_middleware]
+[oslo_policy]
+[policy]
+[profiler]
+[receipt]
+[resource]
+[revoke]
+[role]
+[saml]
+[security_compliance]
+[shadow_users]
+[token]
+[tokenless_auth]
+[totp]
+[trust]
+[unified_limit]
+[wsgi]

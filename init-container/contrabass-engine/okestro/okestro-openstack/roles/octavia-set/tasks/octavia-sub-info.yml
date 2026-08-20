@@ -1,0 +1,10 @@
+---
+- name: Subnet Info
+  openstack.cloud.subnets_info:
+    cloud: contrabass-octavia
+    name: "{{ OCTAVIA_MGMT_SUBNET_NAME }}"
+  register: octavia_subnet_info
+
+- name: Sebuent Info get
+  debug:
+    msg: "{{ octavia_subnet_info.openstack_subnets }}"

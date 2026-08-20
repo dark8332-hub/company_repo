@@ -1,0 +1,34 @@
+---
+- name: Configuration For PCI to nova api
+  ini_file:
+    dest: /etc/nova/nova.conf
+    section: pci
+    option: alias
+    value: { "vendor_id": "{{ vendor_id }}", "product_id": "{{ product_id }}", "device_type": "type-PF", "name": "nvidia" }
+
+- name: Reconfigure
+  lineinfile:
+    path: /etc/nova/nova.conf
+    regexp: '^alias'
+    line: 'alias: { "vendor_id": "{{ vendor_id }}", "product_id": "{{ product_id }}", "device_type": "type-PF", "name": "nvidia" }' 
+
+- name: Restart Nova
+  service:
+    name: "{{ item }}"
+    state: restarted
+  with_items:
+    - nova-api
+    - nova-scheduler
+    - nova-conductor
+    - nova-novncproxy
+
+- name: Create 4Core 8G Memory Test GPU Flavor
+  openstack.cloud.compute_flavor:
+    cloud: contrabass
+    state: present
+    name: Test_GPU_4C8G
+    ram: 8192
+    vcpus: 4
+    disk: 0
+    extra_specs:
+      "pci_passthrough:alias": "nvidia:1"

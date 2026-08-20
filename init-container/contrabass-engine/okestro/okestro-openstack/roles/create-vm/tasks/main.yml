@@ -1,0 +1,19 @@
+---
+- include_tasks: instance-env.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: instance-network.yml 
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: instance-basic-set.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: Contrabass-Instance.yml
+  when: 
+    - inventory_hostname in groups["controller"][0]
+    - Contrabass | bool
+
+- include_tasks: Viola-Instance.yml
+  when: 
+    - inventory_hostname in groups["controller"][0]
+    - Viola | bool 

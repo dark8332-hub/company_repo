@@ -1,0 +1,15 @@
+---
+- import_tasks: octavia-config-set.yml
+
+- name: octavia Service restart
+  service: 
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items: 
+    - octavia-worker
+    - octavia-housekeeping
+    - octavia-api
+    - octavia-health-manager
+    - "{{ pac_apache }}"
+    - memcached

@@ -1,0 +1,95 @@
+---
+- name: Ceph package install
+  apt:
+    update-cache: yes
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - ceph-common
+    - python3-rbd
+  when: 
+    - ansible_os_family == 'Debian'
+    - inventory_hostname in groups["new-compute"]
+
+- name: Ceph package install
+  dnf:
+    name: "{{ item }}"
+    state: present
+    enablerepo: epel
+  with_items:
+    - ceph-common
+    - python3-rbd
+  when:
+    - ansible_os_family == 'RedHat'
+    - ansible_distribution_major_version == '9'
+    - inventory_hostname in groups["new-compute"]
+
+- name: Pulling Ceph Connection Files
+  fetch:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    flat: true
+  with_items:
+    - { src: "/etc/ceph/ceph.conf",dest: "/root/okestro/okestro-openstack/roles/addnode/files/" }
+    - { src: "/etc/ceph/ceph.client.cinder.keyring",dest: "/root/okestro/okestro-openstack/roles/addnode/files/" }
+    - { src: "/etc/ceph/uuid-secret.txt",dest: "/root/okestro/okestro-openstack/roles/addnode/files/" }
+    - { src: "/etc/ceph/secret.xml",dest: "/root/okestro/okestro-openstack/roles/addnode/files/" }
+    - { src: "/etc/ceph/client.cinder.key", dest: "/root/okestro/okestro-openstack/roles/addnode/files/" }
+  when: inventory_hostname in groups["compute"][0]
+
+- name: Copy Ceph Connection Files To New-Compute Node
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "0644"
+  with_items:
+    - { src: 'client.cinder.key',dest: '/etc/ceph/',owner: 'root',group: 'root' }
+    - { src: 'ceph.client.cinder.keyring',dest: '/etc/ceph/',owner: 'root',group: 'root' }
+    - { src: 'ceph.conf',dest: '/etc/ceph/',owner: 'ceph',group: 'ceph' }
+    - { src: 'uuid-secret.txt',dest: '/etc/ceph/',owner: 'root',group: 'root' }
+    - { src: 'secret.xml',dest: '/etc/ceph/',owner: 'root',group: 'root' }
+  when: inventory_hostname in groups["new-compute"]
+
+- name: Define secret to virsh
+  shell: "{{ item }}"
+  with_items:
+    - virsh secret-define --file /etc/ceph/secret.xml
+    - virsh secret-set-value --secret $(cat /etc/ceph/uuid-secret.txt) --base64 $(cat /etc/ceph/client.cinder.key)
+  when: inventory_hostname in groups["new-compute"]
+
+- name: Check nova.conf
+  stat:
+    path: /etc/nova/nova.conf
+  register: nova_config
+
+- name: Nova-Compute Config Edit
+  ini_file:
+    dest: /etc/nova/nova.conf
+    section: libvirt
+    option: "{{ item.key }}"
+    value: "{{ item.value }}"
+  with_dict:
+    inject_partition: -2
+    use_virtio_for_bridges: True
+    images_rbd_pool: vms
+    rbd_secret_uuid: ccf49585-2d99-417e-8181-ce765fe61c67
+    virt_type: kvm
+    inject_password: False
+    disk_cachemodes: network=writeback
+    cpu_mode: host-model
+    images_type: rbd
+    images_rbd_ceph_conf: /etc/ceph/ceph.conf
+    inject_key: False
+    rbd_user: cinder
+  when: 
+    - inventory_hostname in groups["new-compute"]
+    - nova_config.stat.exists
+
+- name: Restart nova-compute service
+  service:
+    name: "{{ pac_nova_compute }}" 
+    state: restarted
+  when:
+    - inventory_hostname in groups["new-compute"]

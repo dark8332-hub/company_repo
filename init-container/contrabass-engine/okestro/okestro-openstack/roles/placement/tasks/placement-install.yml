@@ -1,0 +1,7 @@
+- name: placement_pakage_install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_placement }}"
+      - python3-osc-placement
+    state: present

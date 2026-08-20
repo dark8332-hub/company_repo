@@ -1,0 +1,26 @@
+[Unit]
+Description=OVS Exporter Service
+{% if ansible_os_family == 'RedHat' %}
+After=network.target openvswitch.service
+{% else %}
+After=network.target openvswitch-switch.service
+{% endif %}
+
+[Service]
+ExecStart=/usr/local/bin/ovs-exporter \
+              -database.vswitch.file.data.path="/etc/openvswitch/conf.db" \
+              -database.vswitch.file.log.path="/var/log/openvswitch/ovsdb-server.log" \
+              -database.vswitch.file.pid.path="/var/run/openvswitch/ovsdb-server.pid" \
+              -database.vswitch.file.system.id.path="/etc/openvswitch/system-id.conf" \
+              -database.vswitch.name="Open_vSwitch" \
+              -database.vswitch.socket.remote="unix:/var/run/openvswitch/db.sock" \
+              -log.level="info" \
+              -service.vswitchd.file.log.path="/var/log/openvswitch/ovs-vswitchd.log" \
+              -service.vswitchd.file.pid.path="/var/run/openvswitch/ovs-vswitchd.pid" \
+              -system.run.dir="/var/run/openvswitch" \
+              -web.listen-address=":{{ ovs_exporter_port }}"
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,54 @@
+{% set counter = {'dns': 2,'ip': 1,} %}{% macro increment(dct, key, inc=1)%}{% if dct.update({key: dct[key] + inc}) %} {% endif %}{% endmacro %}[ req ]
+default_bits = 4096
+prompt = no
+default_md = sha256
+req_extensions = req_ext
+distinguished_name = dn
+
+[ dn ]
+countryName = KR
+stateOrProvinceName = Seoul
+localityName = Seoul
+organizationName = Okestro
+organizationalUnitName = Okestro
+commonName = monitoring-server
+
+[ req_ext ]
+basicConstraints = CA:FALSE
+subjectKeyIdentifier = hash
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth,clientAuth
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = localhost
+{% for monitoring_alt_name in monitoring_cert_alt_names %}
+DNS.{{ counter["dns"] }} = {{ monitoring_alt_name }}{{ increment(counter, 'dns') }}
+{% endfor %}
+{% if internal_vip_address == external_vip_address %}
+IP.{{ counter["ip"] }} = {{ internal_vip_address }}{{ increment(counter, 'ip') }}
+{% elif internal_vip_address != external_vip_address %}
+IP.{{ counter["ip"] }} = {{ internal_vip_address }}{{ increment(counter, 'ip') }}
+IP.{{ counter["ip"] }} = {{ external_vip_address }}{{ increment(counter, 'ip') }}
+{% else %}
+{% endif %}
+{% if int_api_interface == external_api_interface %}
+{% for item in groups['openstack'] %}
+IP.{{ counter["ip"] }} = {{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{{ increment(counter, 'ip') }}
+{% endfor %}
+{% elif int_api_interface != external_api_interface %}
+{% for item in groups['openstack'] %}
+IP.{{ counter["ip"] }} = {{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{{ increment(counter, 'ip') }}
+{% endfor %}
+{% for item in groups['new-compute'] %}
+IP.{{ counter["ip"] }} = {{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{{ increment(counter, 'ip') }}
+{% endfor %}
+{% for item in groups['openstack'] %}
+IP.{{ counter["ip"] }} = {{ hostvars[item]['ansible_'~external_api_interface]['ipv4']['address'] }}{{ increment(counter, 'ip') }}
+{% endfor %}
+{% else %}
+{% endif %}
+{% for monitoring_alt_ip in monitoring_cert_alt_ips %}
+IP.{{ counter["ip"] }} = {{ monitoring_alt_ip }}{{ increment(counter, 'ip') }}
+{% endfor %}
+IP.{{ counter["ip"] }} = 127.0.0.1

@@ -1,0 +1,132 @@
+version: '3'
+
+services:
+  ################################## Middelware #######################################
+  # vault:
+  #   extends:
+  #     file: middleware-compose.yaml
+  #     service: vault
+  # mariadb-maestro:
+  #   extends:
+  #     file: middleware-compose.yaml
+  #     service: mariadb-maestro
+  # redis:
+  #   extends:
+  #     file: middleware-compose.yaml
+  #     service: redis
+  ################################## Product #######################################
+  maestro-host-app:
+    extends:
+      file: product-front-compose.yaml
+      service: maestro-host-app
+  maestro-remote-app:
+    extends:
+      file: product-front-compose.yaml
+      service: maestro-remote-app
+  contrabass-remote-app:
+    extends:
+      file: product-front-compose.yaml
+      service: contrabass-remote-app
+  maestro-auth-gateway:
+    extends:
+      file: product-back-compose.yaml
+      service: maestro-auth-gateway
+  maestro-admin-common-api:
+    extends:
+      file: product-back-compose.yaml
+      service: maestro-admin-common-api
+  contrabass-api:
+    extends:
+      file: product-back-compose.yaml
+      service: contrabass-api
+  cloud-service-collector:
+    extends:
+      file: product-back-compose.yaml
+      service: cloud-service-collector
+  contrabass-scheduler:
+    extends:
+      file: product-back-compose.yaml
+      service: contrabass-scheduler
+  contrabass-admin-service:
+    extends:
+      file: product-back-compose.yaml
+      service: contrabass-admin-service
+  maestro-iam-adapter-api:
+    extends:
+      file: product-back-compose.yaml
+      service: maestro-iam-adapter-api
+  maestro-event-pusher:
+    extends:
+      file: product-back-compose.yaml
+      service: maestro-event-pusher
+  cloud-service-api:
+    extends:
+      file: product-back-compose.yaml
+      service: cloud-service-api
+  notification-adapter-api:
+    extends:
+      file: product-back-compose.yaml
+      service: notification-adapter-api
+  pds-integration-service:
+    extends:
+      file: product-back-compose.yaml
+      service: pds-integration-service
+  pds-meta-collector:
+    extends:
+      file: product-back-compose.yaml
+      service: pds-meta-collector
+  maestro-ml-data-api:
+    extends:
+      file: product-back-compose.yaml
+      service: maestro-ml-data-api
+  sym-consolidation-api:
+    extends:
+      file: product-back-compose.yaml
+      service: sym-consolidation-api
+  contrabass-collector:
+    extends:
+      file: product-back-compose.yaml
+      service: contrabass-collector
+
+  ################################## proxy #######################################
+  nginx:
+    container_name: nginx
+    image: localhost:5555/certified-nginx
+    build:
+      context: ./config/nginx
+      args:
+        HOST: contrabass.os
+    ports:
+      - "9443:9443"
+    volumes:
+      - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/nginx/upstream_rules.conf:/etc/nginx/upstream_rules.conf
+    depends_on:
+      - maestro-host-app
+      - maestro-remote-app
+      - contrabass-remote-app
+      - maestro-auth-gateway
+      - maestro-admin-common-api
+      - contrabass-api
+      - cloud-service-collector
+      - contrabass-scheduler
+      - contrabass-admin-service
+      - pds-integration-service
+      - maestro-iam-adapter-api
+      - maestro-event-pusher
+      - cloud-service-api
+      - notification-adapter-api
+      - pds-meta-collector
+      - maestro-ml-data-api
+      - sym-consolidation-api
+      - contrabass-collector
+    networks:
+      - maestro
+
+volumes:
+  maestro-data:
+    driver: local
+networks:
+  maestro:
+    driver: bridge
+    external: true

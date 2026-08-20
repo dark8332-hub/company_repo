@@ -1,0 +1,11 @@
+---
+- name: cinder_pakage_install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_cinder_api }}"
+      - "{{ pac_cinder_scheduler }}"
+      - "{{ pac_cinder_volume }}"
+      - "{{ pac_cinder_backup }}"
+      - "{{ pac_tgt }}"
+    state: present

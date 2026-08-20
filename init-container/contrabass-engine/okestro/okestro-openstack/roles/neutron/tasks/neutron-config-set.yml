@@ -1,0 +1,115 @@
+---
+- name: Neutron file Settings
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    backup: true
+  with_items:
+    - { src: "{{ neutron_config }}.j2",dest: "{{ neutron_dir }}/{{ neutron_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+    - { src: "{{ ml2_config }}.j2",dest: "{{ neutron_plugin_dir }}/{{ ml2_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+    - { src: "{{ ovs_config }}.j2",dest: "{{ neutron_plugin_dir }}/{{ ovs_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+  register: neutron_conf
+  notify:
+    - restart neutron-server
+    - restart neutron-openvswitch-agent 
+
+- name: Register plugin.ini
+  stat:
+    path: "{{ neutron_dir }}/plugin.ini"
+  register: plugin_ini
+  when: ansible_os_family == "RedHat"
+  ignore_errors: true
+
+- name: Neutron file Settings
+  shell: "ln -s {{ neutron_plugin_dir }}/{{ ml2_config }} {{ neutron_dir }}/plugin.ini"
+  when:
+    - ansible_os_family == "RedHat"
+    - not plugin_ini.stat.exists
+
+- name: Neutron file Settings
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    backup: true
+  with_items:
+    - { src: "{{ dhcp_config }}.j2",dest: "{{ neutron_dir }}/{{ dhcp_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+    - { src: "{{ l3_config }}.j2",dest: "{{ neutron_dir }}/{{ l3_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+    - { src: "{{ metadata_config }}.j2",dest: "{{ neutron_dir }}/{{ metadata_config }}",owner: 'neutron',group: 'neutron',mode: '0644' }
+  register: neutron_agent_conf
+  notify:
+    - restart neutron-dhcp-agent
+    - restart neutron-metadata-agent
+    - restart neutron-l3-agent
+  when: inventory_hostname in groups["neutron_agent"]
+
+- include_tasks: neutron-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Neutron to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_neutron ##"
+    insertbefore: "# public"
+    block: |
+      listen int_neutron
+        bind {{ internal_vip_address }}:{{ neutron_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ neutron_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External Neutron to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_neutron ##"
+    insertbefore: EOF
+    block: |
+      listen pub_neutron
+        bind {{ external_vip_address }}:{{ neutron_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ neutron_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Restart Neutron
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - neutron-server
+    - neutron-openvswitch-agent
+  when: neutron_conf.changed
+
+- name: Restart Neutron-agent
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - neutron-dhcp-agent
+    - neutron-l3-agent
+    - neutron-metadata-agent
+  when: neutron_agent_conf.changed

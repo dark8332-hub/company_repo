@@ -1,0 +1,6 @@
+- name: Contrabass tech-preview 
+  become: true
+  hosts: openstack
+  roles:
+    - role: tech-preview
+      tags: tech-preview

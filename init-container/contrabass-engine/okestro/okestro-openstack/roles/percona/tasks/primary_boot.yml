@@ -1,0 +1,60 @@
+- name: Start mysql
+  block:
+    - name: Set config to bootstrap node
+      lineinfile:
+        path: '/var/lib/mysql/grastate.dat'
+        regexp: '^safe_to_bootstrap'
+        line: 'safe_to_bootstrap = 1'
+
+    - name: Bootstrap pxc primary
+      shell: "{{ mysql_bootstrap }}"
+  when: groups['controller'] | length > 1
+
+- name: Start mysql
+  service:
+    name: mysql
+    state: started
+    enabled: true
+  when: groups['controller'] | length == 1
+
+- name: sstuser create
+  #no_log: true
+  mysql_user:
+    login_unix_socket: "{{ mysql_unix_socket }}" 
+    login_user: root
+    login_password: "{{ db_password }}"
+    name: sstuser
+    host: "{{ item }}"
+    password: s3cretPass
+    state: present
+    priv: '*.*:ALL,GRANT'
+  with_items:
+    - localhost
+    - "%"
+  when: percona_version == 5.7
+
+- name: Update mysql root password for all root accounts
+  mysql_user:
+    login_unix_socket: "{{ mysql_unix_socket }}" 
+    name: root
+    host: "{{ item }}"
+    password: "{{ db_password }}"
+    login_user: root
+    login_password: "{{ db_password }}"
+    check_implicit_admin: yes
+    priv: '*.*:ALL,GRANT'
+  with_items:
+    - 127.0.0.1
+    - ::1
+    - localhost
+    - "{{ ansible_hostname }}"
+    - "{{ internal_vip_address.split('.')[:3] | join('.') + '.%' }}"
+
+- name: Enable mysql
+  service:
+    name: mysql
+    enabled: true
+
+- name: wait for bootstrap
+  wait_for:
+    timeout: 5

@@ -1,0 +1,20 @@
+{% if package_ip == "default" %}
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }} main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb [arch=amd64] http://repo.percona.com/prel/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://repo.percona.com/pxc-80/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://repo.percona.com/tools/apt {{ ansible_distribution_release }} main
+{% else %}
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }} main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-updates main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/ubuntu {{ ansible_distribution_release }}-backports main restricted universe multiverse
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/prel/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/tools/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/pxc-80/apt {{ ansible_distribution_release }} main
+{% if openstack_version == 'caracal' %}
+deb [arch=amd64] http://{{ package_ip }}/percona/repo.percona.com/telemetry/apt {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/rabbitmq-4.1.2/rabbitmq-erlang/ubuntu {{ ansible_distribution_release }} main
+deb [arch=amd64] http://{{ package_ip }}/rabbitmq-4.1.2/rabbitmq-server/ubuntu {{ ansible_distribution_release }} main
+{% endif %}
+{% endif %}

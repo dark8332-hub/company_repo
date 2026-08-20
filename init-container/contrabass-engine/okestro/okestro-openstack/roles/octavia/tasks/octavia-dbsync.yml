@@ -1,0 +1,4 @@
+---
+    - name: DB sync
+      changed_when: no
+      shell: octavia-db-manage --config-file /etc/octavia/octavia.conf upgrade head

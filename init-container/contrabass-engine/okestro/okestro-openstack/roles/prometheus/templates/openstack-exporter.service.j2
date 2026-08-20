@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenStack Exporter
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=on-failure
+ExecStart={{ exe_path }}/openstack-exporter \
+    --os-client-config={{ openstack_exporter_config_dir }}/clouds.yaml \
+{% if monitoring_enable_tls %}
+    --web.config.file={{ openstack_exporter_config_dir }}/web-config.yml \
+{% endif %}
+    --endpoint-type=internal \
+    --web.listen-address=0.0.0.0:{{ openstack_exporter_port }} \
+    --disable-service.container-infra \
+    --disable-service.dns \
+    --disable-service.baremetal \
+    --disable-service.gnocchi \
+    --web.telemetry-path=/metrics {{ cloud }} 
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

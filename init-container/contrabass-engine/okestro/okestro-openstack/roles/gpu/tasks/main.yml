@@ -1,0 +1,8 @@
+- include_tasks: gpu-env-set.yml
+  when: inventory_hostname in groups["compute"] and inventory_hostname in groups["gpu"]
+
+- include_tasks: gpu-nova-compute-set.yml
+  when: inventory_hostname in groups["compute"] and inventory_hostname in groups["gpu"]
+
+- include_tasks: gpu-nova-set.yml
+  when: inventory_hostname in groups["controller"]

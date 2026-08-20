@@ -1,0 +1,8 @@
+#!/bin/bash
+
+cd /root/masakari-monitors/
+git config --global --add safe.directory /root/masakari-monitors
+python3 setup.py install
+mkdir /etc/masakarimonitors/
+cp /root/masakari-monitors/etc/masakarimonitors/process_list.yaml.sample /etc/masakarimonitors/process_list.yaml
+rm -rf /root/masakari-monitors

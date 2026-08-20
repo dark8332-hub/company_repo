@@ -1,0 +1,131 @@
+server:
+  http_listen_port: 9080
+{% if monitoring_enable_tls %}
+  http_tls_config:
+    cert_file: /opt/monitoring-certs/monitoring-server.crt
+    key_file: /opt/monitoring-certs/monitoring-server.key
+{% endif %}
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+{% if monitoring_enable_tls %}
+  - url: https://{{ internal_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push
+    tls_config:
+      cert_file: /opt/monitoring-certs/monitoring-server.crt
+      key_file: /opt/monitoring-certs/monitoring-server.key
+      insecure_skip_verify: true
+{% else %}
+  - url: http://{{ internal_vip_address }}:{{ loki_bind_port }}/loki/api/v1/push
+{% endif %}
+    batchsize: 524288
+
+scrape_configs:
+- job_name: system
+  static_configs:
+  - targets:
+    - localhost
+    labels:
+      job: syslog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/messages
+{% else %}
+      __path__: /var/log/syslog
+{% endif %}
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: authlog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/audit/audit.log
+{% else %}
+      __path__: /var/log/auth.log
+{% endif %}
+      hostname: "{{ inventory_hostname }}"
+- job_name: openstack
+  static_configs:
+  - targets:
+      - localhost
+    labels:
+      job: novalog
+      __path__: /var/log/nova/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: neutronlog
+      __path__: /var/log/neutron/*.log
+      hostname: "{{ inventory_hostname }}"
+{% if inventory_hostname in groups['controller'] %}
+  - targets:
+      - localhost
+    labels:
+      job: keystonelog
+      __path__: /var/log/keystone/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: keystone-httplog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/httpd/keystone*.log
+{% else %}
+      __path__: /var/log/apache2/keystone*.log
+{% endif %}
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: glancelog
+      __path__: /var/log/glance/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: placementlog
+{% if ansible_os_family == 'RedHat' %}
+      __path__: /var/log/httpd/placement*.log
+{% else %}
+      __path__: /var/log/apache2/placement*.log
+{% endif %}
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: cinderlog
+      __path__: /var/log/cinder/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: manilalog
+      __path__: /var/log/manila/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: octavialog
+      __path__: /var/log/octavia/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: heatlog
+      __path__: /var/log/heat/*.log
+      hostname: "{{ inventory_hostname }}"
+  - targets:
+      - localhost
+    labels:
+      job: masakarilog
+      __path__: /var/log/masakari/*.log
+      hostname: "{{ inventory_hostname }}"
+{% elif inventory_hostname in groups['compute'] %}
+  - targets:
+      - localhost
+    labels:
+      job: masakarimonitorlog
+      __path__: /var/log/masakarimonitors/masakari-host-monitor.log
+      hostname: "{{ inventory_hostname }}"
+{% endif %}

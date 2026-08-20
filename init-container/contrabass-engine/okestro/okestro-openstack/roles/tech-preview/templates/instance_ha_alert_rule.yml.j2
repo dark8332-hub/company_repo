@@ -1,0 +1,31 @@
+groups:
+  - name: Instance Alert
+    rules:
+      - alert: HostDown
+        expr: up{job="node_exporter"} == 0
+        for: 30s
+        labels:
+          severity: critical  ## 심각한장애;즉시대응필요
+        annotations:
+          summary: "Host {% raw %}{{ $labels.nodename }}{% endraw %} down"
+          description: "Node-exporter on {% raw %}{{ $labels.nodename }}{% endraw %} has not responded for 5 minutes. Immediate attention required!"
+
+      - alert: VMServiceNetworkDown
+        expr: node_network_up{job="node_exporter", device="{{ vm_service_interface }}"} == 0
+        for: 30s
+        labels:
+          severity: critical  ## 심각한장애;즉시대응필요
+        annotations:
+          summary: "External Network Down on {% raw %}{{ $labels.instance }}{% endraw %}"
+          description: "The external network interface {% raw %}{{ $labels.device }}{% endraw %} on {% raw %}{{ $labels.instance }}{% endraw %} is down. External connectivity may be affected."
+
+{% if cinder_backend == 'ceph' %}
+      - alert: CephServiceNetworkDown
+        expr: node_network_up{job="node_exporter", device="{{ ceph_monitor_interface }}"} == 0
+        for: 30s
+        labels:
+          severity: critical  ## 심각한장애;즉시대응필요
+        annotations:
+          summary: "Ceph Service Network Down on {% raw %}{{ $labels.nodename }}{% endraw %}"
+          description: "The network interface {% raw %}{{ $labels.device }}{% endraw %} on {% raw %}{{ $labels.nodename }}{% endraw %} is down. Ceph service network may be unavailable."
+{% endif %}

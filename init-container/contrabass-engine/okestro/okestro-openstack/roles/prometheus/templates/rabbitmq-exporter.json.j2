@@ -1,0 +1,26 @@
+{
+    "rabbit_url": "http://{{ ansible_facts[int_api_interface].ipv4.address }}:{{ rabbitmq_management_port }}",
+    "rabbit_user": "{{ rabbitmq_name }}",
+    "rabbit_pass": "{{ rabbitmq_password }}",
+    "publish_port": "{{ rabbitmq_exporter_port }}",
+    "publish_addr": "",
+    "output_format": "TTY",
+    "exlude_metrics": [],
+    "include_exchanges": ".*",
+    "skip_exchanges": "^$",
+    "include_queues": ".*",
+    "skip_queues": "^$",
+    "skip_vhost": "^$",
+    "include_vhost": ".*",
+    "rabbit_capabilities": "no_sort,bert",
+    "aliveness_vhost": "/",
+    "enabled_exporters": [
+            "exchange",
+            "node",
+            "overview",
+            "queue",
+            "aliveness"
+    ],
+    "timeout": 30,
+    "max_queues": 0
+}

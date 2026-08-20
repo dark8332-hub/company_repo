@@ -1,0 +1,17 @@
+---
+- name: Enable PowerTools
+  shell: dnf config-manager --set-enabled PowerTools
+  when: ansible_os_family == "RedHat"
+
+- name: Install PowerDNS
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - pdns-server
+      - pdns-backend-mysql
+    state: present
+
+- name: Enable PowerDNS
+  service:
+    name: pdns
+    enabled: true

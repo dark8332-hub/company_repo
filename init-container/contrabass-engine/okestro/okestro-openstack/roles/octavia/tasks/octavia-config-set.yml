@@ -1,0 +1,58 @@
+---
+- name: Octavia file Settings
+  template:
+    src: "{{ octavia_config }}.j2"
+    dest: "{{ octavia_dir}}/{{ octavia_config }}"
+    owner: octavia
+    group: octavia
+    mode: 0644
+    backup: true
+  register: octavia_conf
+  notify:
+    - restart octavia-api
+    - restart octavia-housekeeping
+    - restart octavia-health-manager
+    - restart octavia-worker
+
+- include_tasks: octavia-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Octavia to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_octavia ##"
+    insertbefore: "# public"
+    block: |
+      listen int_octavia
+        bind {{ internal_vip_address }}:{{ octavia_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:9876 check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External Octavia to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_octavia ##"
+    insertbefore: EOF
+    block: |
+      listen pub_octavia
+        bind {{ external_vip_address }}:{{ octavia_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:9876 check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+  
+- name: Restart Haproxy
+  service:
+    name: haproxy
+    state: restarted

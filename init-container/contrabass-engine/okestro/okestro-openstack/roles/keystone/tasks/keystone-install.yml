@@ -1,0 +1,14 @@
+- name: Module disable before install keystone
+  command: dnf module disable -y python36
+  when: 
+    - ansible_os_family == "RedHat"
+    - ansible_facts['distribution_major_version'] is version('9','<')
+
+- name: keystone package install  
+  ansible.builtin.package:
+    update_cache: yes
+    name: 
+      - "{{ pac_keystone }}"
+      - "{{ pac_apache }}"
+      - "{{ pac_wsgi }}"
+    state: present

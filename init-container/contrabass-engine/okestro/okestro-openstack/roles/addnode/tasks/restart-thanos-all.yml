@@ -1,0 +1,25 @@
+---
+- name: Restart Thanos sidecar service
+  service:
+    name: thanos-sidecar
+    state: restarted
+
+- name: Restart Thanos store service
+  service:
+    name: thanos-store
+    state: restarted
+
+- name: Restart Thanos rule service
+  service:
+    name: thanos-rule
+    state: restarted
+
+- name: Restart Thanos query service
+  service:
+    name: thanos-query
+    state: restarted
+
+- name: Restart Thanos query front service
+  service:
+    name: thanos-query-front
+    state: restarted

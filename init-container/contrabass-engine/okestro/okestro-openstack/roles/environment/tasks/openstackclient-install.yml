@@ -1,0 +1,8 @@
+---
+- name: install python-openstackclient
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+       - python3-openstackclient
+    state: present
+

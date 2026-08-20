@@ -1,0 +1,16 @@
+- name: Setup Server For PowerDNS 
+  setup:
+
+- include_tasks: pdns-db-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: pdns-use-settings.yml
+ 
+- include_tasks: pdns-install.yml
+
+- include_tasks: pdns-config-set.yml
+
+- include_tasks: pdns-domain-create.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: restart-pdns.yml

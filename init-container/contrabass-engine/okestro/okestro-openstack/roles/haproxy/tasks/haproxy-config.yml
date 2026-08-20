@@ -1,0 +1,14 @@
+---
+- name: Check HAProxy configuration for OpenStack components
+  shell: "grep -iq 'percona' {{ haproxy_dir }}/{{ haproxy_file }}"
+  register: haproxy_cfg
+  ignore_errors: true
+
+- name: Copy configuration files
+  template:
+    src: "{{ haproxy_file }}.j2"
+    dest: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    owner: root
+    group: root
+    mode: 0644
+  when: haproxy_cfg.rc == 1

@@ -1,0 +1,43 @@
+---
+- name: Read current GRUB_CMDLINE_LINUX_DEFAULT value
+  command: grep "^GRUB_CMDLINE_LINUX_DEFAULT=" /etc/default/grub
+  register: grub_cmdline
+  changed_when: false
+
+- name: GRUB Config Settings
+  lineinfile:
+    path: /root/okestro/okestro-openstack/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"'
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="\1intel_iommu=on iommu=pt vfio-pci.ids={{ vendor_id }}:{{ product_id }}"'
+    backrefs: yes
+  when: grub_cmdline.stdout == "GRUB_CMDLINE_LINUX_DEFAULT=\"\""
+
+- name: GRUB Config Settings
+  lineinfile:
+    path: /root/okestro/okestro-openstack/grub
+    regexp: '^GRUB_CMDLINE_LINUX_DEFAULT="(.*)"'
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="\1 intel_iommu=on iommu=pt vfio-pci.ids={{ vendor_id }}:{{ product_id }}"'
+    backrefs: yes
+  when: grub_cmdline.stdout != "GRUB_CMDLINE_LINUX_DEFAULT=\"\""
+
+- name: Update Grub
+  command: sudo update-grub
+
+- name: vfio config setting
+  template:
+    src: "vfio.conf.j2"
+    dest: "/etc/modprobe.d/vfio.conf"
+    mode: 0644
+    owner: root
+    group: root
+
+- name: modprobe config setting
+  copy:
+    src: "{{ item }}"
+    dest: "/etc/modprobe.d/{{ item }}"
+    mode: 0644
+    owner: root
+    group: root
+  with_items:
+    - blacklist-nvidia.conf
+    - nvidia.conf

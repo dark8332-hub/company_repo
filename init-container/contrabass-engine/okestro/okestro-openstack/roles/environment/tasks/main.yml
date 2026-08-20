@@ -1,0 +1,14 @@
+---
+- name: Setup Server For Environment
+  setup:
+
+- include_tasks: server-init.yml
+  when: 
+    - inventory_hostname not in groups["deploy"]
+
+- include_tasks: openstackclient-install.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: time-set.yml
+  when:
+    - inventory_hostname not in groups["deploy"]

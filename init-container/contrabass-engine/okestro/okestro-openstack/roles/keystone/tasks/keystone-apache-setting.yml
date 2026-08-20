@@ -1,0 +1,22 @@
+---
+- name: Configure keystone policy
+  file:
+    src: /usr/share/keystone/wsgi-keystone.conf
+    dest: /etc/httpd/conf.d/wsgi-keystone.conf
+    state: link
+    force: true
+  when: ansible_os_family == "RedHat"
+
+- name: Configure apache2.conf
+  lineinfile: 
+    path: "{{ apache_conf }}" 
+    backup: true
+    insertbefore: BOF
+    line: "ServerName {{ ansible_hostname }}"
+  register: servername_conf
+
+- name: Restart apache
+  service:
+    name: "{{ pac_apache }}"
+    state: restarted
+  when: servername_conf.changed

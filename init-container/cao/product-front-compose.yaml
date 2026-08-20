@@ -1,0 +1,63 @@
+version: '3'
+services:
+  contrabass-remote-app:
+    container_name: contrabass-remote-app
+    image: localhost:5555/contrabass-remote-app:v1.0.1
+    expose:
+      - 8080
+    #user: 101:101
+    user: root:root
+    privileged: true
+    networks:
+      - maestro
+
+    volumes:
+      - ./config/contrabass-remote-app/default.conf:/etc/nginx/conf.d/default.conf
+      - ./config/contrabass-remote-app/env.sh:/docker-entrypoint.d/env.sh
+    env_file:
+      - ./config/contrabass-remote-app/cm.env  
+    restart: always
+  maestro-remote-app:
+    container_name: maestro-remote-app
+    image: localhost:5555/maestro-remote-app:v1.0.1
+    expose:
+      - 8080
+    #user: 101:101
+    user: root:root
+    privileged: true
+    networks:
+      - maestro
+
+    volumes:
+      - ./config/maestro-remote-app/default.conf:/etc/nginx/conf.d/default.conf
+      - ./config/maestro-remote-app/env.sh:/docker-entrypoint.d/env.sh
+    env_file:
+      - ./config/maestro-remote-app/cm.env
+    #entrypoint: >
+    #sh -c "find /usr/share/nginx/html/ -type f |xargs sed -i 's/maestro-admin.okestro.cloud/'contrabass.os:9443'/g' \;
+    #nginx -g 'daemon off;'"
+    restart: always
+  maestro-host-app:
+    container_name: maestro-host-app
+    image: localhost:5555/maestro-host-app:v1.0.1
+    expose:
+      - 8080
+    #user: 101:101
+    user: root:root
+    privileged: true
+    networks:
+      - maestro
+
+    volumes:
+      - ./config/maestro-host-app/default.conf:/etc/nginx/conf.d/default.conf
+      - ./config/maestro-host-app/env.sh:/docker-entrypoint.d/env.sh
+    env_file:
+      - ./config/maestro-host-app/cm.env
+        #entrypoint: >
+        #sh -c "find /usr/share/nginx/html/ -type f |xargs sed -i 's/maestro-admin.okestro.cloud/'contrabass.os:9443'/g' \;
+        #nginx -g 'daemon off;'"
+    restart: always
+networks:
+  maestro:
+    driver: bridge
+    external: true

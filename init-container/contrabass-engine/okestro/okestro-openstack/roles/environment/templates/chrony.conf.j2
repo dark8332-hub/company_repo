@@ -1,0 +1,33 @@
+
+server {{ ntp_server }} iburst
+
+{% if ansible_os_family == "RedHat" %}
+keyfile /etc/chrony.keys
+
+driftfile /var/lib/chrony/drift
+{% elif ansible_os_family == "Debian" %}
+keyfile /etc/chrony/chrony.keys
+
+driftfile /var/lib/chrony/chrony.drift
+{% else %}
+keyfile /etc/chrony/chrony.keys
+
+driftfile /var/lib/chrony/chrony.drift
+{% endif %}
+
+{% if ntp_server in ansible_all_ipv4_addresses %}
+allow {{ ntp_allow_network }}
+local stratum 10
+{% endif %}
+
+logdir /var/log/chrony
+
+maxupdateskew 100.0
+
+
+rtcsync
+
+hwclockfile /etc/adjtime
+
+
+makestep 1 3

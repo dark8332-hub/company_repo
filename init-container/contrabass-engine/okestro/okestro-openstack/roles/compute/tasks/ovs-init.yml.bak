@@ -1,0 +1,39 @@
+- name: external bridge create
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "{{ primary_bridge }}"
+    state: present
+    fail_mode: secure
+
+- name: external second-bridge create
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "{{ secondary_bridge }}"
+    state: present
+    fail_mode: secure
+  when: enable_secondary_bridge == true and secondary_bridge is defined
+
+- name: external tertiary-bridge create
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "{{ tertiary_bridge }}"
+    state: present
+    fail_mode: secure
+  when: enable_tertiary_bridge == true and tertiary_bridge is defined
+
+- name: external bridge port mapping
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "{{ primary_bridge }}"
+    port: "{{ primary_bridge_port }}"
+    state: present
+
+- name: external second-bridge port mapping
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "{{ secondary_bridge }}"
+    port: "{{ secondary_bridge_port }}"
+    state: present
+  when: enable_secondary_bridge == true and secondary_bridge is defined
+
+- name: external tertiary-bridge port mapping
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "{{ tertiary_bridge }}"
+    port: "{{ tertiary_bridge_port }}"
+    state: present
+  when: enable_tertiary_bridge == true and tertiary_bridge is defined

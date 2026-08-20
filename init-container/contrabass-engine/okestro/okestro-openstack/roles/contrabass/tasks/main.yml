@@ -1,0 +1,11 @@
+- name: Setup Server for install contrabass
+  setup:
+
+- include_tasks: install-contrabass-portal.yml
+  when:
+    - enable_contrabass_portal
+    - inventory_hostname in groups['controller'][0]
+
+- include_tasks: install-contrabass-mole.yml
+
+- include_tasks: contrabass-mole-config-set.yml

@@ -1,0 +1,9 @@
+- name: nova_pakage_install
+  ansible.builtin.package:
+    update_cache: yes
+    name:
+      - "{{ pac_nova_api }}"
+      - "{{ pac_nova_conductor }}"
+      - "{{ pac_nova_scheduler }}"
+      - "{{ pac_nova_novncproxy }}"
+    state: present

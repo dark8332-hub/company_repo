@@ -1,0 +1,89 @@
+- name: Create promtail directory
+  file:
+    path: '/etc/promtail'
+    state: directory
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Create prometheus directory for ipmi-exporter
+  file:
+    path: '/etc/prometheus'
+    state: directory
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Copy prometheus web config file
+  template:
+    src: 'prometheus-web-config.yml.j2'
+    dest: '/etc/prometheus/web-config.yml'
+    owner: 'root'
+    group: 'root'
+    mode: '0755'
+
+- name: Check exporters exists
+  stat:
+    path: "/etc/systemd/system/{{ item.exporter }}.service"
+  register: exporter_check
+  with_items:
+    - { exporter: promtail }
+    - { exporter: ovs-exporter }
+    - { exporter: ipmi-exporter }
+
+- name: Copy exporter binary files
+  copy:
+    src: "{{ item.item.exporter }}"
+    dest: "/usr/local/bin/{{ item.item.exporter }}"
+    mode: '0755'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: not item.stat.exists
+
+- name: Get Ceph fsid from ceph.conf
+  ansible.builtin.shell: |
+    grep 'fsid' /etc/ceph/ceph.conf | awk '{print $3}'
+  register: ceph_conf_result
+  changed_when: false
+  ignore_errors: true
+
+- name: Copy promtail environment file
+  template:
+    src: 'promtail-config.yaml.j2'
+    dest: '/etc/promtail/promtail-config.yaml'
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: item.item.exporter == 'promtail' and not item.stat.exists
+
+- name: Copy ipmi-exporter environment file
+  copy:
+    src: 'ipmi-exporter.yml'
+    dest: '/etc/prometheus/ipmi-exporter.yml'
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: item.item.exporter == 'ipmi-exporter' and not item.stat.exists
+
+- name: Copy exporter service unit file
+  template:
+    src: "{{ item.item.exporter }}.service.j2"
+    dest: "/etc/systemd/system/{{ item.item.exporter }}.service"
+    mode: '0644'
+    owner: 'root'
+    group: 'root'
+  with_items: "{{ exporter_check.results }}"
+  when: not item.stat.exists
+
+- name: Reload daemon
+  command: systemctl daemon-reload
+
+- name: Start exporters
+  service:
+    name: "{{ item.item.exporter }}"
+    state: started
+    enabled: yes
+  with_items: "{{ exporter_check.results }}"

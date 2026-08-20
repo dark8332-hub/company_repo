@@ -1,0 +1,46 @@
+- name: Configure Internal Cephmgr to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} Ceph_mgr ##"
+    insertbefore: "# public"
+    block: |
+      listen ceph_mgr
+        bind {{ internal_vip_address }}:{{ mgr_bind_port }}
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk GET /
+        http-check expect status 200
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ mgr_port }} check check-ssl verify none
+      {% endfor %}
+
+- name: Restart HAproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Ceph Exporter redeloy
+  command: "ceph orch redeploy ceph-exporter"
+  when: inventory_hostname in groups['mons'][0]
+
+- name: Pause for 15 seconds
+  ansible.builtin.pause:
+    seconds: 15
+
+- name: Ceph Global log File Enable
+  command: "ceph config set global log_to_file true"
+  when: inventory_hostname in groups['mons'][0]
+
+- name: Ceph Global mon_Cluster_log File Enable
+  command: "ceph config set global mon_cluster_log_to_file true"
+  when: inventory_hostname in groups['mons'][0]
+
+- name: Ceph OSD Ratios Config & Enable RGW Module
+  ansible.builtin.shell: |
+    ceph osd set-nearfull-ratio 0.80;
+    ceph osd set-backfillfull-ratio 0.83;
+    ceph osd set-full-ratio 0.85;
+    ceph mgr module enable rgw
+  delegate_to: "{{ groups['mons'][0] }}"

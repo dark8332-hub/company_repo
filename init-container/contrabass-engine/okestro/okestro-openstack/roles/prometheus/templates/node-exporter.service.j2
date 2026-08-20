@@ -1,0 +1,21 @@
+[Unit]
+Description=Node Exporter
+Requires=network-online.target node-exporter.socket
+After=network-online.target node-exporter.socket
+
+[Service]
+User=root
+Group=root
+Restart=always
+EnvironmentFile={{ node_exporter_config_dir }}/node_exporter
+ExecStart={{ exe_path }}/node_exporter \
+{% if monitoring_enable_tls %}
+    --web.config.file={{ node_exporter_config_dir }}/web-config.yml \
+{% endif %}
+    --web.systemd-socket $OPTIONS
+ExecReload=/bin/kill -HUP $MAINPID
+TimeoutStopSec=20s
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,77 @@
+---
+- name: cinder-api config file setting
+  template:
+    src: "{{ cinder_config }}.j2"
+    dest: "{{ cinder_dir }}/{{ cinder_config }}"
+    owner: cinder
+    group: root
+    mode: 0644
+  register: cinder_conf
+  notify: restart apahce2.
+
+- include_tasks: cinder-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Cinder to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_cinder ##"
+    insertbefore: "# public"
+    block: |
+      listen int_cinder
+        bind {{ internal_vip_address }}:{{ cinder_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ cinder_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External Cinder to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_cinder ##"
+    insertbefore: EOF
+    block: |
+      listen pub_cinder
+        bind {{ external_vip_address }}:{{ cinder_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option  tcpka
+        option  httpchk
+        option  tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ cinder_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+    
+- name: cinder restart
+  service: 
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items: 
+    - "{{ serv_cinder_api }}" 
+    - "{{ serv_cinder_scheduler }}"
+    - "{{ serv_cinder_volume }}"
+    - "{{ serv_cinder_backup }}"
+  when: cinder_conf.changed
+
+- name: cinder restart
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - target
+    - targetclid
+  when: ansible_os_family == "RedHat" and cinder_conf.changed

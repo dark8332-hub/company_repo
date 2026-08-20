@@ -1,0 +1,67 @@
+---
+- name: manila config file setting
+  template:
+    src: "{{ manila_config }}.j2"
+    dest: "{{ manila_dir }}/{{ manila_config }}"
+    owner: manila 
+    group: root
+    mode: 0644
+  register: manila_conf
+
+- include_tasks: manila-dbsync.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- name: Configure Internal Manila to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} internal_manila ##"
+    insertbefore: "# public"
+    block: |
+      listen int_manila
+        bind {{ internal_vip_address }}:{{ manila_bind_port }} {% if internal_endpoint_protocol == "https" %}ssl crt {{ internal_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option tcpka
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~int_api_interface].ipv4.address }}:{{ manila_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+
+- name: Configure External Manila to haproxy.cfg
+  blockinfile:
+    path: "{{ haproxy_dir }}/{{ haproxy_file }}"
+    marker: "## {mark} external_manila ##"
+    insertbefore: EOF
+    block: |
+      listen pub_manila
+        bind {{ external_vip_address }}:{{ manila_bind_port }} {% if public_endpoint_protocol == "https" %}ssl crt {{ external_fqdn_cert }} ssl verify none{% endif %}
+
+        balance  source
+        mode tcp
+        option tcpka
+        option tcplog
+      {% for item in groups['controller'] %}
+        server {{ hostvars[item]['ansible_hostname'] }} {{ hostvars[item]['ansible_'~external_api_interface].ipv4.address }}:{{ manila_port }} check inter 2000 rise 2 fall 5
+      {% endfor %}
+  when: external_vip_address != internal_vip_address
+
+- name: Restart haproxy
+  service:
+    name: haproxy
+    state: restarted
+
+- name: Restart Manila
+  service:
+    name: "{{ item }}"
+    state: restarted
+    enabled: true
+  with_items:
+    - "{{ serv_manila_api }}"
+    - "{{ serv_manila_scheduler }}"
+
+- name: Configure Source file for Manila
+  lineinfile:
+    path: /root/contrabass-openrc
+    regexp: '^export OS_MANILA_ENDPOINT_TYPE=internal$'
+    line: export OS_MANILA_ENDPOINT_TYPE=internal

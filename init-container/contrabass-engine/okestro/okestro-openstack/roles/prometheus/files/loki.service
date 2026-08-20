@@ -1,0 +1,12 @@
+[Unit]
+Description=Loki Service
+After=network.target minio.service
+
+[Service]
+ExecStart=/usr/local/bin/loki -config.file=/etc/loki/loki-s3-config.yaml
+Restart=always
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

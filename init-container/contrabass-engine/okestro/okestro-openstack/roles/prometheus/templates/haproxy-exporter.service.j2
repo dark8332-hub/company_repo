@@ -1,0 +1,25 @@
+[Unit]
+Description=Prometheus HAProxy Exporter
+After=network.target
+
+[Service]
+User=root
+Group=root
+Type=simple
+Restart=always
+ExecStart=/usr/local/bin/haproxy-exporter \
+          --web.listen-address=":{{ haproxy_exporter_port }}" \
+          --web.telemetry-path="/metrics" \
+          --no-haproxy.ssl-verify \
+          --log.level="info" \
+          --log.format=logfmt \
+          --haproxy.timeout=5s \
+{% if monitoring_enable_tls %}
+          --haproxy.scrape-uri="http://{{ internal_vip_address }}:{{ haproxy_stat_port }}/stats;csv" \
+          --web.config.file=/etc/prometheus/web-config.yml
+{% else %}
+	  --haproxy.scrape-uri="http://internal_vip_address }}:{{ haproxy_stat_port }}/stats;csv"
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

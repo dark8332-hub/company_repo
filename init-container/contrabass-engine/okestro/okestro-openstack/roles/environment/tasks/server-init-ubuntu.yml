@@ -1,0 +1,67 @@
+---
+- name: Copy Repository configuration files Ubuntu
+  become: true
+  template:
+    src: "{{ repo_file }}.j2"
+    dest: "{{ repo_dir }}/{{ repo_file }}"
+    owner: root
+    group: root
+    mode: 0644
+  when: ansible_os_family == "Debian" 
+
+- name: copy gpg_key Ubuntu
+  become: true
+  copy:
+    src: "{{ item }}"
+    dest: "{{ repo_key_dir }}"
+    owner: root
+    group: root
+    mode: 0644
+  with_items:
+   - percona-keyring.gpg
+   - ubuntu-keyring-2012-cloud-archive.gpg
+   - maas_ubuntu_3_2.gpg
+   - com.rabbitmq.team.gpg
+  when: ansible_os_family == "Debian"
+
+- name: Remove source list file
+  file:
+    path: '/etc/apt/sources.list.d/ubuntu.sources'
+    state: absent
+
+- name: apt update && upgrade
+  become: true
+  apt:
+    update_cache: yes
+    force_apt_get: yes
+  when: ansible_os_family == "Debian"
+
+- name: Pakage installation Ubuntu
+  apt:
+    update_cache: yes
+    name:
+      - aptitude
+      - curl
+      - telnet
+      - tree
+      - tcpdump 
+      - iperf3       
+      - net-tools
+      - network-manager
+      - snmp
+      - snmpd
+      - lldpd
+      - ipmitool
+      - freeipmi
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Stop & Disable Service Ubuntu
+  service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: no
+  with_items:
+    - apparmor 
+    - ufw
+  when: ansible_os_family == "Debian"

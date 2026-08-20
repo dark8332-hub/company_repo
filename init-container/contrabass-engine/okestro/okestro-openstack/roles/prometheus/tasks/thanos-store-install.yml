@@ -1,0 +1,36 @@
+---
+- name: Register Thanos store data dir exists
+  stat:
+    path: '{{ thanos_store_data_dir }}'
+  register: thanos_store_data_dir_svc
+  ignore_errors: true
+
+- name: Create Thanos store data dir
+  file:
+    path: "{{ item.path }}"
+    state: "{{ item.state }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { path: '{{ thanos_store_data_dir }}',state: 'directory',owner: 'root',group: 'root',mode: '0755' }
+  when: not thanos_store_data_dir_svc.stat.exists
+
+- name: Copy Thanos store service file
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ item.owner }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  with_items:
+    - { src: 'thanos-store.service.j2',dest: '{{ thanos_service_daemon_path }}/thanos-store.service',owner: 'root',group: 'root',mode: '0644' }
+
+- name: Reload Daemon
+  shell: systemctl daemon-reload
+
+- name: Start Thanos store service
+  service:
+    name: thanos-store
+    state: restarted
+    enabled: true

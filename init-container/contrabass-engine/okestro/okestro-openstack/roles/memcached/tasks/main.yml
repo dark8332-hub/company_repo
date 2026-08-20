@@ -1,0 +1,9 @@
+---
+- name: Setup Server For Memcached 
+  setup:
+
+- include_tasks: memcached-install.yml
+
+- include_tasks: memcached-config.yml
+
+

@@ -1,0 +1,14 @@
+---
+- name: Start OS security shell 
+  shell: ". /{{ ansible_user }}/os_excute.sh"
+  #script: htkim_os_security_08_17/os_script_start.sh
+  #with_items:
+  #  - /root/htkim_os_security_08_17/os_script_start.sh
+
+- name: Start security shell in controller
+  shell: ". /{{ ansible_user }}/con_contrabass_excute.sh"
+  when: inventory_hostname in groups["controller"]
+
+- name: Start security shell in compute
+  shell: ". /{{ ansible_user }}/com_contrabass_excute.sh"
+  when: inventory_hostname in groups["compute"]

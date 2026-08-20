@@ -1,0 +1,19 @@
+[Unit]
+Description=Contrabass Exporter
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+User=root
+Group=root
+Restart=always
+ExecStart={{ exe_path }}/contrabass-exporter \
+    -libvirt.uri={{ contrabass_libvirt_uri }} \
+    -web.listen-address=0.0.0.0:{{ contrabass_exporter_port }} \
+    -web.telemetry-path=/metrics
+ExecReload=/bin/kill -HUP $MAINPID
+TimeoutStopSec=20s
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

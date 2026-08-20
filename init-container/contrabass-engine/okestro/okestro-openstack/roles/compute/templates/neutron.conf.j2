@@ -1,0 +1,115 @@
+[DEFAULT]
+core_plugin = ml2
+allow_overlapping_ips = True
+auth_strategy = keystone
+notify_nova_on_port_status_changes = true
+notify_nova_on_port_data_changes = true
+transport_url = rabbit://{% for item in groups['controller'] %}{{ rabbitmq_name }}:{{ rabbitmq_password }}@{{ hostvars[item]['ansible_'~int_api_interface]['ipv4']['address'] }}{% if not loop.last %},{% endif %}{% endfor %}
+
+control_exchange=neutron
+auth_strategy=keystone
+dhcp_agent_notification=True
+allow_overlapping_ips=True
+global_physnet_mtu=1500
+vlan_transparent=False
+service_plugins=router,qos,segments,trunk,port_forwarding
+allow_automatic_l3agent_failover=True
+dhcp_load_type=networks
+default_availability_zones=
+{% set neutron_agent_count = groups['neutron_agent']|length %}
+{% if neutron_agent_count > 1 %}
+dhcp_agents_per_network = {{ neutron_agent_count }}
+max_l3_agents_per_router = {{ neutron_agent_count }}
+l3_ha = True
+{% else %}
+dhcp_agents_per_network = 1
+max_l3_agents_per_router = 1
+{% endif %}
+
+rpc_backend = rabbit
+
+
+[agent]
+root_helper = sudo /usr/bin/neutron-rootwrap /etc/neutron/rootwrap.conf
+
+[database]
+connection = mysql+pymysql://neutron:{{ db_password }}@{{ internal_vip_address }}:{{ percona_bind_port }}/neutron
+
+[keystone_authtoken]
+service_token_roles = service
+service_token_required = true
+www_authenticate_uri = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+memcached_servers = {% for host in groups['controller'] %}{{ hostvars[host]['ansible_'~int_api_interface]['ipv4']['address'] }}:{{ memcached_port }}{% if not loop.last %},{% endif %}{% endfor %}
+
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+project_name = service
+username = neutron
+password = {{ keystone_pass }}
+
+[oslo_messaging_rabbit]
+amqp_auto_delete = False
+kombu_reconnect_delay = 3.0
+rabbit_retry_backoff = 2
+rabbit_retry_interval = 1
+rpc_conn_pool_size = 100
+kombu_missing_consumer_retry_timeout = 30
+heartbeat_timeout_threshold = 30
+enable_cancel_on_failover = true
+heartbeat_rate = 2
+kombu_failover_strategy = shuffle
+{% if enable_tls_rabbitmq %}
+ssl = true
+ssl_key_file = {{ certfile_dest }}
+ssl_cert_file = {{ keyfile_dest }}
+ssl_ca_file = {{ cacertfile_dest }}
+{% endif %}
+
+[oslo_messaging_notifications]
+driver = messagingv2
+topics = notifications
+
+[nova]
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_type = password
+project_domain_name = Default
+user_domain_name = Default
+region_name = RegionOne
+project_name = service
+username = nova
+password = {{ keystone_pass }}
+
+endpoint_type = internal
+live_migration_events = true
+
+[oslo_concurrency]
+lock_path = /var/lib/neutron/tmp
+
+[service_user]
+send_service_user_token = true
+auth_url = {{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}
+{% if internal_endpoint_protocol == "https" %}
+certfile = {{ internal_fqdn_cert }}
+keyfile = {{ internal_fqdn_cert }}
+{% endif %}
+auth_strategy = keystone
+auth_type = password
+project_domain_name = Default
+project_name = service
+user_domain_name = Default
+username = neutron
+password = {{ keystone_pass }}
+
+[oslo_policy]
+enforce_scope = False
+enforce_new_defaults = False

@@ -1,0 +1,32 @@
+---
+### Create Contrabass Instance ###
+- name: Create Instances
+  openstack.cloud.server:
+    state: present
+    auth:
+      auth_url: "{{ internal_endpoint_protocol }}://{{ internal_endpoint }}:{{ keystone_bind_port }}/v3/"
+      username: admin
+      password: "{{ keystone_pass }}"
+      project_name: admin
+    name: "{{ item.name }}"
+    image: "{{ instance_image }}"
+    region_name: "{{ region_one }}"
+    timeout: 300
+    flavor: "{{ item.flavor }}"
+    boot_from_volume: true
+    volume_size: 10
+    terminate_volume: true
+    nics:
+      - net-name: "{{ VM_API_NAME }}"
+#     - net-name: [ Network Name ]   if you need more interface add network option
+    wait: true
+    userdata: |
+      #! /bin/sh
+      echo "ubuntu:cloud1234" | chpasswd
+      echo "root:cloud1234" | chpasswd
+      sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+      sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+      systemctl restart sshd
+  with_items: "{{ Contrabass_instances_list }}"
+  ignore_errors: true
+  

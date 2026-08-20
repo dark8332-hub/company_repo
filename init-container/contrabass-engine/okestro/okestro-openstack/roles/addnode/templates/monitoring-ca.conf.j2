@@ -1,0 +1,22 @@
+[ req ]
+default_bits = 4096
+prompt = no
+default_md = sha256
+default_keyfile = monitoring-ca.key
+extensions = ca_ext
+req_extensions = ca_ext
+distinguished_name = ca_dn
+
+[ ca_dn ]
+countryName = KR
+stateOrProvinceName = Seoul
+localityName = Seoul
+organizationName = Okestro
+organizationalUnitName = Okestro
+commonName = monitoring-ca
+
+[ ca_ext ]
+basicConstraints = critical, CA:TRUE, pathlen:0
+subjectKeyIdentifier = hash
+keyUsage = keyCertSign, cRLSign
+nsCertType = sslCA, emailCA, objCA

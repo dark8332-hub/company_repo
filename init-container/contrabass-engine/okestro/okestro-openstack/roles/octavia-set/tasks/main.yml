@@ -1,0 +1,23 @@
+---
+- name: Setup Server For Keystone
+  setup:
+- include_tasks: octavia-env.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: octavia-security.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: octavia-network.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: octavia-shell.yml 
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: octavia-conf-add.yml
+  when: inventory_hostname in groups["controller"]
+
+- include_tasks: octavia-basic-set.yml
+  when: inventory_hostname in groups["controller"][0]
+
+- include_tasks: octavia-interface-daemon.yml
+  when: inventory_hostname in groups["controller"]

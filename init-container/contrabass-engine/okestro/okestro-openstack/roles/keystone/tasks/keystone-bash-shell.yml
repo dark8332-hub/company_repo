@@ -1,0 +1,8 @@
+---
+- name: env-script-copy 
+  template:
+    src: "openstack.rc.j2"
+    dest: /root/{{ cloud }}-openrc
+    owner: root
+    group: root
+    mode: 0600
