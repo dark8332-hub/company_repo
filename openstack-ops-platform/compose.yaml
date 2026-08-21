@@ -1,0 +1,14 @@
+services:
+  dashboard:
+    build:
+      context: .
+    image: okestro/openstack-ops-platform:latest
+    container_name: openstack-ops-platform
+    restart: unless-stopped
+    ports:
+      - "9080:9080"
+    volumes:
+      - provider-data:/app/data
+
+volumes:
+  provider-data:

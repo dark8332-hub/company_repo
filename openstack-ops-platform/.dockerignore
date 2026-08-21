@@ -1,0 +1,10 @@
+.git
+.gitignore
+PROGRESS.md
+README.md
+*.tar.gz
+*.zip
+__pycache__
+*.pyc
+.venv
+data
