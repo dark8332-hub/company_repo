@@ -20,7 +20,7 @@
       <nav class="navigation" aria-label="주 메뉴">
         <p>OVERVIEW</p>
         <a class="active" href="#dashboard" data-page="dashboard"><span class="nav-icon">⌂</span>대시보드</a>
-        <a href="#daily-inspection" data-page="daily-inspection"><span class="nav-icon">✓</span>일일점검 <em id="inspectionCount">44</em></a>
+        <a href="#daily-inspection" data-page="daily-inspection"><span class="nav-icon">✓</span>일일점검 <em id="inspectionCount">50</em></a>
         <a href="/providers"><span class="nav-icon">◇</span>공급자 연결</a>
         <a href="#"><span class="nav-icon">◫</span>인프라 현황</a>
         <p>OPERATIONS</p>
@@ -142,11 +142,12 @@
           <div class="heading-actions"><select id="inspectionProviderSelect" aria-label="일일점검 공급자 선택"><option value="">공급자를 선택하세요</option></select><button class="primary-button" id="dailyRunInspection"><span>↻</span> 전체 점검 실행</button></div>
         </section>
         <section class="inspection-summary" aria-label="점검 진행 현황">
-          <article><span>전체 항목</span><strong id="totalInspectionItems">44</strong><small>개 체크리스트</small></article>
+          <article><span>전체 항목</span><strong id="totalInspectionItems">50</strong><small>개 체크리스트</small></article>
           <article><span>정상</span><strong class="healthy" id="healthyInspectionItems">0</strong><small>개 항목</small></article>
           <article><span>주의</span><strong class="warning-text" id="warningInspectionItems">0</strong><small>개 항목</small></article>
-          <article><span>수집 대기</span><strong class="pending-text" id="pendingInspectionItems">44</strong><small>개 항목</small></article>
+          <article><span>수집 대기</span><strong class="pending-text" id="pendingInspectionItems">50</strong><small>개 항목</small></article>
         </section>
+        <section class="panel inspection-selector"><div class="panel-heading"><div><h2>일일점검 항목 선택</h2><p>실행할 영역과 세부 항목을 먼저 선택하세요.</p></div><div class="inspection-selection"><b><span id="selectedInspectionCount">50</span>개 선택</b><button id="selectAllInspections" type="button">전체 선택</button><button id="clearAllInspections" type="button">전체 해제</button></div></div><div id="inspectionSelectionPanel" class="inspection-selection-panel"></div></section>
         <section class="panel cluster-inventory">
           <div class="panel-heading"><div><h2>클러스터 노드 인벤토리</h2><p>VIP를 통해 탐색한 Controller 및 Compute 노드</p></div><span class="inventory-count"><b id="controllerNodeCount">0</b> Controller · <b id="computeNodeCount">0</b> Compute</span><button class="discover-button" id="discoverCluster" type="button">↻ 클러스터 탐색</button></div>
           <div class="cluster-node-list" id="clusterNodeList"><div class="empty-provider">공급자를 선택한 후 클러스터를 탐색하세요.</div></div>
@@ -154,7 +155,6 @@
         </section>
         <div class="inspection-toolbar">
           <div class="inspection-filter" role="group" aria-label="점검 결과 필터"><button class="active" data-filter="all">전체</button><button data-filter="healthy">정상</button><button data-filter="warning">주의</button><button data-filter="pending">수집 대기</button></div>
-          <div class="inspection-selection"><b><span id="selectedInspectionCount">44</span>개 선택</b><button id="selectAllInspections" type="button">전체 선택</button><button id="clearAllInspections" type="button">전체 해제</button></div>
           <span id="inspectionUpdatedAt">아직 실행된 점검이 없습니다.</span>
         </div>
         <section id="inspectionChecklist" class="inspection-checklist" aria-live="polite"></section>

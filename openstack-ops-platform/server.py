@@ -22,8 +22,8 @@ app = FastAPI(title="OKESTRO OpenStack Operations API", version="0.1.0")
 CHECK_KEYS = {
     "cpu", "memory", "disk", "chrony", "bonding", "mount", "pcs", "vip", "rabbitmq", "mysql",
     "endpoint", "nova", "neutron", "cinder", "manila", "octavia", "masakari", "swift", "heat", "nova_compute",
-    "vm", "network", "volume", "snapshot", "share", "lb", "amphora",
-    "nova_log", "neutron_log", "cinder_log", "glance_log", "manila_log", "octavia_log", "system_log",
+    "vm", "network", "volume", "snapshot", "share", "lb", "amphora", "masakari_notification", "swift_container", "heat_stack",
+    "nova_log", "neutron_log", "cinder_log", "glance_log", "manila_log", "octavia_log", "masakari_log", "swift_log", "heat_log", "system_log",
     "virtualization", "failed_units", "kernel_errors", "nic_state", "ovs_state", "kvm_acceleration",
     "libvirt_state", "instance_storage", "smart_health", "raid_health",
 }
@@ -355,14 +355,14 @@ fi
                     key, value = line.split("=", 1)
                     values[key] = value
             integer_keys = {"uptime_seconds", "cpu_cores", "memory_total_kb", "memory_used_kb", "disk_total_kb", "disk_used_kb", "disk_used_percent"}
-            integer_keys.update(f"{service}_log_count" for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "system"))
+            integer_keys.update(f"{service}_log_count" for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "masakari", "swift", "heat", "system"))
             for key in integer_keys:
                 try: values[key] = int(values[key])
                 except (KeyError, ValueError): pass
             try: values["cpu_used_percent"] = float(values["cpu_used_percent"])
             except (KeyError, ValueError): values["cpu_used_percent"] = None
             values["memory_used_percent"] = round(values.get("memory_used_kb", 0) / max(values.get("memory_total_kb", 1), 1) * 100, 1)
-            for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "system"):
+            for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "masakari", "swift", "heat", "system"):
                 encoded = values.pop(f"{service}_log_sample", "")
                 try: values[f"{service}_log_sample"] = base64.b64decode(encoded).decode("utf-8", errors="replace")
                 except ValueError: values[f"{service}_log_sample"] = ""
@@ -377,7 +377,7 @@ fi
             for key, label in (("chrony", "Chrony"), ("bonding", "Bonding"), ("mount", "Mount")):
                 if key in selected_items and values.get(key) == "warning": warnings.append(f"{label} 상태 확인 필요")
             if "nova_compute" in selected_items and node["role"] == "compute" and values.get("nova_compute") == "warning": warnings.append("nova-compute 비정상")
-            for service, label in (("nova", "Nova"), ("neutron", "Neutron"), ("cinder", "Cinder"), ("glance", "Glance"), ("manila", "Manila"), ("octavia", "Octavia"), ("system", "System")):
+            for service, label in (("nova", "Nova"), ("neutron", "Neutron"), ("cinder", "Cinder"), ("glance", "Glance"), ("manila", "Manila"), ("octavia", "Octavia"), ("masakari", "Masakari"), ("swift", "Swift"), ("heat", "Heat"), ("system", "System")):
                 if values.get(f"{service}_log") == "warning":
                     warnings.append(f"{label} 로그 오류 {values.get(f'{service}_log_count', 0)}건")
             return {**node, "address": address, "reachable": True, "fingerprint": fingerprint, "status": "warning" if warnings else "healthy", "metrics": values, "warnings": warnings}
@@ -411,6 +411,9 @@ emit_check snapshot 'openstack volume snapshot list --all-projects -f value' 'cr
 emit_check share 'openstack share list --all-projects -f value' 'creating|error'
 emit_check lb 'openstack loadbalancer list -f value' 'error'
 emit_check amphora 'openstack loadbalancer amphora list -f value' 'error'
+emit_check masakari_notification 'openstack notification list -f value' 'error|failed'
+emit_check swift_container 'openstack container list -f value' 'error|failed'
+emit_check heat_stack 'openstack stack list --all-projects -f value' 'CREATE_FAILED|UPDATE_FAILED|DELETE_FAILED|ROLLBACK_FAILED|error'
 exit 0
 '''
     cluster_items = {}
@@ -477,7 +480,7 @@ exit 0
         "libvirt_state": aggregate_node_item("libvirt_state", role="compute"), "instance_storage": aggregate_node_item("instance_storage", role="compute"),
         "smart_health": aggregate_node_item("smart_health"), "raid_health": aggregate_node_item("raid_health"),
     }
-    for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "system"):
+    for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "masakari", "swift", "heat", "system"):
         items[f"{service}_log"] = aggregate_log_item(service)
     items = {key: value for key, value in items.items() if key in selected_items}
     warnings = [f"{node['hostname']}: {warning}" for node in node_results for warning in node["warnings"]]
