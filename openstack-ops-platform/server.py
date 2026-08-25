@@ -2,6 +2,7 @@ import asyncio
 import base64
 import ipaddress
 import re
+import shlex
 import socket
 from pathlib import Path
 
@@ -17,6 +18,19 @@ from provider_store import (
 
 BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="OKESTRO OpenStack Operations API", version="0.1.0")
+
+CHECK_KEYS = {
+    "cpu", "memory", "disk", "chrony", "bonding", "mount", "pcs", "vip", "rabbitmq", "mysql",
+    "endpoint", "nova", "neutron", "cinder", "manila", "octavia", "masakari", "swift", "heat", "nova_compute",
+    "vm", "network", "volume", "snapshot", "share", "lb", "amphora",
+    "nova_log", "neutron_log", "cinder_log", "glance_log", "manila_log", "octavia_log", "system_log",
+    "virtualization", "failed_units", "kernel_errors", "nic_state", "ovs_state", "kvm_acceleration",
+    "libvirt_state", "instance_storage", "smart_health", "raid_health",
+}
+
+
+class CheckRequest(BaseModel):
+    selected_items: list[str] | None = None
 
 
 class DiscoveryRequest(BaseModel):
@@ -244,18 +258,26 @@ async def remove_provider(provider_id: str):
 
 
 @app.post("/api/providers/{provider_id}/checks")
-async def run_provider_check(provider_id: str):
+async def run_provider_check(provider_id: str, request: CheckRequest | None = None):
     provider = get_provider(provider_id)
     if not provider:
         raise HTTPException(404, "등록된 공급자를 찾을 수 없습니다.")
     nodes = list_provider_nodes(provider_id)
     if not nodes:
         raise HTTPException(409, "먼저 클러스터 탐색을 실행하세요.")
+    selected_items = set(request.selected_items) if request and request.selected_items is not None else set(CHECK_KEYS)
+    invalid_items = selected_items - CHECK_KEYS
+    if invalid_items:
+        raise HTTPException(400, f"지원하지 않는 점검 항목: {', '.join(sorted(invalid_items))}")
+    if not selected_items:
+        raise HTTPException(400, "점검할 항목을 하나 이상 선택하세요.")
+    selected_shell = shlex.quote("|" + "|".join(sorted(selected_items)) + "|")
 
-    node_command = r'''
+    node_command = f"SELECTED_ITEMS={selected_shell}\n" + r'''
 LC_ALL=C
-emit_raw() { raw_key="$1"; shift; raw_output=$("$@" 2>&1); raw_encoded=$(printf '%s' "$raw_output" | base64 -w0 2>/dev/null); printf '%s_raw=%s\n' "$raw_key" "$raw_encoded"; }
-emit_node_check() { check_key="$1"; check_command="$2"; bad_pattern="$3"; check_output=$(eval "$check_command" 2>&1); check_rc=$?; if [ $check_rc -ne 0 ]; then check_state=unavailable; elif [ -n "$bad_pattern" ] && printf '%s\n' "$check_output" | grep -Eiq "$bad_pattern"; then check_state=warning; else check_state=healthy; fi; check_encoded=$(printf '%s' "$check_output" | base64 -w0 2>/dev/null); printf '%s=%s\n%s_raw=%s\n' "$check_key" "$check_state" "$check_key" "$check_encoded"; }
+wanted() { case "$SELECTED_ITEMS" in *"|$1|"*) return 0;; *) return 1;; esac; }
+emit_raw() { raw_key="$1"; shift; wanted "$raw_key" || return; raw_output=$("$@" 2>&1); raw_encoded=$(printf '%s' "$raw_output" | base64 -w0 2>/dev/null); printf '%s_raw=%s\n' "$raw_key" "$raw_encoded"; }
+emit_node_check() { check_key="$1"; check_command="$2"; bad_pattern="$3"; wanted "$check_key" || return; check_output=$(eval "$check_command" 2>&1); check_rc=$?; if [ $check_rc -ne 0 ]; then check_state=unavailable; elif [ -n "$bad_pattern" ] && printf '%s\n' "$check_output" | grep -Eiq "$bad_pattern"; then check_state=warning; else check_state=healthy; fi; check_encoded=$(printf '%s' "$check_output" | base64 -w0 2>/dev/null); printf '%s=%s\n%s_raw=%s\n' "$check_key" "$check_state" "$check_key" "$check_encoded"; }
 printf 'hostname=%s\n' "$(hostname -s)"
 printf 'uptime_seconds=%s\n' "$(cut -d. -f1 /proc/uptime)"
 printf 'cpu_cores=%s\n' "$(getconf _NPROCESSORS_ONLN)"
@@ -284,14 +306,15 @@ emit_node_check libvirt_state 'virsh list --all' 'error|failed|shut off|paused|c
 emit_node_check instance_storage 'df -h /var/lib/nova/instances' ' 8[0-9]%| 9[0-9]%|100%'
 virt_type=$(systemd-detect-virt 2>/dev/null || true)
 if [ -n "$virt_type" ] && [ "$virt_type" != none ]; then
-  echo smart_health=unavailable; printf 'smart_health_raw=%s\n' "$(printf '가상화 환경(%s): 물리 디스크 SMART 점검 제외' "$virt_type" | base64 -w0)"
-  echo raid_health=unavailable; printf 'raid_health_raw=%s\n' "$(printf '가상화 환경(%s): 물리 RAID 점검 제외' "$virt_type" | base64 -w0)"
+  if wanted smart_health; then echo smart_health=unavailable; printf 'smart_health_raw=%s\n' "$(printf '가상화 환경(%s): 물리 디스크 SMART 점검 제외' "$virt_type" | base64 -w0)"; fi
+  if wanted raid_health; then echo raid_health=unavailable; printf 'raid_health_raw=%s\n' "$(printf '가상화 환경(%s): 물리 RAID 점검 제외' "$virt_type" | base64 -w0)"; fi
 else
   emit_node_check smart_health 'command -v smartctl >/dev/null 2>&1 && { smartctl --scan; for disk in $(smartctl --scan | awk "{print \$1}"); do smartctl -H "$disk"; done; }' 'FAILED|failure|prefail'
   emit_node_check raid_health 'cat /proc/mdstat; command -v mdadm >/dev/null 2>&1 && mdadm --detail --scan || true' '\[[U_]*_[U_]*\]'
 fi
 check_service_log() {
   service="$1"
+  wanted "${service}_log" || return
   directory="/var/log/$service"
   if [ ! -d "$directory" ] || ! find "$directory" -maxdepth 1 -type f -name '*.log' -print -quit 2>/dev/null | grep -q .; then
     printf '%s_log=unavailable\n%s_log_count=0\n' "$service" "$service"
@@ -348,12 +371,12 @@ fi
                 try: values[f"{key}_raw"] = base64.b64decode(encoded).decode("utf-8", errors="replace")
                 except ValueError: values[f"{key}_raw"] = ""
             warnings = []
-            if values.get("cpu_used_percent") is not None and values["cpu_used_percent"] >= 80: warnings.append("CPU 사용률 80% 이상")
-            if values["memory_used_percent"] >= 80: warnings.append("메모리 사용률 80% 이상")
-            if values.get("disk_used_percent", 0) >= 80: warnings.append("디스크 사용률 80% 이상")
+            if "cpu" in selected_items and values.get("cpu_used_percent") is not None and values["cpu_used_percent"] >= 80: warnings.append("CPU 사용률 80% 이상")
+            if "memory" in selected_items and values["memory_used_percent"] >= 80: warnings.append("메모리 사용률 80% 이상")
+            if "disk" in selected_items and values.get("disk_used_percent", 0) >= 80: warnings.append("디스크 사용률 80% 이상")
             for key, label in (("chrony", "Chrony"), ("bonding", "Bonding"), ("mount", "Mount")):
-                if values.get(key) == "warning": warnings.append(f"{label} 상태 확인 필요")
-            if node["role"] == "compute" and values.get("nova_compute") == "warning": warnings.append("nova-compute 비정상")
+                if key in selected_items and values.get(key) == "warning": warnings.append(f"{label} 상태 확인 필요")
+            if "nova_compute" in selected_items and node["role"] == "compute" and values.get("nova_compute") == "warning": warnings.append("nova-compute 비정상")
             for service, label in (("nova", "Nova"), ("neutron", "Neutron"), ("cinder", "Cinder"), ("glance", "Glance"), ("manila", "Manila"), ("octavia", "Octavia"), ("system", "System")):
                 if values.get(f"{service}_log") == "warning":
                     warnings.append(f"{label} 로그 오류 {values.get(f'{service}_log_count', 0)}건")
@@ -363,10 +386,11 @@ fi
 
     node_results = await asyncio.gather(*(check_node(node) for node in nodes))
 
-    controller_command = r'''
+    controller_command = f"SELECTED_ITEMS={selected_shell}\n" + r'''
 LC_ALL=C
+wanted() { case "$SELECTED_ITEMS" in *"|$1|"*) return 0;; *) return 1;; esac; }
 for candidate in /root/contrabass-openrc "$HOME/contrabass-openrc"; do [ -r "$candidate" ] && . "$candidate" >/dev/null 2>&1 && break; done
-emit_check() { key="$1"; command="$2"; bad="$3"; output=$(eval "$command" 2>&1); rc=$?; count=$(printf '%s\n' "$output" | awk 'NF{n++}END{print n+0}'); if [ $rc -ne 0 ]; then state=unavailable; elif [ -n "$bad" ] && printf '%s\n' "$output" | grep -Eiq "$bad"; then state=warning; else state=healthy; fi; encoded=$(printf '%s' "$output" | base64 -w0 2>/dev/null); printf 'check=%s|%s|%s|%s\n' "$key" "$state" "$count" "$encoded"; }
+emit_check() { key="$1"; command="$2"; bad="$3"; wanted "$key" || return; output=$(eval "$command" 2>&1); rc=$?; count=$(printf '%s\n' "$output" | awk 'NF{n++}END{print n+0}'); if [ $rc -ne 0 ]; then state=unavailable; elif [ -n "$bad" ] && printf '%s\n' "$output" | grep -Eiq "$bad"; then state=warning; else state=healthy; fi; encoded=$(printf '%s' "$output" | base64 -w0 2>/dev/null); printf 'check=%s|%s|%s|%s\n' "$key" "$state" "$count" "$encoded"; }
 emit_check pcs 'pcs status' 'failed|stopped|offline|unclean'
 emit_check vip 'ping -c 2 -W 2 10.255.191.150' '100% packet loss'
 emit_check rabbitmq 'rabbitmqctl cluster_status' 'error|failed'
@@ -377,6 +401,9 @@ emit_check neutron 'openstack network agent list -f value' ' down | xxx '
 emit_check cinder 'openstack volume service list -f value' ' down | disabled '
 emit_check manila 'openstack share service list -f value' ' down | disabled '
 emit_check octavia 'openstack loadbalancer list -f value' 'error'
+emit_check masakari 'openstack segment list -f value || openstack service list -f value | grep -Ei "masakari|instance-ha"' 'error|failed'
+emit_check swift 'openstack object store account show -f value || openstack service list -f value | grep -Ei "swift|object-store"' 'error|failed'
+emit_check heat 'openstack orchestration service list -f value || openstack service list -f value | grep -Ei "heat|orchestration"' 'down|disabled|failed'
 emit_check vm 'openstack server list --all-projects -f value' ' error '
 emit_check network 'openstack network agent list -f value' ' down '
 emit_check volume 'openstack volume list --all-projects -f value' ' error '
@@ -452,11 +479,12 @@ exit 0
     }
     for service in ("nova", "neutron", "cinder", "glance", "manila", "octavia", "system"):
         items[f"{service}_log"] = aggregate_log_item(service)
+    items = {key: value for key, value in items.items() if key in selected_items}
     warnings = [f"{node['hostname']}: {warning}" for node in node_results for warning in node["warnings"]]
     warnings.extend(f"{key}: 확인 필요" for key, item in items.items() if item["status"] == "warning")
     overall_status = "warning" if warnings or any(not node["reachable"] for node in node_results) else "healthy"
     first_metrics = next((node["metrics"] for node in node_results if node["reachable"]), {})
-    result = {"nodes": node_results, "items": items, "metrics": first_metrics, "warnings": warnings}
+    result = {"nodes": node_results, "items": items, "selected_items": sorted(selected_items), "metrics": first_metrics, "warnings": warnings}
     check_id = save_check(provider_id, overall_status, result)
     return {"check_id": check_id, "provider_id": provider_id, "status": overall_status, **result}
 

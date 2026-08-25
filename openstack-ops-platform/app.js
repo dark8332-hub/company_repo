@@ -19,6 +19,7 @@ const inspectionGroups = [
   {title:'OpenStack 서비스 점검', description:'서비스 및 에이전트 가용 상태', items:[
     ['Service','Endpoint','openstack endpoint list','endpoint'], ['Service','Nova','openstack compute service list','nova'], ['Service','Neutron','openstack network agent list','neutron'],
     ['Service','Cinder','openstack volume service list','cinder'], ['Service','Manila','manila service-list','manila'], ['Service','Octavia','systemctl status octavia-*','octavia'], ['Service','Nova-compute','nova-compute API 포트 확인','nova_compute']
+    ,['Service','Masakari','openstack segment list','masakari'], ['Service','Swift','openstack object store account show','swift'], ['Service','Heat','openstack orchestration service list','heat']
   ]},
   {title:'OpenStack 리소스 점검', description:'사용자 리소스의 비정상 상태 확인', items:[
     ['Resource','VM state','openstack server list --all','vm'], ['Resource','Network state','OVS 및 네트워크 상태 확인','network'], ['Resource','Volume state','openstack volume list --all','volume'],
@@ -38,6 +39,8 @@ const inspectionGroups = [
 ];
 let inspectionResults = {};
 let currentFilter = 'all';
+const allInspectionKeys = inspectionGroups.flatMap(group => group.items.map(item => item[3]));
+let selectedInspectionKeys = new Set(allInspectionKeys);
 
 menuButton.addEventListener('click', () => sidebar.classList.toggle('open'));
 sidebar.addEventListener('click', event => {
@@ -46,10 +49,11 @@ sidebar.addEventListener('click', event => {
 
 async function executeInspection(sourceButton, selectedProvider) {
   if (!selectedProvider) return showToast('공급자를 먼저 선택하세요.', '공급자 연결 메뉴에서 환경을 등록할 수 있습니다.');
+  if (!selectedInspectionKeys.size) return showToast('점검 항목을 선택하세요.', '하나 이상의 항목을 선택해야 합니다.');
   sourceButton.disabled = true;
   sourceButton.innerHTML = '<span>↻</span> 점검 실행 중';
   try {
-    const response = await fetch(`/api/providers/${encodeURIComponent(selectedProvider)}/checks`, {method:'POST'});
+    const response = await fetch(`/api/providers/${encodeURIComponent(selectedProvider)}/checks`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({selected_items:[...selectedInspectionKeys]})});
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || '점검 실행에 실패했습니다.');
     renderCheck(data);
@@ -149,6 +153,7 @@ function escapeText(value) {
 
 function renderInspectionResult(data) {
   const metrics = data.metrics || {};
+  if (Array.isArray(data.selected_items)) selectedInspectionKeys = new Set(data.selected_items);
   inspectionResults = data.items || {
     cpu:{status:'healthy', result:`${metrics.cpu_cores ?? '-'} Core`, note:'활성 Controller 기준'},
     memory:{status:metrics.memory_used_percent >= 80 ? 'warning' : 'healthy', result:`${metrics.memory_used_percent ?? '-'}%`, note:metrics.memory_used_percent >= 80 ? '임계치 80% 이상' : '정상 범위'},
@@ -164,17 +169,18 @@ function renderInspectionChecklist() {
   checklist.innerHTML = inspectionGroups.map((group, groupIndex) => {
     const rows = group.items.map(([category, name, method, key]) => {
       total += 1;
-      const result = inspectionResults[key] || {status:'pending', result:'-', note:'수집기 연결 필요'};
+      const isSelected = selectedInspectionKeys.has(key);
+      const result = inspectionResults[key] || (isSelected ? {status:'pending', result:'-', note:'점검 실행 필요'} : {status:'skipped', result:'-', note:'점검 제외'});
       if (result.status === 'healthy') healthy += 1;
       if (result.status === 'warning') warning += 1;
-      const filterMatches = currentFilter === result.status || (currentFilter === 'pending' && result.status === 'unavailable');
+      const filterMatches = currentFilter === result.status || (currentFilter === 'pending' && ['unavailable','skipped'].includes(result.status));
       const hidden = currentFilter !== 'all' && !filterMatches ? ' hidden' : '';
-      const labels = {healthy:'정상', warning:'주의', pending:'수집 대기', unavailable:'확인 불가'};
+      const labels = {healthy:'정상', warning:'주의', pending:'수집 대기', unavailable:'확인 불가', skipped:'점검 제외'};
       const nodeDetail = result.nodes?.length ? `<details class="node-log-detail"><summary>노드별 상태</summary>${result.nodes.map(node => `<div><strong>${escapeText(node.hostname)}</strong><span>${escapeText(node.role)}</span><em class="${escapeText(node.status)}">${labels[node.status] || '확인 불가'}</em><b>${Number(node.count) || 0}건</b>${node.note ? `<small>${escapeText(node.note)}</small>` : ''}</div>`).join('')}</details>` : '';
       const detailId = `inspection-detail-${groupIndex}-${key}`;
       const details = result.details?.length ? result.details : [{title:'조회 결과', output:result.status === 'pending' ? '아직 점검을 실행하지 않았습니다.' : `${result.note || ''}\n${result.result || '-'}`}];
       const rawOutput = details.map(detail => `<article><strong>${escapeText(detail.title)}</strong><pre>${escapeText(detail.output || '출력 없음')}</pre></article>`).join('');
-      return `<tr class="inspection-row" data-status="${result.status}" data-detail-id="${detailId}" tabindex="0" aria-expanded="false"${hidden}><td><span class="category-badge">${category}</span></td><td><strong>${name}</strong><small class="detail-hint">클릭하여 명령 원문 보기</small></td><td><code>${method}</code></td><td><span class="check-state ${result.status}">${labels[result.status]}</span></td><td>${escapeText(result.note)}${nodeDetail}</td><td class="inspection-value">${escapeText(result.result)}</td></tr><tr class="inspection-detail-row" id="${detailId}" hidden><td colspan="6"><div class="inspection-raw-output">${rawOutput}</div></td></tr>`;
+      return `<tr class="inspection-row" data-status="${result.status}" data-detail-id="${detailId}" tabindex="0" aria-expanded="false"${hidden}><td><label class="inspection-select"><input type="checkbox" data-check-key="${key}" ${isSelected ? 'checked' : ''}><span class="category-badge">${category}</span></label></td><td><strong>${name}</strong><small class="detail-hint">클릭하여 명령 원문 보기</small></td><td><code>${method}</code></td><td><span class="check-state ${result.status}">${labels[result.status]}</span></td><td>${escapeText(result.note)}${nodeDetail}</td><td class="inspection-value">${escapeText(result.result)}</td></tr><tr class="inspection-detail-row" id="${detailId}" hidden><td colspan="6"><div class="inspection-raw-output">${rawOutput}</div></td></tr>`;
     }).join('');
     return `<article class="inspection-group"><header><span>${groupIndex + 1}</span><div><h2>${group.title}</h2><p>${group.description}</p></div><b>${group.items.length}개 항목</b></header><div class="inspection-table-wrap"><table><thead><tr><th>점검 분류</th><th>점검 사항</th><th>점검 방법</th><th>상태</th><th>특이사항</th><th>점검 결과</th></tr></thead><tbody>${rows}</tbody></table></div></article>`;
   }).join('');
@@ -183,13 +189,23 @@ function renderInspectionChecklist() {
   document.querySelector('#warningInspectionItems').textContent = warning;
   document.querySelector('#pendingInspectionItems').textContent = total - healthy - warning;
   document.querySelector('#inspectionCount').textContent = total;
+  document.querySelector('#selectedInspectionCount').textContent = selectedInspectionKeys.size;
 }
 
 document.querySelector('#inspectionChecklist').addEventListener('click', event => {
+  const checkbox = event.target.closest('input[data-check-key]');
+  if (checkbox) {
+    checkbox.checked ? selectedInspectionKeys.add(checkbox.dataset.checkKey) : selectedInspectionKeys.delete(checkbox.dataset.checkKey);
+    document.querySelector('#selectedInspectionCount').textContent = selectedInspectionKeys.size;
+    return;
+  }
+  if (event.target.closest('.inspection-select')) return;
   if (event.target.closest('details')) return;
   const row = event.target.closest('.inspection-row');
   if (row) toggleInspectionDetail(row);
 });
+document.querySelector('#selectAllInspections').addEventListener('click', () => { selectedInspectionKeys = new Set(allInspectionKeys); renderInspectionChecklist(); });
+document.querySelector('#clearAllInspections').addEventListener('click', () => { selectedInspectionKeys.clear(); renderInspectionChecklist(); });
 document.querySelector('#inspectionChecklist').addEventListener('keydown', event => {
   if ((event.key === 'Enter' || event.key === ' ') && event.target.classList.contains('inspection-row')) {
     event.preventDefault();
