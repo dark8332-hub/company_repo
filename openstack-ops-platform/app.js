@@ -171,7 +171,7 @@ function renderInspectionSelection() {
   panel.innerHTML = inspectionGroups.map((group, groupIndex) => {
     const keys = group.items.map(item => item[3]);
     const checked = keys.filter(key => selectedInspectionKeys.has(key)).length;
-    return `<section><label class="selection-group"><input type="checkbox" data-selection-group="${groupIndex}" ${checked === keys.length ? 'checked' : ''}><strong>${escapeText(group.title)}</strong><span>${checked}/${keys.length}</span></label><div>${group.items.map(([, name,, key]) => `<label><input type="checkbox" data-selection-key="${key}" ${selectedInspectionKeys.has(key) ? 'checked' : ''}><span>${escapeText(name)}</span></label>`).join('')}</div></section>`;
+    return `<section class="${checked ? 'has-selection' : 'no-selection'}"><label class="selection-group"><input type="checkbox" data-selection-group="${groupIndex}" ${checked === keys.length ? 'checked' : ''}><strong>${escapeText(group.title)}</strong><span>${checked}/${keys.length}</span></label><div>${group.items.map(([, name,, key]) => { const selected = selectedInspectionKeys.has(key); return `<label class="${selected ? 'selected' : 'unselected'}"><input type="checkbox" data-selection-key="${key}" ${selected ? 'checked' : ''}><span>${escapeText(name)}</span></label>`; }).join('')}</div></section>`;
   }).join('');
   document.querySelector('#selectedInspectionCount').textContent = selectedInspectionKeys.size;
 }
@@ -180,10 +180,11 @@ function renderInspectionChecklist() {
   const checklist = document.querySelector('#inspectionChecklist');
   let total = 0, healthy = 0, warning = 0;
   checklist.innerHTML = inspectionGroups.map((group, groupIndex) => {
-    const rows = group.items.map(([category, name, method, key]) => {
+    const selectedGroupItems = group.items.filter(([, , , key]) => selectedInspectionKeys.has(key));
+    if (!selectedGroupItems.length) return '';
+    const rows = selectedGroupItems.map(([category, name, method, key]) => {
       total += 1;
-      const isSelected = selectedInspectionKeys.has(key);
-      const result = inspectionResults[key] || (isSelected ? {status:'pending', result:'-', note:'점검 실행 필요'} : {status:'skipped', result:'-', note:'점검 제외'});
+      const result = inspectionResults[key] || {status:'pending', result:'-', note:'점검 실행 필요'};
       if (result.status === 'healthy') healthy += 1;
       if (result.status === 'warning') warning += 1;
       const filterMatches = currentFilter === result.status || (currentFilter === 'pending' && ['unavailable','skipped'].includes(result.status));
@@ -195,8 +196,9 @@ function renderInspectionChecklist() {
       const rawOutput = details.map(detail => `<article><strong>${escapeText(detail.title)}</strong><pre>${escapeText(detail.output || '출력 없음')}</pre></article>`).join('');
       return `<tr class="inspection-row" data-status="${result.status}" data-detail-id="${detailId}" tabindex="0" aria-expanded="false"${hidden}><td><span class="category-badge">${category}</span></td><td><strong>${name}</strong><small class="detail-hint">클릭하여 명령 원문 보기</small></td><td><code>${method}</code></td><td><span class="check-state ${result.status}">${labels[result.status]}</span></td><td>${escapeText(result.note)}${nodeDetail}</td><td class="inspection-value">${escapeText(result.result)}</td></tr><tr class="inspection-detail-row" id="${detailId}" hidden><td colspan="6"><div class="inspection-raw-output">${rawOutput}</div></td></tr>`;
     }).join('');
-    return `<article class="inspection-group"><header><span>${groupIndex + 1}</span><div><h2>${group.title}</h2><p>${group.description}</p></div><b>${group.items.length}개 항목</b></header><div class="inspection-table-wrap"><table><thead><tr><th>점검 분류</th><th>점검 사항</th><th>점검 방법</th><th>상태</th><th>특이사항</th><th>점검 결과</th></tr></thead><tbody>${rows}</tbody></table></div></article>`;
+    return `<article class="inspection-group"><header><span>${groupIndex + 1}</span><div><h2>${group.title}</h2><p>${group.description}</p></div><b>${selectedGroupItems.length}개 선택</b></header><div class="inspection-table-wrap"><table><thead><tr><th>점검 분류</th><th>점검 사항</th><th>점검 방법</th><th>상태</th><th>특이사항</th><th>점검 결과</th></tr></thead><tbody>${rows}</tbody></table></div></article>`;
   }).join('');
+  if (!selectedInspectionKeys.size) checklist.innerHTML = '<div class="empty-provider">상단에서 일일점검 항목을 선택하세요.</div>';
   document.querySelector('#totalInspectionItems').textContent = total;
   document.querySelector('#healthyInspectionItems').textContent = healthy;
   document.querySelector('#warningInspectionItems').textContent = warning;
