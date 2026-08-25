@@ -6,7 +6,7 @@
 
 - 프로젝트명: OpenStack 운영 지원 플랫폼 (가칭)
 - 시작일: 2026-08-21
-- 현재 단계: 대시보드 UI 프로토타입 구현
+- 현재 단계: OpenStack 클러스터 탐색 및 역할별 일일점검 실행기 검증
 - 대상 사용자: OpenStack 운영 엔지니어 및 관리자
 - 문서 상태: 초기 생성
 
@@ -83,16 +83,16 @@
 
 | 구분 | 결정 내용 | 상태 |
 |---|---|---|
-| 백엔드 | 미정 | 검토 필요 |
-| 프론트엔드 | 미정 | 검토 필요 |
+| 백엔드 | Python FastAPI 및 Uvicorn | 적용 |
+| 프론트엔드 | HTML, CSS, Vanilla JavaScript | 적용 |
 | 기본 화면 테마 | OKESTRO 상징색인 어두운 남색 중심 | 확정 |
 | 세부 색상 팔레트 | 기본색, 강조색, 상태별 색상 코드 정의 필요 | 검토 필요 |
-| 데이터베이스 | 미정 | 검토 필요 |
-| OpenStack 연동 방식 | OpenStack API 또는 SDK 검토 | 검토 필요 |
+| 데이터베이스 | SQLite, Fernet 암호화 저장 | 적용 |
+| OpenStack 연동 방식 | Controller의 `/root/contrabass-openrc` 및 OpenStack CLI | 적용 |
 | 메트릭 수집 | Prometheus 계열 연동 검토 | 검토 필요 |
 | 대시보드 | 자체 UI 또는 Grafana 연동 검토 | 검토 필요 |
 | 알림 채널 | 이메일, 메신저 등 검토 | 검토 필요 |
-| 배포 방식 | 컨테이너 기반 배포 검토 | 검토 필요 |
+| 배포 방식 | Docker Compose 지원, 현재 systemd/Uvicorn 운영 | 적용 |
 | 기본 서비스 포트 | 9080 | 확정 |
 | 초기 패키징 | Nginx 기반 Docker 이미지 및 Compose | 완료 |
 | 공급자 연결 방식 | VIP를 통한 SSH 접속 후 활성 Controller 확인 | 확정 |
@@ -132,7 +132,54 @@
 | 2026-08-21 | 데이터 검증 | 서버 재기동 후 등록 공급자와 점검 이력 보존 상태 확인 | 완료 |
 | 2026-08-21 | 화면 검증 | 대시보드 `/` 및 공급자 관리 `/providers` 접속 경로 확인 | 완료 |
 | 2026-08-21 | 형상 관리 | GitHub `company_repo`의 `contrabass-assistant-v0.1` 브랜치에 소스 및 문서 저장 | 완료 |
-| 2026-08-21 | 요구사항 | 실제 운영 환경 및 점검 항목 확인 | 예정 |
+| 2026-08-25 | 일일점검 | 운영 체크리스트 이미지 기반 5개 영역·31개 항목 탭 구현 | 완료 |
+| 2026-08-25 | 대시보드 | 일일점검 탭의 공급자 선택, 상태 필터 및 기본 자원 점검 결과 연동 | 완료 |
+| 2026-08-25 | 클러스터 탐색 | 활성 VIP와 Pacemaker 기반 Controller 노드 탐색 및 인벤토리 저장 구현 | 완료 |
+| 2026-08-25 | 클러스터 탐색 | OpenStack CLI 기반 nova-compute 노드 탐색 흐름 구현 | 완료 |
+| 2026-08-25 | OpenStack 연동 | Controller의 `/root/contrabass-openrc` 인증 환경을 통한 Compute 탐색 확인 | 완료 |
+| 2026-08-25 | 일일점검 | 일일점검 탭에 Controller·Compute 노드 인벤토리 및 탐색 UI 추가 | 완료 |
+| 2026-08-25 | 일일점검 | 5개 노드 병렬 SSH 점검 및 역할별 클러스터·OpenStack·로그 수집 실행기 구현 | 완료 |
+| 2026-08-25 | 보안 | 시스템 known_hosts 기반 발견 노드 SSH 호스트 키 검증 적용 | 완료 |
+| 2026-08-25 | 요구사항 | 실제 운영 일일점검 체크리스트 5개 영역·31개 항목 확인 | 완료 |
+| 2026-08-25 | 로그 점검 | Controller·Compute 전체 노드의 서비스·시스템 로그 오류 건수 수집 및 노드별 결과 표시 | 완료 |
+| 2026-08-25 | 상세 결과 | 체크리스트 항목 클릭 시 실제 명령 출력과 노드별 오류 로그 표본 표시 | 완료 |
+| 2026-08-25 | 상세 결과 | 자원·서비스 명령 원문과 판정에 사용한 노드별 오류 로그 최대 100행 표시 | 완료 |
+| 2026-08-25 | 점검 범위 | 물리·가상화 환경 자동 감지 및 커널·서비스·NIC·OVS·KVM·Libvirt·SMART·RAID 점검 10개 추가 | 완료 |
+
+## 2026-08-25 실제 환경 검증 결과
+
+### 대상 공급자
+
+- 공급자명: `hnti`
+- VIP: `10.255.191.150`
+- 활성 Controller: `hcon02`
+- OpenStack 인증 파일: `/root/contrabass-openrc`
+
+### 탐색된 클러스터
+
+| 역할 | 호스트 | 주소 | 탐색 방식 |
+|---|---|---|---|
+| Controller | `hcon01` | `10.255.191.151` | Pacemaker `pcs` |
+| Controller | `hcon02` | `10.255.191.152` | 활성 VIP 및 Pacemaker `pcs` |
+| Controller | `hcon03` | `10.255.191.153` | Pacemaker `pcs` |
+| Compute | `hcom01` | `10.255.191.154` | OpenStack `nova-compute` 서비스 목록 |
+| Compute | `hcom02` | `10.255.191.155` | OpenStack `nova-compute` 서비스 목록 |
+
+### 일일점검 실행 검증
+
+- 5개 노드에 병렬 SSH 접속 성공
+- 시스템 `known_hosts`에 등록된 호스트 키를 사용하여 지문 검증
+- 5개 노드의 CPU, 메모리, 디스크, 가동시간, Chrony 상태 수집
+- Controller의 Mount 상태와 Compute의 `nova-compute` 상태 수집
+- 활성 Controller에서 Pacemaker, VIP, RabbitMQ, MySQL 상태 수집
+- `/root/contrabass-openrc` 적용 후 OpenStack 서비스 및 리소스 상태 수집
+- 주요 OpenStack 서비스 로그와 시스템 로그의 오류 건수 수집
+- Controller 3대와 Compute 2대 전체에서 서비스별 로그를 병렬 확인하고 노드별 결과 표시 검증
+- 전체 31개 체크리스트 결과 저장 확인
+- 실제 검증 실행 결과: 5대 접속 성공, 전체 상태 `warning`
+- 주의 항목: Cinder, Manila, Nova·Neutron·Cinder·Manila·Octavia 로그 및 시스템 로그
+- Bonding 미구성 노드는 `확인 불가`로 표시
+- 로그 오류 건수는 항목별 최대 100건으로 제한
 
 ## 결정사항
 
@@ -145,7 +192,6 @@
 
 - OpenStack 배포판과 버전
 - 현재 사용 중인 모니터링 도구 및 수집 데이터
-- 실제 일일점검 체크리스트
 - 플랫폼 사용자와 필요한 권한 체계
 - 장애 알림을 받을 채널
 - 구축 대상 서버와 네트워크 접근 조건
@@ -155,7 +201,6 @@
 - Keystone API 포트와 TLS 인증서 검증 정책
 - OpenStack 배포 방식(Kolla-Ansible, 패키지, TripleO 등)
 - 기존 Prometheus, Grafana 또는 Node Exporter 구성 여부
-- Controller에서 사용할 수 있는 OpenRC 또는 clouds.yaml 위치
 - 일일점검에서 확인할 필수 서비스와 장애 판정 기준
 - 기존 자동화 도구 또는 운영 스크립트의 재사용 가능 여부
 - OKESTRO 공식 브랜드 색상 코드 및 디자인 가이드
@@ -163,13 +208,13 @@
 
 ## 다음 작업
 
-1. OpenStack 환경 정보 파악
-2. VIP 연결 후 환경 기능 탐지 API 구현
-3. 노드 및 OpenStack 서비스 목록 수집기 구현
-4. 노드 자원 상태 수집기 구현
-5. 공급자 정보 암호화 저장 구현
-6. 현재 일일점검 절차와 체크리스트 수집
-7. 일일점검 실행기 및 결과 저장 구현
+1. Cinder와 Manila 서비스의 실제 비정상 판정 결과 상세화
+2. 전체 노드 로그 점검에 시간 범위와 오류 제외 패턴 적용
+3. 점검 항목별 원본 결과 및 노드별 상세 화면 구현
+4. Bonding 및 Mount 점검의 역할별 적용 기준 확정
+5. 점검 실행 제한 시간과 항목별 타임아웃 최적화
+6. 클러스터 점검 이력 목록과 이전 결과 비교 기능 구현
+7. 보고서 생성 및 알림 채널 연동
 
 ## 변경 기록
 
@@ -191,3 +236,6 @@
 | 2026-08-21 | 공급자 영구 등록과 대시보드 일일점검 실행 기능 연결 |
 | 2026-08-21 | 웹 서버 재기동 후 공급자 데이터 및 점검 이력 보존 상태 확인 |
 | 2026-08-21 | GitHub `contrabass-assistant-v0.1` 브랜치 및 동명 커밋으로 최초 소스 게시 (`409f5dd`) |
+| 2026-08-25 | 체크리스트 이미지 기반 일일점검 탭과 31개 항목 구성 추가 |
+| 2026-08-25 | Pacemaker 및 `/root/contrabass-openrc` 기반 Controller·Compute 탐색 구현 |
+| 2026-08-25 | 5개 노드 병렬 SSH 점검과 역할별 OpenStack·로그 수집 실행기 구현 및 실제 환경 검증 |

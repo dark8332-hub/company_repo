@@ -35,6 +35,12 @@ def _connect() -> sqlite3.Connection:
         result TEXT NOT NULL, checked_at TEXT NOT NULL,
         FOREIGN KEY(provider_id) REFERENCES providers(id)
     )""")
+    connection.execute("""CREATE TABLE IF NOT EXISTS provider_nodes (
+        provider_id TEXT NOT NULL, hostname TEXT NOT NULL, role TEXT NOT NULL,
+        address TEXT NOT NULL, source TEXT NOT NULL, discovered_at TEXT NOT NULL,
+        PRIMARY KEY(provider_id, hostname),
+        FOREIGN KEY(provider_id) REFERENCES providers(id)
+    )""")
     return connection
 
 
@@ -81,11 +87,31 @@ def latest_check(provider_id: str) -> dict | None:
     return {**dict(row), "result": json.loads(row["result"])} if row else None
 
 
+def save_provider_nodes(provider_id: str, nodes: list[dict]) -> None:
+    discovered_at = datetime.now(timezone.utc).isoformat()
+    with _connect() as connection:
+        connection.execute("DELETE FROM provider_nodes WHERE provider_id=?", (provider_id,))
+        connection.executemany(
+            "INSERT INTO provider_nodes VALUES (?,?,?,?,?,?)",
+            [(provider_id, node["hostname"], node["role"], node.get("address", node["hostname"]), node["source"], discovered_at) for node in nodes],
+        )
+
+
+def list_provider_nodes(provider_id: str) -> list[dict]:
+    with _connect() as connection:
+        rows = connection.execute(
+            "SELECT hostname,role,address,source,discovered_at FROM provider_nodes WHERE provider_id=? ORDER BY CASE role WHEN 'controller' THEN 0 ELSE 1 END, hostname",
+            (provider_id,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def delete_provider(provider_id: str) -> bool:
     with _connect() as connection:
         exists = connection.execute("SELECT 1 FROM providers WHERE id=?", (provider_id,)).fetchone()
         if not exists:
             return False
         connection.execute("DELETE FROM check_results WHERE provider_id=?", (provider_id,))
+        connection.execute("DELETE FROM provider_nodes WHERE provider_id=?", (provider_id,))
         connection.execute("DELETE FROM providers WHERE id=?", (provider_id,))
     return True
