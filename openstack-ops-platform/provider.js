@@ -7,11 +7,50 @@ const successBox = document.querySelector('#formSuccess');
 const fingerprintBox = document.querySelector('#fingerprintBox');
 const fingerprintText = document.querySelector('#fingerprint');
 const deleteSelectedButton = document.querySelector('#deleteSelected');
+const hostKeyManager = document.querySelector('#hostKeyManager');
+const probeHostKeyButton = document.querySelector('#probeHostKey');
+const approveHostKeyButton = document.querySelector('#approveHostKey');
+const databaseCredentialManager = document.querySelector('#databaseCredentialManager');
+const databaseCredentialForm = document.querySelector('#databaseCredentialForm');
+const deleteDatabaseCredentialButton = document.querySelector('#deleteDatabaseCredential');
 let pendingPayload = null;
+let managedProviderId = null;
+let managedDatabaseProviderId = null;
+let pendingHostFingerprint = null;
+
+function applyMenuPreferences() {
+  const allKeys = ['dashboard', 'daily-inspection', 'providers', 'infrastructure', 'monitoring', 'alerts', 'history'];
+  let visible = allKeys;
+  try { const saved = JSON.parse(localStorage.getItem('okestro-visible-menus')); if (Array.isArray(saved)) visible = saved; } catch (_) { /* Use all menus. */ }
+  document.querySelectorAll('[data-menu-key]').forEach(link => { link.hidden = !visible.includes(link.dataset.menuKey); });
+  document.querySelectorAll('.navigation>p').forEach(heading => {
+    let item = heading.nextElementSibling;
+    let hasVisibleItem = false;
+    while (item && item.tagName !== 'P') { if (item.tagName === 'A' && !item.hidden) hasVisibleItem = true; item = item.nextElementSibling; }
+    heading.hidden = !hasVisibleItem;
+  });
+}
 
 document.querySelector('#menuButton').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('open'));
+applyMenuPreferences();
 loadSavedProviders();
 deleteSelectedButton.addEventListener('click', deleteSelectedProviders);
+document.querySelector('#closeHostKeyManager').addEventListener('click', () => { hostKeyManager.hidden = true; });
+document.querySelector('#closeDatabaseCredentialManager').addEventListener('click', () => { databaseCredentialManager.hidden = true; });
+databaseCredentialForm.addEventListener('submit', saveDatabaseCredential);
+deleteDatabaseCredentialButton.addEventListener('click', deleteDatabaseCredential);
+probeHostKeyButton.addEventListener('click', probeManagedHostKey);
+approveHostKeyButton.addEventListener('click', approveManagedHostKey);
+document.querySelector('#savedProviderList').addEventListener('click', event => {
+  const button = event.target.closest('[data-manage-host-keys]');
+  if (button) openHostKeyManager(button.dataset.manageHostKeys, button.dataset.providerName);
+  const databaseButton = event.target.closest('[data-manage-database]');
+  if (databaseButton) openDatabaseCredentialManager(databaseButton.dataset.manageDatabase, databaseButton.dataset.providerName);
+});
+document.querySelector('#trustedHostKeyList').addEventListener('click', event => {
+  const button = event.target.closest('[data-remove-host-key]');
+  if (button) removeManagedHostKey(button.dataset.removeHostKey);
+});
 document.querySelectorAll('[name=auth_method]').forEach(radio => radio.addEventListener('change', () => {
   const useKey = radio.value === 'private_key' && radio.checked;
   document.querySelector('#keyFields').hidden = !useKey;
@@ -110,12 +149,149 @@ async function loadSavedProviders() {
       const check = provider.latest_check;
       const status = check ? (check.status === 'healthy' ? '정상' : '주의') : '점검 전';
       const statusClass = check ? check.status : 'pending';
-      return `<article><label class="provider-check"><input type="checkbox" class="provider-selector" value="${escapeHtml(provider.id)}" aria-label="${escapeHtml(provider.name)} 선택"></label><span class="provider-avatar">OS</span><div><b>${escapeHtml(provider.name)}</b><small>${escapeHtml(provider.vip)}:${provider.port} · ${escapeHtml(provider.controller_hostname)}</small></div><em class="provider-status ${statusClass}">${status}</em><a href="/?provider=${encodeURIComponent(provider.id)}">대시보드</a></article>`;
+      const databaseState = provider.database_credentials_configured ? 'DB 인증 완료' : 'DB 인증 등록';
+      return `<article><label class="provider-check"><input type="checkbox" class="provider-selector" value="${escapeHtml(provider.id)}" aria-label="${escapeHtml(provider.name)} 선택"></label><span class="provider-avatar">OS</span><div><b>${escapeHtml(provider.name)}</b><small>${escapeHtml(provider.vip)}:${provider.port} · ${escapeHtml(provider.controller_hostname)}</small></div><em class="provider-status ${statusClass}">${status}</em><button class="manage-host-keys" type="button" data-manage-host-keys="${escapeHtml(provider.id)}" data-provider-name="${escapeHtml(provider.name)}">SSH 키 관리</button><button class="manage-database ${provider.database_credentials_configured ? 'configured' : ''}" type="button" data-manage-database="${escapeHtml(provider.id)}" data-provider-name="${escapeHtml(provider.name)}">${databaseState}</button><a href="/?provider=${encodeURIComponent(provider.id)}">대시보드</a></article>`;
     }).join('');
     list.querySelectorAll('.provider-selector').forEach(checkbox => checkbox.addEventListener('change', updateDeleteButton));
   } catch (_) {
     list.innerHTML = '<div class="empty-provider error">공급자 목록을 불러오지 못했습니다.</div>';
   }
+}
+
+async function openDatabaseCredentialManager(providerId, providerName) {
+  managedDatabaseProviderId = providerId;
+  databaseCredentialManager.hidden = false;
+  document.querySelector('#databaseCredentialProviderName').textContent = `${providerName} · Middleware MySQL 점검 인증`;
+  databaseCredentialForm.reset();
+  databaseCredentialForm.elements.host.value = 'localhost';
+  databaseCredentialForm.elements.port.value = '3306';
+  const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/database-credentials`, {cache:'no-store'});
+  const data = await response.json();
+  if (!response.ok) return showError(apiError(data, 'DB 인증정보를 불러오지 못했습니다.'));
+  if (data.configured) {
+    databaseCredentialForm.elements.username.value = data.username;
+    databaseCredentialForm.elements.host.value = data.host;
+    databaseCredentialForm.elements.port.value = data.port;
+    document.querySelector('#databaseCredentialStatus').textContent = '암호화된 DB 인증정보가 등록되어 있습니다. 비밀번호는 화면에 표시되지 않습니다.';
+  } else {
+    document.querySelector('#databaseCredentialStatus').textContent = '인증정보를 등록하면 Middleware MySQL 점검에 사용됩니다.';
+  }
+  deleteDatabaseCredentialButton.hidden = !data.configured;
+  databaseCredentialManager.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function saveDatabaseCredential(event) {
+  event.preventDefault();
+  if (!managedDatabaseProviderId) return;
+  const values = new FormData(databaseCredentialForm);
+  const response = await fetch(`/api/providers/${encodeURIComponent(managedDatabaseProviderId)}/database-credentials`, {
+    method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:values.get('username'), password:values.get('password'), host:values.get('host'), port:Number(values.get('port'))})
+  });
+  const data = await response.json();
+  if (!response.ok) return showError(apiError(data, 'DB 인증정보를 저장하지 못했습니다.'));
+  databaseCredentialForm.elements.password.value = '';
+  document.querySelector('#databaseCredentialStatus').textContent = '암호화 저장을 완료했습니다. 다음 일일점검부터 사용됩니다.';
+  deleteDatabaseCredentialButton.hidden = false;
+  await loadSavedProviders();
+}
+
+async function deleteDatabaseCredential() {
+  if (!managedDatabaseProviderId || !window.confirm('등록된 DB 인증정보를 삭제할까요?')) return;
+  const response = await fetch(`/api/providers/${encodeURIComponent(managedDatabaseProviderId)}/database-credentials`, {method:'DELETE'});
+  const data = await response.json();
+  if (!response.ok) return showError(apiError(data, 'DB 인증정보를 삭제하지 못했습니다.'));
+  databaseCredentialForm.reset();
+  databaseCredentialForm.elements.host.value = 'localhost';
+  databaseCredentialForm.elements.port.value = '3306';
+  document.querySelector('#databaseCredentialStatus').textContent = 'DB 인증정보가 삭제되었습니다.';
+  deleteDatabaseCredentialButton.hidden = true;
+  await loadSavedProviders();
+}
+
+function apiError(data, fallback) {
+  return typeof data?.detail === 'string' ? data.detail : (data?.detail?.message || fallback);
+}
+
+async function openHostKeyManager(providerId, providerName) {
+  managedProviderId = providerId;
+  pendingHostFingerprint = null;
+  hostKeyManager.hidden = false;
+  document.querySelector('#hostKeyProviderName').textContent = `${providerName} · 승인된 Controller 지문`;
+  document.querySelector('#currentHostFingerprint').textContent = '조회 전';
+  const status = document.querySelector('#currentHostKeyStatus');
+  status.className = 'pending';
+  status.textContent = '조회 전';
+  approveHostKeyButton.hidden = true;
+  await loadManagedHostKeys();
+  hostKeyManager.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function loadManagedHostKeys() {
+  if (!managedProviderId) return;
+  const keyList = document.querySelector('#trustedHostKeyList');
+  const eventList = document.querySelector('#hostKeyEventList');
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(managedProviderId)}/host-keys`, {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(apiError(data, 'SSH 지문 목록을 불러오지 못했습니다.'));
+    keyList.innerHTML = data.keys.length ? data.keys.map(key => `<article><div><strong>${escapeHtml(key.hostname || 'Controller')}</strong><code>${escapeHtml(key.fingerprint)}</code><small>승인 ${formatDate(key.approved_at)} · 최근 확인 ${formatDate(key.last_seen_at)}</small></div><button type="button" data-remove-host-key="${escapeHtml(key.id)}" ${data.keys.length === 1 ? 'disabled title="마지막 신뢰 지문은 삭제할 수 없습니다."' : ''}>폐기</button></article>`).join('') : '<div class="empty-provider">신뢰 중인 지문이 없습니다.</div>';
+    eventList.innerHTML = data.events.length ? data.events.map(item => `<article><span class="${escapeHtml(item.action)}">${item.action === 'approved' ? '승인' : '폐기'}</span><div><code>${escapeHtml(item.fingerprint)}</code><small>${escapeHtml(item.hostname || 'Controller')} · ${formatDate(item.created_at)}</small></div></article>`).join('') : '<div class="empty-provider">변경 이력이 없습니다.</div>';
+  } catch (error) {
+    keyList.innerHTML = `<div class="empty-provider error">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function probeManagedHostKey() {
+  if (!managedProviderId) return;
+  probeHostKeyButton.disabled = true;
+  probeHostKeyButton.textContent = '조회 중...';
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(managedProviderId)}/host-keys/probe`, {method:'POST'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(apiError(data, '현재 SSH 지문을 조회하지 못했습니다.'));
+    pendingHostFingerprint = data.fingerprint;
+    document.querySelector('#currentHostFingerprint').textContent = data.fingerprint;
+    const status = document.querySelector('#currentHostKeyStatus');
+    status.className = data.trusted ? 'trusted' : 'untrusted';
+    status.textContent = data.trusted ? '신뢰됨' : '승인 필요';
+    approveHostKeyButton.hidden = data.trusted;
+    if (data.trusted) await loadManagedHostKeys();
+  } catch (error) { showError(error.message); }
+  finally { probeHostKeyButton.disabled = false; probeHostKeyButton.textContent = '현재 지문 조회'; }
+}
+
+async function approveManagedHostKey() {
+  if (!managedProviderId || !pendingHostFingerprint) return;
+  if (!window.confirm(`대상 Controller에서 직접 확인한 지문과 아래 값이 일치합니까?\n\n${pendingHostFingerprint}\n\n일치할 때만 승인하세요.`)) return;
+  approveHostKeyButton.disabled = true;
+  approveHostKeyButton.textContent = '승인 확인 중...';
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(managedProviderId)}/host-keys/approve`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({fingerprint:pendingHostFingerprint})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(apiError(data, 'SSH 지문을 승인하지 못했습니다.'));
+    approveHostKeyButton.hidden = true;
+    const status = document.querySelector('#currentHostKeyStatus');
+    status.className = 'trusted';
+    status.textContent = '신뢰됨';
+    await loadManagedHostKeys();
+  } catch (error) { showError(error.message); }
+  finally { approveHostKeyButton.disabled = false; approveHostKeyButton.textContent = '확인 후 신뢰 추가'; }
+}
+
+async function removeManagedHostKey(keyId) {
+  if (!window.confirm('이 SSH 지문을 신뢰 목록에서 폐기하시겠습니까?')) return;
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(managedProviderId)}/host-keys/${encodeURIComponent(keyId)}`, {method:'DELETE'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(apiError(data, 'SSH 지문을 폐기하지 못했습니다.'));
+    await loadManagedHostKeys();
+  } catch (error) { showError(error.message); }
+}
+
+function formatDate(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : new Intl.DateTimeFormat('ko-KR', {dateStyle:'short', timeStyle:'short'}).format(date);
 }
 
 function updateDeleteButton() {

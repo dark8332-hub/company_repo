@@ -7,6 +7,9 @@ services:
     restart: unless-stopped
     ports:
       - "9080:9080"
+    environment:
+      # 예약 실행 시각의 기준 시간대 (기본 Asia/Seoul)
+      INSPECTION_TIMEZONE: Asia/Seoul
     volumes:
       - provider-data:/app/data
 

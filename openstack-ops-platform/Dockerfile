@@ -2,7 +2,8 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY server.py provider_store.py index.html provider.html styles.css app.js provider.js ./
+COPY server.py provider_store.py inspection_report.py index.html provider.html styles.css app.js provider.js ./
+COPY fonts ./fonts
 
 EXPOSE 9080
 
