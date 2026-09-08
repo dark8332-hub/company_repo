@@ -1,72 +1,8 @@
-const menuButton = document.querySelector('#menuButton');
-const sidebar = document.querySelector('#sidebar');
-const runInspection = document.querySelector('#runInspection');
-const toast = document.querySelector('#toast');
-const clock = document.querySelector('#clock');
-const providerSelect = document.querySelector('#providerSelect');
-const inspectionProviderSelect = document.querySelector('#inspectionProviderSelect');
-const infrastructureProviderSelect = document.querySelector('#infrastructureProviderSelect');
-const historyProvider = document.querySelector('#historyProvider');
-const historyProviderFilter = document.querySelector('#historyProviderFilter');
-const alertProviderFilter = document.querySelector('#alertProviderFilter');
-const dailyRunInspection = document.querySelector('#dailyRunInspection');
-const exportInspectionPdf = document.querySelector('#exportInspectionPdf');
-const discoverCluster = document.querySelector('#discoverCluster');
-const exceptionItem = document.querySelector('#exceptionItem');
-const exceptionNode = document.querySelector('#exceptionNode');
-const exceptionReason = document.querySelector('#exceptionReason');
-
-const menuPreferenceKey = 'okestro-visible-menus';
-const configurableMenus = [
-  ['dashboard', '대시보드', '운영 현황 요약'], ['daily-inspection', '일일점검', '클러스터 일일 점검'],
-  ['providers', '공급자 연결', 'OpenStack 환경 연결 관리'], ['infrastructure', '인프라 현황', '노드와 자원 상태'],
-  ['monitoring', '모니터링', '실시간 메트릭'], ['alerts', '알림 및 장애', '장애와 알림 확인'], ['history', '작업 이력', '운영 작업 기록']
-];
-
-function loadVisibleMenus() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(menuPreferenceKey));
-    if (Array.isArray(saved)) return new Set(saved.filter(key => configurableMenus.some(menu => menu[0] === key)));
-  } catch (_) { /* Invalid settings fall back to all menus. */ }
-  return new Set(configurableMenus.map(menu => menu[0]));
-}
-
-let visibleMenus = loadVisibleMenus();
-
-function applyMenuPreferences() {
-  document.querySelectorAll('[data-menu-key]').forEach(link => { link.hidden = !visibleMenus.has(link.dataset.menuKey); });
-  document.querySelectorAll('.navigation>p').forEach(heading => {
-    let item = heading.nextElementSibling;
-    let hasVisibleItem = false;
-    while (item && item.tagName !== 'P') { if (item.tagName === 'A' && !item.hidden) hasVisibleItem = true; item = item.nextElementSibling; }
-    heading.hidden = !hasVisibleItem;
-  });
-}
-
-function renderMenuSettings() {
-  const list = document.querySelector('#menuSettingsList');
-  if (!list) return;
-  list.innerHTML = configurableMenus.map(([key, name, description]) => `<label class="menu-setting-item${visibleMenus.has(key) ? ' selected' : ''}"><input type="checkbox" value="${key}" ${visibleMenus.has(key) ? 'checked' : ''}><span><strong>${name}</strong><small>${description}</small></span><em>${visibleMenus.has(key) ? '사용' : '숨김'}</em></label>`).join('');
-}
-
-function saveMenuPreferences() {
-  localStorage.setItem(menuPreferenceKey, JSON.stringify([...visibleMenus]));
-  applyMenuPreferences();
-  renderMenuSettings();
-}
-
-document.querySelectorAll('[data-page]').forEach(link => link.addEventListener('click', event => {
-  event.preventDefault();
-  history.replaceState(null, '', link.getAttribute('href'));
-  showPage(link.dataset.page);
-  if (link.dataset.page === 'history') loadWorkHistories();
-  if (link.dataset.page === 'alerts') loadAlerts();
-}));
-
+// ===== 일일점검 =====
 const inspectionGroups = [
   {title:'시스템 기본 점검', description:'Controller의 운영체제와 기본 자원 상태', items:[
     ['Resource','CPU 사용률','수집: top으로 노드별 사용률 확인 · 판정: 80% 이상 주의','cpu'], ['Resource','Memory 사용률','수집: MemTotal/Available 기반 실사용률 계산 · 판정: 80% 이상 주의','memory'], ['Resource','Disk 사용률','수집: df로 루트 파일시스템 용량 확인 · 판정: 80% 이상 주의','disk'],
-    ['System','Chrony 동기화','수집: chronyc sources/tracking · 판정: 시간원 연결 및 동기화 실패 시 주의','chrony'], ['System','Bonding 인터페이스','수집: Bond별 MII/Slave 상태 · 판정: 링크 Down 또는 비정상 Slave 확인','bonding'], ['System','Mount 상태','수집: Glance/Cinder 데이터 경로 · 판정: Controller 필수 마운트 누락 확인','mount']
+    ['System','Chrony 동기화','수집: chronyc sources/tracking · 판정: 시간원 연결 및 동기화 실패 시 주의','chrony'], ['System','Bonding 인터페이스','대상: 전체 노드 중 /proc/net/bonding이 있는 노드 · 판정: Bond 또는 Slave MII 상태 Down이면 주의, 미구성 노드는 판정 제외','bonding'], ['System','Mount 상태','대상: Controller · 수집: findmnt로 /var/lib/{glance,cinder,nova} 마운트·fstab · 판정: fstab 등록 경로 미마운트 또는 NFS 등 네트워크 마운트 5초 무응답이면 주의 (Compute는 인스턴스 저장소 항목)','mount']
   ]},
   {title:'Middleware 점검', description:'고가용성 및 데이터베이스 클러스터 상태', items:[
     ['Clustering','PCS cluster','수집: pcs status · 판정: Offline/Stopped/Failed/Unclean 리소스 탐지','pcs'], ['Clustering','VIP 통신','수집: VIP ICMP 응답 · 판정: 패킷 손실 및 접근 실패 확인','vip'], ['Clustering','RabbitMQ cluster','수집: rabbitmqctl cluster_status · 판정: 노드·파티션·알람 이상 확인','rabbitmq'], ['Clustering','MySQL cluster','수집: wsrep_cluster_weight · 판정: Galera 구성원 수와 쿼럼 이상 확인','mysql'],
@@ -75,7 +11,7 @@ const inspectionGroups = [
   ]},
   {title:'OpenStack 서비스 점검', description:'서비스 및 에이전트 가용 상태', items:[
     ['Service','Endpoint','수집: openstack endpoint list · 판정: 서비스별 Endpoint 존재 여부 확인','endpoint'], ['Service','Nova','수집: compute service list · 판정: 서비스 Down/Disabled 탐지','nova'], ['Service','Neutron','수집: network agent list · 판정: 에이전트 Down 탐지','neutron'],
-    ['Service','Cinder','수집: volume service list · 판정: cinder 서비스 Down/Disabled 탐지','cinder'], ['Service','Manila','수집: share service list · 판정: manila 서비스 Down/Disabled 탐지','manila'], ['Service','Octavia','수집: loadbalancer API 조회 · 판정: 명령 실패와 오류 상태 탐지','octavia'], ['Service','Nova-compute','수집: 프로세스·systemd 상태 · 판정: Compute 노드의 nova-compute 비활성 탐지','nova_compute'],
+    ['Service','Cinder','수집: volume service list 표 분석 · 판정: State down 또는 Status disabled 서비스를 호스트·마지막 갱신 시각과 함께 표시, 서비스 없음·CLI 미설치는 확인 불가','cinder'], ['Service','Manila','수집: share service list 표 분석 · 판정: down/disabled 서비스를 호스트·마지막 갱신 시각과 함께 표시, 플러그인 미설치·서비스 미배포는 확인 불가','manila'], ['Service','Octavia','수집: loadbalancer API 조회 · 판정: 명령 실패와 오류 상태 탐지','octavia'], ['Service','Nova-compute','수집: 프로세스·systemd 상태 · 판정: Compute 노드의 nova-compute 비활성 탐지','nova_compute'],
     ['Service','Masakari','수집: segment 또는 서비스 목록 · 판정: API 실패와 비정상 상태 확인','masakari'], ['Service','Swift','수집: object store account · 판정: API 접근 및 계정 상태 확인','swift'], ['Service','Heat','수집: orchestration service list · 판정: Down/Disabled/Failed 탐지','heat']
   ]},
   {title:'OpenStack 리소스 점검', description:'사용자 리소스의 비정상 상태 확인', items:[
@@ -99,6 +35,8 @@ const inspectionGroups = [
 ];
 let inspectionResults = {};
 let currentExceptionRules = [];
+let currentLogExclusions = [];
+const logServiceLabels = {'':'전체 로그', nova:'Nova', neutron:'Neutron', cinder:'Cinder', glance:'Glance', manila:'Manila', octavia:'Octavia', masakari:'Masakari', swift:'Swift', heat:'Heat', system:'System'};
 let currentNodeSummary = [];
 let currentFilter = 'all';
 const collapsedInspectionGroups = new Set();
@@ -126,7 +64,8 @@ function renderSetupCards() {
   set('#setupCustomHint', currentCustomChecks.length ? `사용 ${enabledCustom} · 중지 ${currentCustomChecks.length - enabledCustom}` : '등록된 항목 없음');
   const nodeRules = currentExceptionRules.filter(rule => rule.node_hostname).length;
   set('#setupExceptionValue', `${currentExceptionRules.length}개`);
-  set('#setupExceptionHint', currentExceptionRules.length ? `전체 노드 ${currentExceptionRules.length - nodeRules} · 특정 노드 ${nodeRules}` : '등록된 예외 없음');
+  set('#setupExceptionValue', `${currentExceptionRules.length}개`);
+  set('#setupExceptionHint', `${currentExceptionRules.length ? `전체 노드 ${currentExceptionRules.length - nodeRules} · 특정 노드 ${nodeRules}` : '등록된 예외 없음'} · 로그 제외 ${currentLogExclusions.length}`);
   set('#setupScheduleValue', currentSchedule?.enabled ? `매일 ${currentSchedule.run_time}` : '중지');
   set('#setupScheduleHint', currentSchedule?.enabled ? `${currentSchedule.selected_items ? `${currentSchedule.selected_items.length}개 항목` : '전체 항목'} · 다음 ${currentSchedule.next_run_at ? formatDateTime(currentSchedule.next_run_at) : '-'}` : (currentSchedule?.last_run_at ? `마지막 ${formatDateTime(currentSchedule.last_run_at)}` : '예약 없음'));
 }
@@ -207,13 +146,130 @@ function renderCheckHistory() {
     return `<tr class="${entry.id === activeId ? 'active' : ''}" data-check-id="${entry.id}" tabindex="0"><td><strong>${escapeText(formatDateTime(entry.checked_at))}</strong>${index === 0 ? '<i class="history-latest">최신</i>' : ''}</td><td><span class="check-state ${entry.status}">${entry.status === 'healthy' ? '정상' : '주의'}</span></td><td>${summary.trigger === 'scheduled' ? '예약' : '수동'}</td><td>${summary.items?.total ?? 0}</td><td class="warning-text">${summary.items?.warning ?? 0}</td><td class="unavailable-text">${summary.items?.unavailable ?? 0}</td><td>${summary.nodes?.problem ?? 0} / ${summary.nodes?.total ?? 0}</td><td>${summary.duration_seconds != null ? escapeText(formatDuration(summary.duration_seconds)) : '-'}</td><td><button type="button" data-view-check="${entry.id}">${entry.id === activeId ? '조회 중' : '결과 보기'}</button></td></tr>`;
   }).join('');
   list.innerHTML = `<div class="inspection-history-table"><table><thead><tr><th>실행 시각</th><th>상태</th><th>구분</th><th>항목</th><th>주의</th><th>확인 불가</th><th>문제 노드</th><th>소요</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  const againstSelect = document.querySelector('#diffAgainstSelect');
+  if (againstSelect) {
+    const previous = againstSelect.value;
+    againstSelect.innerHTML = '<option value="">직전 점검</option>' + checkHistory.filter(entry => entry.id !== activeId).map(entry => `<option value="${escapeText(entry.id)}">${escapeText(formatDateTime(entry.checked_at))} · ${entry.status === 'healthy' ? '정상' : '주의'}</option>`).join('');
+    againstSelect.value = checkHistory.some(entry => entry.id === previous) ? previous : '';
+    diffAgainstId = againstSelect.value;
+  }
+  renderInspectionTrend();
 }
 
-async function loadCheckDiff(providerId, checkId) {
+const trendSeries = [['warning', '주의', entry => entry.summary?.items?.warning ?? 0], ['unavailable', '확인 불가', entry => entry.summary?.items?.unavailable ?? 0]];
+let trendActiveIndex = -1;
+let trendGeometry = {width:720, left:34, plotWidth:590};
+// 건수 추이 표시 여부는 브라우저에 남긴다(알림 화면의 '원인별 묶어 보기'와 같은 방식).
+const trendVisibleKey = 'okestro-inspection-trend';
+function trendVisible() { try { return localStorage.getItem(trendVisibleKey) !== '0'; } catch (_) { return true; } }
+function applyTrendVisibility() {
+  const box = document.querySelector('#inspectionTrend');
+  const toggle = document.querySelector('#trendToggle');
+  const visible = trendVisible();
+  if (toggle) toggle.checked = visible;
+  if (box) box.hidden = !visible;
+  return visible;
+}
+function renderInspectionTrend() {
+  const box = document.querySelector('#inspectionTrend');
+  if (!box) return;
+  if (!applyTrendVisibility()) { trendActiveIndex = -1; return; }
+  const points = [...checkHistory].reverse();
+  const hovering = trendActiveIndex >= 0 && trendActiveIndex < points.length;
+  const activeIndex = hovering ? trendActiveIndex : points.findIndex(entry => entry.id === (viewingCheckId || latestCheckId));
+  trendGeometry = renderTrendChart(box, points, {activeIndex, heading:true});
+  if (hovering && trendGeometry) showTrendTooltip(points, activeIndex);
+}
+function renderTrendChart(box, points, {activeIndex = -1, heading = true, minWidth = 480} = {}) {
+  if (!box) return null;
+  if (points.length < 2) { box.innerHTML = '<div class="empty-provider">점검이 2회 이상 쌓이면 주의·확인 불가 건수 추이를 표시합니다.</div>'; return null; }
+  // Draw at the container's pixel width so axis text is never stretched.
+  const width = Math.max(minWidth, Math.min(1400, (box.clientWidth || 760) - 40)), height = 170, left = 34, right = 96, top = 14, bottom = 26;
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const maxValue = Math.max(1, ...points.flatMap(entry => trendSeries.map(series => series[2](entry))));
+  const ticks = maxValue <= 4 ? maxValue : 4;
+  const stepValue = Math.ceil(maxValue / ticks);
+  const yMax = stepValue * ticks;
+  const x = index => left + (points.length === 1 ? plotWidth / 2 : index / (points.length - 1) * plotWidth);
+  const y = value => top + plotHeight - value / yMax * plotHeight;
+  const shortDate = value => { const date = new Date(value); return `${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`; };
+  const gridlines = Array.from({length: ticks + 1}, (_, index) => index * stepValue).map(value => `<line class="grid" x1="${left}" y1="${y(value)}" x2="${left + plotWidth}" y2="${y(value)}"></line><text class="axis-label" x="${left - 6}" y="${y(value) + 3}" text-anchor="end">${value}</text>`).join('');
+  const labelEvery = Math.max(1, Math.ceil(points.length / 6));
+  const xLabels = points.map((entry, index) => (index % labelEvery === 0 || index === points.length - 1) ? `<text class="axis-label" x="${x(index)}" y="${height - 8}" text-anchor="${index === 0 ? 'start' : (index === points.length - 1 ? 'end' : 'middle')}">${shortDate(entry.checked_at)}</text>` : '').join('');
+  const lines = trendSeries.map(([cls, , valueOf]) => `<polyline class="series ${cls}" points="${points.map((entry, index) => `${x(index)},${y(valueOf(entry))}`).join(' ')}"></polyline>`).join('');
+  const markers = trendSeries.map(([cls, , valueOf]) => points.map((entry, index) => `<circle class="marker ${cls}${index === activeIndex ? ' active' : ''}" cx="${x(index)}" cy="${y(valueOf(entry))}" r="4"></circle>`).join('')).join('');
+  const last = points[points.length - 1];
+  const endLabels = (() => {
+    const placed = trendSeries.map(([cls, label, valueOf]) => ({cls, label, value: valueOf(last), yPos: y(valueOf(last))}));
+    placed.sort((a, b) => a.yPos - b.yPos);
+    for (let index = 1; index < placed.length; index += 1) if (placed[index].yPos - placed[index - 1].yPos < 13) placed[index].yPos = placed[index - 1].yPos + 13;
+    return placed.map(item => `<line class="end-key ${item.cls}" x1="${left + plotWidth + 6}" y1="${item.yPos}" x2="${left + plotWidth + 16}" y2="${item.yPos}"></line><text class="end-label" x="${left + plotWidth + 21}" y="${item.yPos + 3.5}">${item.label} ${item.value}</text>`).join('');
+  })();
+  const crosshair = activeIndex >= 0 ? `<line class="crosshair" x1="${x(activeIndex)}" y1="${top}" x2="${x(activeIndex)}" y2="${top + plotHeight}"></line>` : '';
+  const columnWidth = points.length > 1 ? plotWidth / (points.length - 1) : plotWidth;
+  const hits = points.map((entry, index) => `<rect class="hit" data-trend-index="${index}" x="${x(index) - columnWidth / 2}" y="${top}" width="${columnWidth}" height="${plotHeight}"><title>${escapeText(formatDateTime(entry.checked_at))} · 주의 ${entry.summary?.items?.warning ?? 0} · 확인 불가 ${entry.summary?.items?.unavailable ?? 0}</title></rect>`).join('');
+  const previous = points[points.length - 2];
+  const deltaText = trendSeries.map(([cls, label, valueOf]) => { const delta = valueOf(last) - valueOf(previous); return `<span class="${cls}"><i aria-hidden="true"></i>${label} <b>${valueOf(last)}</b> (직전 ${delta > 0 ? '+' : ''}${delta})</span>`; }).join('');
+  const headingHtml = heading
+    ? `<div class="trend-heading"><div><strong>주의·확인 불가 건수 추이</strong><small>최근 ${points.length}회 · ${escapeText(shortDate(points[0].checked_at))} ~ ${escapeText(shortDate(last.checked_at))} · 점을 클릭하면 해당 결과를 조회합니다</small></div><div class="trend-legend">${deltaText}</div></div>`
+    : `<div class="trend-heading"><div class="trend-legend">${deltaText}</div></div>`;
+  box.innerHTML = `${headingHtml}<div class="trend-plot"><svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" preserveAspectRatio="xMinYMin meet" role="img" aria-label="최근 ${points.length}회 점검의 주의·확인 불가 건수">${gridlines}${xLabels}${crosshair}${lines}${markers}${endLabels}${hits}</svg>${box.id === 'inspectionTrend' ? '<div class="trend-tooltip" id="trendTooltip" hidden></div>' : ''}</div>`;
+  return {width, left, plotWidth};
+}
+let trendResizeTimer = null;
+window.addEventListener('resize', () => { clearTimeout(trendResizeTimer); trendResizeTimer = setTimeout(() => { renderInspectionTrend(); if (currentOverview) renderDashboardTrend(currentOverview); }, 150); });
+function showTrendTooltip(points, index) {
+  const tooltip = document.querySelector('#trendTooltip');
+  const plot = tooltip?.parentElement;
+  if (!tooltip || !plot) return;
+  const entry = points[index];
+  const summary = entry.summary || {items:{}, nodes:{}};
+  tooltip.innerHTML = '';
+  const title = document.createElement('strong'); title.textContent = formatDateTime(entry.checked_at); tooltip.appendChild(title);
+  trendSeries.forEach(([cls, label, valueOf]) => { const row = document.createElement('div'); row.className = cls; const key = document.createElement('i'); const value = document.createElement('b'); value.textContent = valueOf(entry); const name = document.createElement('span'); name.textContent = label; row.append(key, value, name); tooltip.appendChild(row); });
+  const meta = document.createElement('small');
+  meta.textContent = `${summary.trigger === 'scheduled' ? '예약' : '수동'} · 항목 ${summary.items?.total ?? 0} · 문제 노드 ${summary.nodes?.problem ?? 0}/${summary.nodes?.total ?? 0}${summary.duration_seconds != null ? ` · ${formatDuration(summary.duration_seconds)}` : ''}`;
+  tooltip.appendChild(meta);
+  tooltip.hidden = false;
+  const ratio = points.length === 1 ? 0.5 : index / (points.length - 1);
+  const plotBox = plot.getBoundingClientRect();
+  const anchor = trendGeometry.left + ratio * trendGeometry.plotWidth;
+  tooltip.style.left = `${Math.max(0, Math.min(plotBox.width - tooltip.offsetWidth, anchor + (ratio > 0.6 ? -tooltip.offsetWidth - 12 : 12)))}px`;
+}
+document.querySelector('#inspectionTrend').addEventListener('pointermove', event => {
+  const hit = event.target.closest('[data-trend-index]');
+  if (!hit) return;
+  const index = Number(hit.dataset.trendIndex);
+  if (index === trendActiveIndex) return;
+  trendActiveIndex = index; renderInspectionTrend();
+});
+document.querySelector('#inspectionTrend').addEventListener('pointerleave', () => { trendActiveIndex = -1; renderInspectionTrend(); });
+document.querySelector('#inspectionTrend').addEventListener('click', event => {
+  const hit = event.target.closest('[data-trend-index]');
+  if (!hit || !inspectionProviderSelect.value) return;
+  const entry = [...checkHistory].reverse()[Number(hit.dataset.trendIndex)];
+  if (entry) viewCheck(inspectionProviderSelect.value, entry.id);
+});
+document.querySelector('#inspectionTrend').addEventListener('keydown', event => {
+  const count = checkHistory.length;
+  if (count < 2) return;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    const current = trendActiveIndex >= 0 ? trendActiveIndex : count - 1;
+    trendActiveIndex = Math.max(0, Math.min(count - 1, current + (event.key === 'ArrowRight' ? 1 : -1)));
+    renderInspectionTrend();
+  } else if (event.key === 'Enter' && trendActiveIndex >= 0 && inspectionProviderSelect.value) {
+    const entry = [...checkHistory].reverse()[trendActiveIndex];
+    if (entry) viewCheck(inspectionProviderSelect.value, entry.id);
+  }
+});
+
+let diffAgainstId = '';
+async function loadCheckDiff(providerId, checkId, against = diffAgainstId) {
   currentDiff = null; currentDiffByKey = {};
   if (!providerId || !checkId) { renderDiffSummary(); renderSummaryDeltas(); renderInspectionChecklist(); return; }
   try {
-    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/checks/${encodeURIComponent(checkId)}/diff`, {cache:'no-store'});
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/checks/${encodeURIComponent(checkId)}/diff${against && against !== checkId ? `?against=${encodeURIComponent(against)}` : ''}`, {cache:'no-store'});
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || '변화 내역을 불러오지 못했습니다.');
     currentDiff = data;
@@ -242,22 +298,92 @@ function renderDiffSummary() {
   box.innerHTML = `<div class="diff-heading"><div><strong>직전 점검 대비 변화</strong><small>${escapeText(formatDateTime(currentDiff.previous.checked_at))} → ${escapeText(formatDateTime(currentDiff.current.checked_at))}</small></div><div class="diff-counts"><span class="new">신규 이상 ${counts.new_issue || 0}</span><span class="resolved">해소 ${counts.resolved || 0}</span><span>상태 변경 ${counts.changed || 0}</span><span>노드 변화 ${currentDiff.nodes.length}</span></div></div>${noChange ? '<div class="diff-empty">직전 점검과 동일한 결과입니다.</div>' : `<div class="diff-groups">${chips}</div>${nodes ? `<div class="diff-nodes"><b>노드별 변화</b>${nodes}</div>` : ''}`}`;
 }
 
+const summaryDeltaLabels = {all:'전체 항목', healthy:'정상', warning:'주의', unavailable:'확인 불가', pending:'수집 대기'};
+
+function summaryDeltaItems(filter) {
+  if (!currentDiff?.previous) return {entered:[], left:[]};
+  const items = currentDiff.items || [];
+  if (filter === 'all') return {entered:items.filter(item => item.change === 'added'), left:items.filter(item => item.change === 'removed')};
+  const matches = status => status != null && inspectionStatusMatches(filter, status);
+  return {entered:items.filter(item => matches(item.after) && !matches(item.before)), left:items.filter(item => matches(item.before) && !matches(item.after))};
+}
+
 function renderSummaryDeltas() {
+  closeSummaryDeltaPopover();
   const counts = currentDiff?.previous ? currentDiff.counts : null;
-  const apply = (id, value) => {
+  const apply = (id, filter, value) => {
     const element = document.querySelector(id);
     if (!element) return;
     if (counts == null || value == null) { element.hidden = true; return; }
     element.hidden = false;
     element.className = `summary-delta ${value > 0 ? 'up' : (value < 0 ? 'down' : 'same')}`;
-    element.textContent = value === 0 ? '직전과 동일' : `직전 대비 ${value > 0 ? '+' : ''}${value}`;
+    const {entered, left} = summaryDeltaItems(filter);
+    const moved = entered.length + left.length;
+    let text = value === 0 ? '직전과 동일' : `직전 대비 ${value > 0 ? '+' : ''}${value}`;
+    if (value === 0 && moved) text += ` · 변동 ${moved}건`;
+    element.textContent = text;
+    element.dataset.deltaFilter = filter;
+    if (moved) {
+      element.classList.add('clickable');
+      element.setAttribute('role', 'button'); element.setAttribute('tabindex', '0'); element.setAttribute('aria-expanded', 'false');
+      element.title = `클릭하면 직전 점검 대비 늘거나 줄어든 항목을 표시합니다 (+${entered.length} / −${left.length})`;
+      element.insertAdjacentHTML('beforeend', '<i aria-hidden="true">▾</i>');
+    } else { element.removeAttribute('role'); element.removeAttribute('tabindex'); element.removeAttribute('aria-expanded'); element.removeAttribute('title'); }
   };
-  apply('#totalDelta', counts ? (counts.added || 0) - (counts.removed || 0) : null);
-  apply('#healthyDelta', counts ? counts.healthy_delta : null);
-  apply('#warningDelta', counts ? counts.warning_delta : null);
-  apply('#unavailableDelta', counts ? counts.unavailable_delta : null);
-  apply('#pendingDelta', null);
+  apply('#totalDelta', 'all', counts ? (counts.added || 0) - (counts.removed || 0) : null);
+  apply('#healthyDelta', 'healthy', counts ? counts.healthy_delta : null);
+  apply('#warningDelta', 'warning', counts ? counts.warning_delta : null);
+  apply('#unavailableDelta', 'unavailable', counts ? counts.unavailable_delta : null);
+  apply('#pendingDelta', 'pending', null);
 }
+
+function closeSummaryDeltaPopover() {
+  document.querySelector('#summaryDeltaPopover')?.remove();
+  document.querySelectorAll('.summary-delta.open').forEach(element => { element.classList.remove('open'); element.setAttribute('aria-expanded', 'false'); });
+}
+
+function toggleSummaryDeltaPopover(element) {
+  const wasOpen = element.classList.contains('open');
+  closeSummaryDeltaPopover();
+  if (wasOpen || !currentDiff?.previous) return;
+  const filter = element.dataset.deltaFilter;
+  const {entered, left} = summaryDeltaItems(filter);
+  const names = itemNameMap();
+  const labels = inspectionStatusLabels;
+  const label = summaryDeltaLabels[filter] || filter;
+  const list = (items, cls) => items.map(item => `<button type="button" data-delta-key="${escapeText(item.key)}"><b class="${cls}">${cls === 'up' ? '+' : '−'}</b><span>${escapeText(names[item.key] || item.key)}</span><em>${escapeText(labels[item.before] || '없음')} → ${escapeText(labels[item.after] || '없음')}</em></button>`).join('');
+  const enteredTitle = filter === 'all' ? '이번 점검에 추가된 항목' : `새로 ${label}(으)로 바뀐 항목`;
+  const leftTitle = filter === 'all' ? '이번 점검에서 제외된 항목' : `${label}에서 벗어난 항목`;
+  const popover = document.createElement('div');
+  popover.id = 'summaryDeltaPopover';
+  popover.className = 'summary-delta-popover';
+  popover.setAttribute('role', 'dialog');
+  popover.setAttribute('aria-label', `${label} 직전 대비 변화`);
+  popover.innerHTML = `<header><strong>${escapeText(label)} 직전 대비 변화</strong><small>${escapeText(formatDateTime(currentDiff.previous.checked_at))} → ${escapeText(formatDateTime(currentDiff.current.checked_at))}</small></header>${entered.length ? `<section><b class="up">${enteredTitle} ${entered.length}</b>${list(entered, 'up')}</section>` : ''}${left.length ? `<section><b class="down">${leftTitle} ${left.length}</b>${list(left, 'down')}</section>` : ''}<p>항목을 클릭하면 결과 목록에서 해당 행을 표시합니다.</p>`;
+  element.closest('article').appendChild(popover);
+  element.classList.add('open');
+  element.setAttribute('aria-expanded', 'true');
+  popover.querySelector('[data-delta-key]')?.focus();
+}
+
+const inspectionSummarySection = document.querySelector('.inspection-summary');
+inspectionSummarySection.addEventListener('click', event => {
+  const item = event.target.closest('[data-delta-key]');
+  if (item) { event.stopPropagation(); const key = item.dataset.deltaKey; closeSummaryDeltaPopover(); focusInspectionItem(key); return; }
+  if (event.target.closest('#summaryDeltaPopover')) { event.stopPropagation(); return; }
+  const delta = event.target.closest('.summary-delta.clickable');
+  if (delta) { event.stopPropagation(); toggleSummaryDeltaPopover(delta); }
+}, true);
+inspectionSummarySection.addEventListener('keydown', event => {
+  if (event.key !== 'Enter' && event.key !== ' ') { if (event.key === 'Escape' && document.querySelector('#summaryDeltaPopover')) { event.stopPropagation(); closeSummaryDeltaPopover(); } return; }
+  const item = event.target.closest('[data-delta-key]');
+  if (item) { event.preventDefault(); event.stopPropagation(); const key = item.dataset.deltaKey; closeSummaryDeltaPopover(); focusInspectionItem(key); return; }
+  if (event.target.closest('#summaryDeltaPopover')) { event.stopPropagation(); return; }
+  const delta = event.target.closest('.summary-delta.clickable');
+  if (delta) { event.preventDefault(); event.stopPropagation(); toggleSummaryDeltaPopover(delta); }
+}, true);
+document.addEventListener('click', event => { if (document.querySelector('#summaryDeltaPopover') && !event.target.closest('#summaryDeltaPopover') && !event.target.closest('.summary-delta')) closeSummaryDeltaPopover(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closeSummaryDeltaPopover(); });
 
 async function viewCheck(providerId, checkId) {
   try {
@@ -275,9 +401,16 @@ async function viewCheck(providerId, checkId) {
 }
 
 function focusInspectionItem(key) {
-  if (!selectedInspectionKeys.has(key)) return showToast('선택되지 않은 항목입니다.', '항목 선택 패널에서 해당 항목을 선택하면 결과를 볼 수 있습니다.');
+  const names = itemNameMap();
+  if (!inspectionGroups.some(group => group.items.some(item => item[3] === key))) return showToast('표시할 수 없는 항목입니다.', `${names[key] || key} 항목은 현재 점검 항목 목록에 없습니다.`);
   const status = (inspectionResults[key] || {status:'pending'}).status;
   let changed = false;
+  if (!selectedInspectionKeys.has(key)) {
+    selectedInspectionKeys.add(key);
+    renderInspectionSelection();
+    changed = true;
+    showToast('항목을 결과 목록에 표시했습니다.', `${names[key] || key} 항목을 점검 항목 선택에 추가했습니다.${status === 'pending' ? ' 이번 결과에는 점검되지 않은 항목입니다.' : ''}`);
+  }
   if (!inspectionStatusMatches(currentFilter, status)) { currentFilter = 'all'; changed = true; }
   if (searchQuery) { searchQuery = ''; document.querySelector('#inspectionSearch').value = ''; document.querySelector('#clearInspectionSearch').hidden = true; changed = true; }
   if (nodeFilter && !nodeFilterKeys()?.has(key)) { nodeFilter = ''; changed = true; }
@@ -363,10 +496,12 @@ function closeInspectionReport() {
   document.body.classList.remove('report-open');
 }
 
-async function downloadInspectionReportPdf() {
+const reportFormats = {pdf: {label:'PDF', endpoint:'/api/reports/inspection.pdf', extension:'pdf'}, xlsx: {label:'Excel', endpoint:'/api/reports/inspection.xlsx', extension:'xlsx'}};
+async function downloadInspectionReport(format = 'pdf') {
+  const spec = reportFormats[format] || reportFormats.pdf;
   const rows = inspectionReportRows();
-  if (!rows.length) return showToast('PDF로 저장할 점검 내용이 없습니다.', '일일점검을 먼저 실행하세요.');
-  const button = document.querySelector('#downloadInspectionReportPdf');
+  if (!rows.length) return showToast(`${spec.label}로 저장할 점검 내용이 없습니다.`, '일일점검을 먼저 실행하세요.');
+  const button = document.querySelector(format === 'xlsx' ? '#downloadInspectionReportXlsx' : '#downloadInspectionReportPdf');
   const entry = checkHistory.find(item => item.id === (viewingCheckId || latestCheckId));
   const provider = inspectionProviderSelect.options[inspectionProviderSelect.selectedIndex]?.textContent || '-';
   const checkedAt = entry ? new Date(entry.checked_at) : new Date();
@@ -378,17 +513,19 @@ async function downloadInspectionReportPdf() {
     groups: inspectionGroups.map(group => ({title:group.title, rows:rows.filter(row => row.group === group.title).map(row => ({category:row.category, name:row.name, method:row.method, status:row.status, result:row.result || '', note:row.note || '', change:row.change || ''}))})).filter(group => group.rows.length),
   };
   const stamp = `${checkedAt.getFullYear()}${String(checkedAt.getMonth() + 1).padStart(2, '0')}${String(checkedAt.getDate()).padStart(2, '0')}-${String(checkedAt.getHours()).padStart(2, '0')}${String(checkedAt.getMinutes()).padStart(2, '0')}`;
-  const fileName = `일일점검_${provider.replace(/[\\/:*?"<>|\s]+/g, '_')}_${stamp}.pdf`;
-  button.disabled = true; button.textContent = 'PDF 생성 중…';
+  const fileName = `일일점검_${provider.replace(/[\\/:*?"<>|\s]+/g, '_')}_${stamp}.${spec.extension}`;
+  const idleLabel = button.textContent;
+  button.disabled = true; button.textContent = `${spec.label} 생성 중…`;
   try {
-    const response = await fetch('/api/reports/inspection.pdf', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const response = await fetch(spec.endpoint, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
     if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : `서버 오류 (${response.status})`); }
     const url = URL.createObjectURL(await response.blob());
     const link = document.createElement('a'); link.href = url; link.download = fileName; document.body.appendChild(link); link.click(); link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    showToast('PDF를 저장했습니다.', `${fileName} · ${rows.length}개 항목`);
-  } catch (error) { showToast('PDF 저장에 실패했습니다.', error.message); } finally { button.disabled = false; button.textContent = 'PDF 저장'; }
+    showToast(`${spec.label}을 저장했습니다.`, `${fileName} · ${rows.length}개 항목`);
+  } catch (error) { showToast(`${spec.label} 저장에 실패했습니다.`, error.message); } finally { button.disabled = false; button.textContent = idleLabel; }
 }
+const downloadInspectionReportPdf = () => downloadInspectionReport('pdf');
 
 function applyInspectionPreset(preset) {
   const logKeys = new Set(allInspectionKeys.filter(key => key.endsWith('_log')));
@@ -512,6 +649,7 @@ document.querySelector('#collapseInspectionGroups').addEventListener('click', ()
 document.querySelector('#openInspectionReport').addEventListener('click', openInspectionReport);
 document.querySelector('#closeInspectionReport').addEventListener('click', closeInspectionReport);
 document.querySelector('#downloadInspectionReportPdf').addEventListener('click', downloadInspectionReportPdf);
+document.querySelector('#downloadInspectionReportXlsx').addEventListener('click', () => downloadInspectionReport('xlsx'));
 document.querySelector('#inspectionReportOverlay').addEventListener('click', event => { if (event.target.id === 'inspectionReportOverlay') closeInspectionReport(); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !document.querySelector('#inspectionReportOverlay').hidden) closeInspectionReport(); });
 document.querySelector('#presetQuickInspections').addEventListener('click', () => applyInspectionPreset('quick'));
@@ -523,12 +661,33 @@ document.querySelector('#inspectionChecklist').addEventListener('click', async e
   event.stopPropagation();
   const key = action.dataset.key;
   const names = itemNameMap();
-  if (action.dataset.rowAction === 'exception') {
+  if (action.dataset.rowAction === 'rerun') {
+    if (!viewingCheckId) executeInspection(action, inspectionProviderSelect.value, [key]);
+    else showToast('과거 결과를 조회 중입니다.', '최신 결과 보기로 돌아간 뒤 재점검하세요.');
+  } else if (action.dataset.rowAction === 'exclude-message') {
+    const service = (action.dataset.service || '').replace(/_log$/, '');
+    const select = document.querySelector('#logExclusionService');
+    select.value = [...select.options].some(option => option.value === service) ? service : '';
+    document.querySelector('#logExclusionPattern').value = messageToPattern(action.dataset.message || '');
+    openSetupPanel('exceptions', true);
+    document.querySelector('.log-exclusion-section').scrollIntoView({behavior:'smooth', block:'start'});
+    setTimeout(() => document.querySelector('#logExclusionPattern').focus(), 350);
+    showToast('제외 패턴을 채웠습니다.', '메시지의 가변 부분은 .* 로 바꿨습니다. 사유를 입력하고 등록하세요.');
+  } else if (action.dataset.rowAction === 'exception') {
     exceptionItem.value = key; exceptionNode.value = nodeFilter && [...exceptionNode.options].some(option => option.value === nodeFilter) ? nodeFilter : ''; exceptionReason.value = '';
     openSetupPanel('exceptions', true);
     document.querySelector('.inspection-exceptions').scrollIntoView({behavior:'smooth', block:'start'});
     setTimeout(() => exceptionReason.focus(), 350);
     showToast(`${names[key] || key} 예외 등록`, '예외 사유를 입력한 뒤 예외 등록 버튼을 누르세요.');
+  } else if (action.dataset.rowAction === 'log-exclusion') {
+    const service = key.replace(/_log$/, '');
+    const select = document.querySelector('#logExclusionService');
+    select.value = [...select.options].some(option => option.value === service) ? service : '';
+    document.querySelector('#logExclusionPattern').value = '';
+    openSetupPanel('exceptions', true);
+    document.querySelector('.log-exclusion-section').scrollIntoView({behavior:'smooth', block:'start'});
+    setTimeout(() => document.querySelector('#logExclusionPattern').focus(), 350);
+    showToast(`${names[key] || key} 제외 패턴 등록`, '상세 결과의 오류 메시지 중 무시할 부분을 정규식으로 입력하세요.');
   } else if (action.dataset.rowAction === 'copy') {
     const detail = document.getElementById(action.dataset.detailId);
     const text = [...detail.querySelectorAll('.inspection-raw-output article')].map(article => `## ${article.querySelector('strong')?.textContent || ''}\n${article.querySelector('pre')?.textContent || ''}`).join('\n\n');
@@ -548,6 +707,8 @@ refreshInspectionDefinitions();
 const customTargetLabels = {all:'전체 노드', controller:'Controller', compute:'Compute', active_controller:'활성 Controller'};
 const customRuleLabels = {exit_code:'종료 코드 0', contains:'문자열 포함 시 정상', not_contains:'문자열 포함 시 주의'};
 async function loadCustomChecks(providerId) {
+  // Provider-scoped inspection settings ride along with the custom checks, which every provider change reloads.
+  loadProviderInspectionSettings(providerId);
   const list = document.querySelector('#customCheckList');
   if (!providerId) { currentCustomChecks = []; inspectionGroups.at(-1).items = []; list.innerHTML = '<div class="empty-provider">공급자를 선택하세요.</div>'; refreshInspectionDefinitions(); renderInspectionSelection(); renderInspectionChecklist(); return; }
   try {
@@ -569,22 +730,24 @@ sidebar.addEventListener('click', event => {
   if (event.target === sidebar && sidebar.classList.contains('open')) sidebar.classList.remove('open');
 });
 
-async function executeInspection(sourceButton, selectedProvider) {
+async function executeInspection(sourceButton, selectedProvider, keys = null) {
   if (!selectedProvider) return showToast('공급자를 먼저 선택하세요.', '공급자 연결 메뉴에서 환경을 등록할 수 있습니다.');
-  if (!selectedInspectionKeys.size) return showToast('점검 항목을 선택하세요.', '하나 이상의 항목을 선택해야 합니다.');
+  const runKeys = keys ? new Set(keys) : selectedInspectionKeys;
+  const partial = Boolean(keys);
+  if (!runKeys.size) return showToast('점검 항목을 선택하세요.', '하나 이상의 항목을 선택해야 합니다.');
+  const idleHtml = sourceButton.innerHTML;
   sourceButton.disabled = true;
   sourceButton.innerHTML = '<span>↻</span> 점검 실행 중';
-  showInspectionProgress({running:true, stage:'preparing', message:'점검 요청을 준비하고 있습니다.', current_items:[...selectedInspectionKeys], percent:3, started_at:new Date().toISOString()});
+  showInspectionProgress({running:true, stage:'preparing', message:partial ? `${runKeys.size}개 항목만 다시 점검합니다.` : '점검 요청을 준비하고 있습니다.', current_items:[...runKeys], percent:3, started_at:new Date().toISOString()});
   const progressTimer = window.setInterval(() => loadInspectionProgress(selectedProvider), 700);
   let inspectionSucceeded = false;
   try {
-    const response = await fetch(`/api/providers/${encodeURIComponent(selectedProvider)}/checks`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({selected_items:[...selectedInspectionKeys]})});
+    const response = await fetch(`/api/providers/${encodeURIComponent(selectedProvider)}/checks`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({selected_items:[...runKeys]})});
     const data = await response.json();
     if (!response.ok) { const error = new Error(data.detail || '점검 실행에 실패했습니다.'); error.status = response.status; throw error; }
     latestCheckId = data.check_id; viewingCheckId = null; nodeFilter = '';
-    renderCheck(data);
-    renderInspectionResult({...data, _checked_at:data.finished_at});
-    renderInfrastructure(data);
+    renderInspectionResult({...data, _checked_at:data.finished_at}, partial);
+    loadOverview(selectedProvider);
     inspectionSucceeded = true;
     loadAlertSummary();
     loadCheckHistory(selectedProvider);
@@ -592,7 +755,10 @@ async function executeInspection(sourceButton, selectedProvider) {
     loadCheckSchedule(selectedProvider);
     showToast('일일점검이 완료되었습니다.', data.status === 'healthy' ? '현재 확인된 경고가 없습니다.' : `${data.warnings.length}개 경고를 확인하세요.`);
   } catch (error) {
-    if (error.status === 409) {
+    if (error.status === 409 && /취소/.test(error.message)) {
+      showToast('점검을 취소했습니다.', '취소 전까지의 결과는 저장되지 않았습니다.');
+      await loadInspectionProgress(selectedProvider);
+    } else if (error.status === 409) {
       showToast('이미 점검이 실행 중입니다.', '진행 중인 점검을 따라가며 완료되면 결과를 불러옵니다.');
       await followRunningInspection(selectedProvider);
       inspectionSucceeded = true;
@@ -604,7 +770,7 @@ async function executeInspection(sourceButton, selectedProvider) {
     window.clearInterval(progressTimer);
     if (inspectionSucceeded) await loadInspectionProgress(selectedProvider);
     sourceButton.disabled = false;
-    sourceButton.innerHTML = sourceButton === dailyRunInspection ? '<span>↻</span> 전체 점검 실행' : '<span>↻</span> 일일점검 실행';
+    sourceButton.innerHTML = sourceButton === dailyRunInspection ? '<span>↻</span> 전체 점검 실행' : (sourceButton === runInspection ? '<span>↻</span> 일일점검 실행' : idleHtml);
   }
 }
 
@@ -631,11 +797,22 @@ async function loadInspectionProgress(providerId) {
 
 function showInspectionProgress(progress) {
   const panel = document.querySelector('#inspectionProgress');
-  const stageLabels = {idle:'대기', preparing:'준비', nodes:'노드 점검', custom:'사용자 정의', openstack:'OpenStack 점검', aggregating:'결과 집계', completed:'완료', failed:'실패'};
+  const stageLabels = {idle:'대기', preparing:'준비', nodes:'노드 점검', custom:'사용자 정의', openstack:'OpenStack 점검', aggregating:'결과 집계', completed:'완료', failed:'실패', cancelling:'취소 중', cancelled:'취소됨'};
   const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
   panel.hidden = false;
   panel.classList.toggle('completed', !progress.running && progress.stage === 'completed');
-  panel.classList.toggle('failed', progress.stage === 'failed');
+  panel.classList.toggle('failed', progress.stage === 'failed' || progress.stage === 'cancelled');
+  const cancelButton = document.querySelector('#cancelInspection');
+  cancelButton.hidden = !progress.running || progress.stage === 'cancelling';
+  cancelButton.disabled = progress.stage === 'cancelling';
+  const nodeBox = document.querySelector('#inspectionProgressNodes');
+  const nodeStates = progress.nodes && Object.keys(progress.nodes).length ? progress.nodes : null;
+  nodeBox.hidden = !nodeStates || !progress.running;
+  if (nodeStates && progress.running) {
+    const stateLabels = {pending:'대기', running:'점검 중', done:'완료', failed:'실패'};
+    const order = {running:0, pending:1, failed:2, done:3};
+    nodeBox.innerHTML = `<b>노드 ${progress.node_done ?? 0}/${progress.node_total ?? Object.keys(nodeStates).length}대 완료</b>` + Object.entries(nodeStates).sort((a, b) => (order[a[1].state] ?? 9) - (order[b[1].state] ?? 9) || a[0].localeCompare(b[0])).map(([hostname, state]) => `<span class="node-progress ${escapeText(state.state)}" title="${escapeText(state.role || '')}${state.seconds != null ? ` · ${state.seconds}초` : ''}"><i></i>${escapeText(hostname)}<small>${stateLabels[state.state] || state.state}${state.state === 'done' && state.seconds != null ? ` ${Math.round(state.seconds)}초` : ''}</small></span>`).join('');
+  }
   document.querySelector('#inspectionProgressStage').textContent = stageLabels[progress.stage] || '진행 중';
   document.querySelector('#inspectionProgressMessage').textContent = progress.message || '점검 진행 상태를 확인하고 있습니다.';
   document.querySelector('#inspectionProgressPercent').textContent = `${percent}%`;
@@ -661,37 +838,18 @@ function showInspectionProgress(progress) {
 }
 
 runInspection.addEventListener('click', () => executeInspection(runInspection, providerSelect.value));
-dailyRunInspection.addEventListener('click', () => executeInspection(dailyRunInspection, inspectionProviderSelect.value));
-
-async function loadProviders() {
+document.querySelector('#cancelInspection').addEventListener('click', async event => {
+  const providerId = inspectionProviderSelect.value || providerSelect.value;
+  if (!providerId || !window.confirm('실행 중인 점검을 취소할까요? 지금까지 수집한 결과는 저장되지 않습니다.')) return;
+  event.currentTarget.disabled = true;
   try {
-    const response = await fetch('/api/providers');
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/checks/cancel`, {method:'POST'});
     const data = await response.json();
-    const requested = new URLSearchParams(location.search).get('provider');
-    data.providers.forEach(provider => {
-      if (providerSelect.querySelector(`option[value="${provider.id}"]`)) return;
-      const option = document.createElement('option');
-      option.value = provider.id;
-      option.textContent = `${provider.name} (${provider.vip})`;
-      providerSelect.appendChild(option);
-      inspectionProviderSelect.appendChild(option.cloneNode(true));
-      infrastructureProviderSelect.appendChild(option.cloneNode(true));
-      if (!alertProviderFilter.querySelector(`option[value="${provider.id}"]`)) alertProviderFilter.appendChild(option.cloneNode(true));
-      if (!historyProvider.querySelector(`option[value="${provider.id}"]`)) historyProvider.appendChild(option.cloneNode(true));
-      if (!historyProviderFilter.querySelector(`option[value="${provider.id}"]`)) historyProviderFilter.appendChild(option.cloneNode(true));
-    });
-    if (requested && data.providers.some(provider => provider.id === requested)) providerSelect.value = requested;
-    else if (data.providers.length) providerSelect.value = data.providers[0].id;
-    inspectionProviderSelect.value = providerSelect.value;
-    infrastructureProviderSelect.value = providerSelect.value;
-    if (inspectionProviderSelect.value) {
-      loadProviderNodes(inspectionProviderSelect.value);
-      loadCheckExceptions(inspectionProviderSelect.value);
-      loadCustomChecks(inspectionProviderSelect.value);
-      loadLatestCheck(inspectionProviderSelect.value);
-    }
-  } catch (error) { showToast('공급자 목록을 불러오지 못했습니다.', error.message || '서버 연결 상태를 확인하세요.'); }
-}
+    if (!response.ok) throw new Error(data.detail || '취소하지 못했습니다.');
+    showToast('점검 취소를 요청했습니다.', '실행 중인 SSH 명령이 끝나는 대로 멈춥니다.');
+  } catch (error) { showToast('취소하지 못했습니다.', error.message); event.currentTarget.disabled = false; }
+});
+dailyRunInspection.addEventListener('click', () => executeInspection(dailyRunInspection, inspectionProviderSelect.value));
 
 async function loadLatestCheck(providerId) {
   try {
@@ -702,10 +860,7 @@ async function loadLatestCheck(providerId) {
     if (data.latest_check) {
       latestCheckId = data.latest_check.id;
       const latest = {...data.latest_check.result, status:data.latest_check.status, _checked_at:data.latest_check.checked_at};
-      renderCheck(latest);
       renderInspectionResult(latest);
-      renderInfrastructure(latest);
-      loadInfrastructureMetrics(providerId);
       loadCheckDiff(providerId, data.latest_check.id);
     } else {
       latestCheckId = null; inspectionResults = {}; currentDiff = null; currentDiffByKey = {};
@@ -715,12 +870,15 @@ async function loadLatestCheck(providerId) {
     }
     loadCheckHistory(providerId);
     loadCheckSchedule(providerId);
+    loadOverview(providerId);
   } catch (error) { showToast('최근 점검 결과를 불러오지 못했습니다.', error.message); }
 }
 
 providerSelect.addEventListener('change', () => {
   inspectionProviderSelect.value = providerSelect.value;
   infrastructureProviderSelect.value = providerSelect.value;
+  monitoringProviderSelect.value = providerSelect.value;
+  if (!providerSelect.value) loadOverview('');
   if (providerSelect.value) loadProviderNodes(providerSelect.value);
   loadCheckExceptions(providerSelect.value);
   loadCustomChecks(providerSelect.value);
@@ -729,16 +887,18 @@ providerSelect.addEventListener('change', () => {
 inspectionProviderSelect.addEventListener('change', () => {
   providerSelect.value = inspectionProviderSelect.value;
   infrastructureProviderSelect.value = inspectionProviderSelect.value;
+  monitoringProviderSelect.value = inspectionProviderSelect.value;
   loadProviderNodes(inspectionProviderSelect.value);
   loadCheckExceptions(inspectionProviderSelect.value);
   loadCustomChecks(inspectionProviderSelect.value);
   latestCheckId = null; viewingCheckId = null; nodeFilter = '';
   if (inspectionProviderSelect.value) loadLatestCheck(inspectionProviderSelect.value);
-  else { checkHistory = []; currentDiff = null; currentDiffByKey = {}; inspectionResults = {}; renderCheckHistory(); renderStatusBanner(); renderDiffSummary(); renderSummaryDeltas(); renderNodeCheckSummary([]); renderInspectionChecklist(); loadCheckSchedule(''); }
+  else { checkHistory = []; currentDiff = null; currentDiffByKey = {}; inspectionResults = {}; renderCheckHistory(); renderStatusBanner(); renderDiffSummary(); renderSummaryDeltas(); renderNodeCheckSummary([]); renderInspectionChecklist(); loadCheckSchedule(''); loadOverview(''); }
 });
 infrastructureProviderSelect.addEventListener('change', () => {
   providerSelect.value = infrastructureProviderSelect.value;
   inspectionProviderSelect.value = infrastructureProviderSelect.value;
+  monitoringProviderSelect.value = infrastructureProviderSelect.value;
   if (infrastructureProviderSelect.value) loadLatestCheck(infrastructureProviderSelect.value);
 });
 document.querySelector('#refreshInfrastructure').addEventListener('click', () => {
@@ -769,6 +929,10 @@ document.querySelector('#customCheckList').addEventListener('click', async event
 });
 
 discoverCluster.addEventListener('click', () => loadProviderNodes(inspectionProviderSelect.value, true));
+dashboardDiscoverCluster.addEventListener('click', () => {
+  if (!providerSelect.value) return showToast('공급자를 먼저 선택하세요.', '탐색할 OpenStack 환경을 선택한 뒤 다시 누르세요.');
+  loadProviderNodes(providerSelect.value, true);
+});
 document.querySelector('#clusterNodeList').addEventListener('click', event => {
   const toggle = event.target.closest('.cluster-role-heading');
   if (!toggle) return;
@@ -786,11 +950,14 @@ async function loadProviderNodes(providerId, discover = false) {
     list.innerHTML = '<div class="empty-provider">공급자를 선택한 후 클러스터를 탐색하세요.</div>';
     updateNodeCounts([]);
     updateExceptionNodeOptions([]);
+    dashboardNodeCount.hidden = true;
     return;
   }
   discoverCluster.disabled = true;
+  dashboardDiscoverCluster.disabled = true;
   if (discover) {
     discoverCluster.textContent = '탐색 중...';
+    dashboardNodeCount.hidden = false; dashboardNodeCount.className = ''; dashboardNodeCount.textContent = '탐색 중';
     list.innerHTML = '<div class="empty-provider">Controller에서 클러스터 노드를 탐색하고 있습니다.</div>';
   }
   try {
@@ -804,6 +971,9 @@ async function loadProviderNodes(providerId, discover = false) {
     updateNodeCounts(data.nodes);
     updateExceptionNodeOptions(data.nodes);
     renderClusterNodeGroups(data.nodes);
+    dashboardNodeCount.hidden = false;
+    dashboardNodeCount.className = data.nodes.length ? '' : 'empty';
+    dashboardNodeCount.textContent = data.nodes.length ? `${data.nodes.length}대` : '미탐색';
     const warnings = data.warnings || [];
     warning.hidden = !warnings.length;
     warning.textContent = warnings.join(' ');
@@ -812,9 +982,11 @@ async function loadProviderNodes(providerId, discover = false) {
     list.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`;
     warning.hidden = true;
     updateNodeCounts([]);
+    dashboardNodeCount.hidden = false; dashboardNodeCount.className = 'empty'; dashboardNodeCount.textContent = discover ? '탐색 실패' : '미탐색';
     if (discover) showToast('클러스터 탐색에 실패했습니다.', error.message);
   } finally {
     discoverCluster.disabled = false;
+    dashboardDiscoverCluster.disabled = false;
     discoverCluster.textContent = '↻ 클러스터 탐색';
   }
 }
@@ -849,8 +1021,46 @@ function renderClusterNodeGroups(nodes) {
   }).join('');
 }
 
+async function loadLogExclusions(providerId) {
+  const list = document.querySelector('#logExclusionList');
+  const count = document.querySelector('#logExclusionCount');
+  if (!providerId) { currentLogExclusions = []; count.textContent = '0'; list.innerHTML = '<div class="empty-provider">공급자를 선택하세요.</div>'; renderSetupCards(); return; }
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/log-exclusions`, {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '제외 패턴을 불러오지 못했습니다.');
+    currentLogExclusions = data.exclusions;
+    count.textContent = data.exclusions.length;
+    list.innerHTML = data.exclusions.length ? data.exclusions.map(rule => `<article><span class="exception-scope">${escapeText(logServiceLabels[rule.service] || rule.service)}</span><code title="${escapeText(rule.pattern)}">${escapeText(rule.pattern)}</code><span>${escapeText(rule.reason)}</span><button type="button" data-exclusion-id="${escapeText(rule.id)}">삭제</button></article>`).join('') : '<div class="empty-provider">등록된 제외 패턴이 없습니다. 반복되는 무해한 오류 메시지를 정규식으로 등록하면 다음 점검부터 건수에서 제외됩니다.</div>';
+    renderSetupCards();
+  } catch (error) { list.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`; }
+}
+document.querySelector('#logExclusionForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const providerId = inspectionProviderSelect.value;
+  if (!providerId) return showToast('공급자를 먼저 선택하세요.', '제외 패턴은 공급자별로 저장됩니다.');
+  const payload = {service:document.querySelector('#logExclusionService').value, pattern:document.querySelector('#logExclusionPattern').value.trim(), reason:document.querySelector('#logExclusionReason').value.trim()};
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/log-exclusions`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const data = await response.json();
+    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '입력값을 확인하세요.');
+    document.querySelector('#logExclusionPattern').value = ''; document.querySelector('#logExclusionReason').value = '';
+    await loadLogExclusions(providerId);
+    showToast('로그 제외 패턴을 등록했습니다.', '다음 점검부터 일치하는 로그 줄이 오류 건수에서 제외됩니다.');
+  } catch (error) { showToast('제외 패턴을 등록하지 못했습니다.', error.message); }
+});
+document.querySelector('#logExclusionList').addEventListener('click', async event => {
+  const button = event.target.closest('button[data-exclusion-id]');
+  if (!button) return;
+  const providerId = inspectionProviderSelect.value;
+  const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/log-exclusions/${encodeURIComponent(button.dataset.exclusionId)}`, {method:'DELETE'});
+  if (response.ok) { await loadLogExclusions(providerId); showToast('제외 패턴을 삭제했습니다.', '다음 점검부터 해당 로그 줄이 다시 집계됩니다.'); }
+  else showToast('제외 패턴 삭제에 실패했습니다.', '잠시 후 다시 시도하세요.');
+});
+
 async function loadCheckExceptions(providerId) {
   const list = document.querySelector('#exceptionList');
+  loadLogExclusions(providerId);
   if (!providerId) {
     currentExceptionRules = [];
     list.innerHTML = '<div class="empty-provider">공급자를 선택하세요.</div>';
@@ -904,6 +1114,26 @@ function escapeText(value) {
   return element.innerHTML;
 }
 
+// Turns one log line into a permissive regex: timestamps, ids and numbers become wildcards so one rule covers the recurring message.
+function messageToPattern(message) {
+  let text = String(message).replace(/^\s*\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,]?\d*\s*/, '').replace(/^\s*\d+\s+(DEBUG|INFO|WARNING|ERROR|CRITICAL)\s+/, '').trim();
+  text = text.slice(0, 220);
+  text = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  text = text.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '.*').replace(/req-[0-9a-f-]+/gi, 'req-.*').replace(/\b\d{3,}\b/g, '\\d+').replace(/(\.\*\s*){2,}/g, '.*');
+  return text;
+}
+function logNodeSections(node, key = '') {
+  const sections = [];
+  if (node.new_output) sections.push(`<div class="log-section new"><b>신규·변경 오류 ${Number(node.new_count) || 0}건</b><pre>${escapeText(groupRepeatedLogLines(node.new_output))}</pre></div>`);
+  if (node.persistent_output) {
+    const top = (node.top_messages || []).map(entry => `${entry.count}회 · ${entry.message}`).join('\n');
+    const quick = (node.top_messages || []).slice(0, 5).map(entry => `<li><button type="button" data-row-action="exclude-message" data-key="${escapeText(key)}" data-service="${escapeText(key)}" data-message="${escapeText(entry.message)}" title="이 메시지를 제외 패턴으로 등록합니다">제외 패턴</button><span>${entry.count}회 · ${escapeText(entry.message)}</span></li>`).join('');
+    sections.push(`<div class="log-section persistent"><b>지속 오류 ${Number(node.persistent_count) || 0}건 <small>전전날에도 발생 · 표본 기준 · 상위 메시지</small></b>${quick ? `<ul class="log-quick-exclude">${quick}</ul>` : `<pre>${escapeText(top || groupRepeatedLogLines(node.persistent_output))}</pre>`}<details class="log-section-all"><summary>지속 오류 표본 전체 보기</summary><pre>${escapeText(groupRepeatedLogLines(node.persistent_output))}</pre></details></div>`);
+  }
+  if (!sections.length) sections.push(`<pre>${escapeText(node.note || (node.compacted ? '보관 정책에 따라 원본 출력이 정리되었습니다.' : '일치하는 오류 로그 없음'))}</pre>`);
+  return sections.join('');
+}
+
 function groupRepeatedLogLines(output) {
   const groups = new Map();
   String(output || '').split(/\r?\n/).forEach(line => {
@@ -927,8 +1157,17 @@ function groupRepeatedLogLines(output) {
   return [...groups.entries()].map(([message, group]) => `${group.count}회 · ${message}\n발생 시각: ${group.times.join(', ')}`).join('\n\n');
 }
 
-function renderInspectionResult(data) {
+function renderInspectionResult(data, merge = false) {
   const metrics = data.metrics || {};
+  if (merge && data.items) {
+    // A single-item re-run: keep everything else on screen and only replace the re-checked items.
+    inspectionResults = {...inspectionResults, ...data.items};
+    Object.keys(data.items).forEach(key => selectedInspectionKeys.add(key));
+    document.querySelector('#inspectionUpdatedAt').textContent = `부분 재점검: ${formatDateTime(data._checked_at || new Date())}`;
+    renderInspectionSelection();
+    renderInspectionChecklist();
+    return;
+  }
   if (Array.isArray(data.selected_items)) selectedInspectionKeys = new Set(data.selected_items);
   inspectionResults = data.items || {
     cpu:{status:'healthy', result:`${metrics.cpu_cores ?? '-'} Core`, note:'활성 Controller 기준'},
@@ -943,14 +1182,12 @@ function renderInspectionResult(data) {
   renderInspectionChecklist();
 }
 
-function buildPrintIssueReport() {
+function collectIssueReportItems() {
   const issueStatuses = new Set(['warning', 'unavailable']);
-  const statusLabels = {warning:'주의', unavailable:'확인 불가'};
   const issueItems = inspectionGroups.flatMap(group => group.items
     .filter(([, , , key]) => key !== 'kernel_errors' && issueStatuses.has(inspectionResults[key]?.status))
     .map(([, name, method, key]) => ({group:group.title, name, method, key, ...inspectionResults[key]})));
-  const summaryRows = issueItems.map(item => `<tr><td>${escapeText(item.group)}</td><td><strong>${escapeText(item.name)}</strong></td><td><span class="print-state ${escapeText(item.status)}">${statusLabels[item.status]}</span></td><td>${escapeText(item.note || '-')}</td><td>${escapeText(item.result || '-')}</td></tr>`).join('');
-  const details = issueItems.map(item => {
+  return issueItems.map(item => {
     const issueHosts = new Set(currentNodeSummary.filter(node => {
       const hasIssue = [...(node.problem_items || []), ...(node.review_items || [])].includes(item.key);
       const isExcepted = currentExceptionRules.some(rule => rule.item_key === item.key && (!rule.node_hostname || rule.node_hostname === node.hostname));
@@ -965,29 +1202,40 @@ function buildPrintIssueReport() {
         const output = visibleLogs.length
           ? `${visibleLogs.join('\n\n')}${omitted > 0 ? `\n\n외 ${omitted}개 신규·변경 오류 생략` : ''}`
           : (node.note || `신규·변경 오류 없음 · 전체 오류 ${Number(node.count) || 0}건`);
-        return {title:`${node.hostname} (${node.role}) · 신규 ${Number(node.new_count) || 0}건`, output};
-      });
+        const entries = [{title:`${node.hostname} (${node.role}) · 전체 ${Number(node.count) || 0}건 · 신규 ${Number(node.new_count) || 0}건`, output}];
+        if (node.persistent_output) {
+          const top = (node.top_messages || []).map(entry => `${entry.count}회 · ${entry.message}`).join('\n');
+          entries.push({title:`${node.hostname} (${node.role}) · 지속 오류 ${Number(node.persistent_count) || 0}건 (전전날에도 발생, 표본 기준 상위 메시지)`, output:top || groupRepeatedLogLines(node.persistent_output).split(/\n\s*\n/).slice(0, 10).join('\n\n')});
+        }
+        return entries;
+      }).flat();
     } else {
       outputs = item.details || [];
       if (issueHosts.size) outputs = outputs.filter(detail => [...issueHosts].some(host => detail.title?.includes(host)));
     }
-    const outputHtml = outputs.length
-      ? outputs.map(detail => `<article><strong>${escapeText(detail.title || '상세 결과')}</strong><pre>${escapeText(detail.output || '출력 없음')}</pre></article>`).join('')
-      : `<article><pre>${escapeText(item.note || item.result || '상세 결과 없음')}</pre></article>`;
-    return `<section class="print-issue-detail"><header><div><span>${escapeText(item.group)}</span><h2>${escapeText(item.name)}</h2></div><b class="print-state ${escapeText(item.status)}">${statusLabels[item.status]}</b></header><p><strong>점검 방법</strong> ${escapeText(item.method)}</p><p><strong>판정 결과</strong> ${escapeText(item.note || '-')} · ${escapeText(item.result || '-')}</p><div>${outputHtml}</div></section>`;
-  }).join('');
-  document.querySelector('#printIssueReport').innerHTML = issueItems.length
-    ? `<div class="print-issue-heading"><h2>이상 항목 요약</h2><strong>${issueItems.length}개 항목</strong></div><table class="print-issue-table"><thead><tr><th>영역</th><th>점검 항목</th><th>상태</th><th>특이사항</th><th>결과</th></tr></thead><tbody>${summaryRows}</tbody></table><div class="print-detail-heading"><h2>이상 항목 상세 내용</h2><p>주의 또는 확인이 필요한 항목의 판정 근거와 원본 결과입니다.</p></div>${details}`
-    : '<div class="print-no-issues"><h2>이상 항목 없음</h2><p>이번 일일점검에서 주의 또는 확인이 필요한 항목이 발견되지 않았습니다.</p></div>';
+    return {group:item.group, name:item.name, method:item.method, status:item.status, note:item.note || '', result:item.result || '', outputs:outputs.map(detail => ({title:detail.title || '', output:detail.output || ''}))};
+  });
 }
 
-exportInspectionPdf.addEventListener('click', () => {
+exportInspectionPdf.addEventListener('click', async () => {
   if (!Object.keys(inspectionResults).length) return showToast('PDF로 저장할 결과가 없습니다.', '일일점검을 먼저 실행하세요.');
-  const selectedProvider = inspectionProviderSelect.options[inspectionProviderSelect.selectedIndex];
-  document.querySelector('#printProviderName').textContent = selectedProvider?.textContent || '-';
-  document.querySelector('#printGeneratedAt').textContent = new Intl.DateTimeFormat('ko-KR', {dateStyle:'long', timeStyle:'short'}).format(new Date());
-  buildPrintIssueReport();
-  window.print();
+  const items = collectIssueReportItems();
+  const entry = checkHistory.find(item => item.id === (viewingCheckId || latestCheckId));
+  const provider = inspectionProviderSelect.options[inspectionProviderSelect.selectedIndex]?.textContent || '-';
+  const checkedAt = entry ? new Date(entry.checked_at) : new Date();
+  const payload = {provider, checked_at: entry ? formatDateTime(entry.checked_at) : '최근 결과', trigger: entry?.summary?.trigger || null, duration_seconds: entry?.summary?.duration_seconds ?? null, items};
+  const stamp = `${checkedAt.getFullYear()}${String(checkedAt.getMonth() + 1).padStart(2, '0')}${String(checkedAt.getDate()).padStart(2, '0')}-${String(checkedAt.getHours()).padStart(2, '0')}${String(checkedAt.getMinutes()).padStart(2, '0')}`;
+  const fileName = `일일점검_이상항목_${provider.replace(/[\\/:*?"<>|\s]+/g, '_')}_${stamp}.pdf`;
+  const label = exportInspectionPdf.innerHTML;
+  exportInspectionPdf.disabled = true; exportInspectionPdf.textContent = 'PDF 생성 중…';
+  try {
+    const response = await fetch('/api/reports/issues.pdf', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(typeof data.detail === 'string' ? data.detail : `서버 오류 (${response.status})`); }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a'); link.href = url; link.download = fileName; document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    showToast('PDF를 저장했습니다.', `${fileName} · 이상 항목 ${items.length}개`);
+  } catch (error) { showToast('PDF 저장에 실패했습니다.', error.message); } finally { exportInspectionPdf.disabled = false; exportInspectionPdf.innerHTML = label; }
 });
 
 function renderNodeCheckSummary(nodes) {
@@ -1046,14 +1294,158 @@ function renderInspectionSelection() {
   renderSetupCards();
 }
 
+const trendStatusOrder = {healthy:'healthy', excepted:'healthy', warning:'warning', unavailable:'unavailable', skipped:'skipped'};
+function itemTrendMarkup(key) {
+  // 점검 사항 칸에서 항목 이름과 상세 보기 안내 사이에 항상 같은 줄을 차지한다.
+  // 이력이 2회 미만이면 그릴 점이 없지만 빈 줄은 남겨 행마다 위치가 흔들리지 않게 한다.
+  if (checkHistory.length < 2) return '<span class="item-trend empty" aria-hidden="true"></span>';
+  const points = [...checkHistory].slice(0, 14).reverse();
+  const dots = points.map(entry => {
+    const status = entry.summary?.item_status?.[key];
+    const cls = status ? (trendStatusOrder[status] || 'unavailable') : 'none';
+    return `<i class="${cls}${entry.id === (viewingCheckId || latestCheckId) ? ' current' : ''}" data-trend-check="${escapeText(entry.id)}" title="${escapeText(formatDateTime(entry.checked_at))} · ${escapeText(status ? (inspectionStatusLabels[status] || status) : '미점검')}"></i>`;
+  }).join('');
+  return `<span class="item-trend" title="최근 ${points.length}회 결과 · 점을 클릭하면 그 결과를 조회합니다">${dots}</span>`;
+}
+document.querySelector('#inspectionChecklist').addEventListener('click', event => {
+  const dot = event.target.closest('[data-trend-check]');
+  if (!dot) return;
+  event.stopPropagation();
+  if (inspectionProviderSelect.value) viewCheck(inspectionProviderSelect.value, dot.dataset.trendCheck);
+});
+
+// --- Provider inspection settings: thresholds and the default item set ---------------------------
+let currentThresholds = null;
+let currentDefaultItems = null;
+const thresholdFields = [['cpu_warning', 'CPU 사용률 주의', '%', 50, 100], ['memory_warning', '메모리 사용률 주의', '%', 50, 100], ['disk_warning', '루트 디스크 사용률 주의', '%', 50, 100], ['log_error_warning', '로그 오류 주의 기준', '건 이상', 0, 100000]];
+function renderThresholdPanel() {
+  const form = document.querySelector('#thresholdsForm');
+  if (!form) return;
+  const entry = currentThresholds;
+  const value = entry?.value || {};
+  const defaults = entry?.default || {};
+  form.innerHTML = thresholdFields.map(([key, label, unit, min, max]) => `<label><span>${label}</span><div class="settings-input"><input name="${key}" type="number" min="${min}" max="${max}" step="1" value="${value[key] ?? defaults[key] ?? ''}" required><b>${unit}</b></div><small>기본 ${defaults[key] ?? '-'}${unit}${key === 'log_error_warning' ? ' · 0이면 로그 건수로 주의 판정하지 않음' : ' · 이상이면 주의'}</small></label>`).join('')
+    + `<div class="settings-form-actions"><span class="settings-form-note">${entry?.source === 'stored' ? `서버 저장값 · ${escapeText(entry.updated_by || '')} · ${escapeText(formatDateTime(entry.updated_at))}` : '기본값 사용 중'} · 다음 점검부터 적용</span><button type="button" id="resetThresholds" class="secondary">기본값</button><button class="primary-button" type="submit">저장</button></div>`;
+  const set = (id, text) => { const element = document.querySelector(id); if (element) element.textContent = text; };
+  const cpu = value.cpu_warning ?? defaults.cpu_warning ?? 80;
+  const memory = value.memory_warning ?? defaults.memory_warning ?? 80;
+  const disk = value.disk_warning ?? defaults.disk_warning ?? 80;
+  const sameThreshold = cpu === memory && memory === disk;
+  set('#setupThresholdValue', sameThreshold ? `CPU/MEM/DISK ${cpu}%` : `${cpu}/${memory}/${disk}%`);
+  set('#setupThresholdHint', `${sameThreshold ? '' : 'CPU/MEM/DISK · '}로그 오류 ${value.log_error_warning ?? defaults.log_error_warning ?? 1}건 이상 주의 · ${entry?.source === 'stored' ? '공급자 설정값' : '기본값'}`);
+}
+async function loadProviderInspectionSettings(providerId) {
+  currentThresholds = null; currentDefaultItems = null;
+  if (!providerId) { renderThresholdPanel(); return; }
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/settings`, {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '공급자 설정을 불러오지 못했습니다.');
+    currentThresholds = data.settings.thresholds;
+    currentDefaultItems = data.settings.default_items;
+    if (Array.isArray(currentDefaultItems?.value?.selected) && !inspectionResultsLoadedFor(providerId)) {
+      selectedInspectionKeys = new Set(currentDefaultItems.value.selected.filter(key => allInspectionKeys.includes(key)));
+      renderInspectionSelection(); renderInspectionChecklist();
+    }
+  } catch (error) { showToast('공급자 설정을 불러오지 못했습니다.', error.message); }
+  renderThresholdPanel();
+}
+function inspectionResultsLoadedFor() { return Object.keys(inspectionResults).length > 0; }
+document.querySelector('#thresholdsForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  const providerId = inspectionProviderSelect.value;
+  if (!providerId) return;
+  const value = {};
+  thresholdFields.forEach(([key]) => { value[key] = Number(event.currentTarget.elements[key].value); });
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/settings/thresholds`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '임계치를 저장하지 못했습니다.');
+    currentThresholds = data; renderThresholdPanel();
+    showToast('판정 임계치를 저장했습니다.', '다음 일일점검부터 적용됩니다.');
+  } catch (error) { showToast('임계치를 저장하지 못했습니다.', error.message); }
+});
+document.querySelector('#thresholdsForm').addEventListener('click', async event => {
+  if (!event.target.closest('#resetThresholds')) return;
+  const providerId = inspectionProviderSelect.value;
+  if (!providerId || !window.confirm('판정 임계치를 기본값(80% · 로그 1건)으로 되돌릴까요?')) return;
+  const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/settings/thresholds`, {method:'DELETE'});
+  if (response.ok) { currentThresholds = await response.json(); renderThresholdPanel(); showToast('판정 임계치를 기본값으로 되돌렸습니다.', '다음 점검부터 적용됩니다.'); }
+});
+document.querySelector('#saveDefaultInspections').addEventListener('click', async () => {
+  const providerId = inspectionProviderSelect.value;
+  if (!providerId) return showToast('공급자를 먼저 선택하세요.', '');
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/settings/default_items`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:{selected:[...selectedInspectionKeys]}})});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '기본 항목을 저장하지 못했습니다.');
+    currentDefaultItems = data;
+    showToast('기본 점검 항목을 저장했습니다.', `${selectedInspectionKeys.size}개 항목 · 이 공급자를 열 때 자동으로 선택됩니다.`);
+  } catch (error) { showToast('기본 항목을 저장하지 못했습니다.', error.message); }
+});
+document.querySelector('#applyDefaultInspections').addEventListener('click', () => {
+  const saved = currentDefaultItems?.value?.selected;
+  if (!Array.isArray(saved)) return showToast('저장된 기본 항목이 없습니다.', '원하는 항목을 고른 뒤 "기본으로 저장"을 누르세요.');
+  selectedInspectionKeys = new Set(saved.filter(key => allInspectionKeys.includes(key)));
+  renderInspectionSelection(); renderInspectionChecklist();
+  showToast('기본 점검 항목을 적용했습니다.', `${selectedInspectionKeys.size}개 항목`);
+});
+
+// --- Timing statistics ---------------------------------------------------------------------------
+async function loadTimingStats() {
+  const providerId = inspectionProviderSelect.value;
+  const box = document.querySelector('#inspectionTiming');
+  if (!providerId) return;
+  box.hidden = !box.hidden;
+  if (box.hidden) return;
+  box.innerHTML = '<div class="empty-provider">소요 시간을 집계하고 있습니다.</div>';
+  try {
+    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/check-timing?limit=10`, {cache:'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || '소요 시간 통계를 불러오지 못했습니다.');
+    const names = itemNameMap();
+    const timeoutLabels = {command:'노드 명령 1개', log_scan:'로그 검색 1개', openstack:'OpenStack·클러스터 명령 1개', node_script:'노드 스크립트 전체', controller_script:'Controller 스크립트 전체'};
+    const suggestions = Object.entries(data.suggested_timeouts || {}).filter(([, value]) => value != null).map(([key, value]) => { const current = data.current_timeouts?.[key]; const tone = value > current ? 'warn' : ''; return `<tr class="${tone}"><td>${timeoutLabels[key] || key}</td><td>${current ?? '-'}초</td><td><strong>${value}초</strong></td><td>${value > current ? '관측 최대의 1.5배가 현재 값보다 큽니다. 설정에서 늘리는 것을 검토하세요.' : '현재 값으로 충분합니다.'}</td></tr>`; }).join('');
+    box.innerHTML = `<div class="timing-grid">
+      <section><h3>가장 오래 걸린 항목 <small>최근 ${data.sampled_checks}회 · 최대 기준</small></h3><table><thead><tr><th>항목</th><th>평균</th><th>P90</th><th>최대</th><th>표본</th></tr></thead><tbody>${(data.items || []).slice(0, 12).map(item => `<tr><td>${escapeText(names[item.key] || item.key)}</td><td>${item.avg}초</td><td>${item.p90}초</td><td><strong>${item.max}초</strong></td><td>${item.samples}</td></tr>`).join('') || '<tr><td colspan="5">집계할 결과가 없습니다.</td></tr>'}</tbody></table></section>
+      <section><h3>노드별 소요 <small>노드 스크립트 전체</small></h3><table><thead><tr><th>노드</th><th>평균</th><th>P90</th><th>최대</th></tr></thead><tbody>${(data.nodes || []).map(node => `<tr><td>${escapeText(node.hostname)}</td><td>${node.avg}초</td><td>${node.p90}초</td><td><strong>${node.max}초</strong></td></tr>`).join('') || '<tr><td colspan="4">-</td></tr>'}</tbody></table>
+      <h3>단계별 소요</h3><table><thead><tr><th>단계</th><th>평균</th><th>최대</th></tr></thead><tbody>${[['nodes', '노드 점검'], ['controller', 'Controller 점검'], ['total', '전체']].map(([key, label]) => { const stat = data.phases?.[key]; return `<tr><td>${label}</td><td>${stat ? `${stat.avg}초` : '-'}</td><td>${stat ? `${stat.max}초` : '-'}</td></tr>`; }).join('')}</tbody></table></section>
+      <section class="timing-suggest"><h3>제한 시간 권장값 <small>관측 최대 × 1.5</small></h3><table><thead><tr><th>제한 시간</th><th>현재</th><th>권장</th><th>판단</th></tr></thead><tbody>${suggestions || '<tr><td colspan="4">집계할 결과가 없습니다.</td></tr>'}</tbody></table><p>제한 시간은 <a href="#settings" data-page="settings">설정 › 점검 실행 제한 시간</a>에서 바꿉니다.</p></section>
+    </div>`;
+  } catch (error) { box.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`; }
+}
+document.querySelector('#openTimingStats').addEventListener('click', loadTimingStats);
+if (document.querySelector('#trendToggle')) {
+  applyTrendVisibility();
+  document.querySelector('#trendToggle').addEventListener('change', event => {
+    try { localStorage.setItem(trendVisibleKey, event.target.checked ? '1' : '0'); } catch (_) { /* private mode: this session only */ }
+    // 숨은 동안에는 컨테이너 폭을 잴 수 없으므로 다시 켤 때 실제 폭으로 그린다.
+    renderInspectionTrend();
+  });
+}
+document.querySelector('#diffAgainstSelect').addEventListener('change', event => {
+  diffAgainstId = event.target.value;
+  const checkId = viewingCheckId || latestCheckId;
+  if (inspectionProviderSelect.value && checkId) loadCheckDiff(inspectionProviderSelect.value, checkId, diffAgainstId);
+});
+
 function inspectionStatusMatches(filter, status) {
   return filter === 'all' || filter === status ||
     (filter === 'healthy' && status === 'excepted') ||
     (filter === 'pending' && ['pending', 'skipped'].includes(status));
 }
 
+const RESULT_STATUSES = ['healthy', 'excepted', 'warning', 'unavailable'];
+// 결과가 없는 선택 항목 수. 0이면 요약 카드와 상태 필터에서 '수집 대기'를 감춘다.
+function pendingInspectionCount() {
+  return inspectionGroups.reduce((count, group) => count + group.items.filter(([, , , key]) =>
+    selectedInspectionKeys.has(key) && !RESULT_STATUSES.includes(inspectionResults[key]?.status)).length, 0);
+}
+
 function renderInspectionChecklist() {
   const checklist = document.querySelector('#inspectionChecklist');
+  const pending = pendingInspectionCount();
+  if (!pending && currentFilter === 'pending') { setInspectionFilter('all'); return; }
   let total = 0, healthy = 0, warning = 0, unavailable = 0;
   const nodeKeys = nodeFilterKeys();
   const labels = inspectionStatusLabels;
@@ -1082,17 +1474,18 @@ function renderInspectionChecklist() {
       const result = inspectionResults[key] || {status:'pending', result:'-', note:'점검 실행 필요'};
       const detailId = `inspection-detail-${groupIndex}-${key}`;
       const logIssueNodes = (result.nodes || []).filter(node => node.status !== 'healthy');
-      const nodeDetail = logIssueNodes.length ? `<details class="node-log-detail"><summary>노드별 전전날 대비 신규·변경 오류</summary>${logIssueNodes.map(node => `<details class="node-log-entry"><summary><strong>${escapeText(node.hostname)}</strong><span>${escapeText(node.role)}</span><em class="${escapeText(node.status)}">${labels[node.status] || '확인 불가'}</em><b>신규 ${Number(node.new_count) || 0}건 · 보기</b><small>${escapeText(node.previous_log_date || '전전날')} → ${escapeText(node.log_date || '전날')} · 해소 ${Number(node.resolved_count) || 0}건${node.note ? ` · ${escapeText(node.note)}` : ''}</small></summary><pre>${escapeText(groupRepeatedLogLines(node.new_output || '전전날과 다른 신규 오류 없음'))}</pre></details>`).join('')}</details>` : '';
-      const details = result.details?.length ? result.details : [{title:'조회 결과', output:result.status === 'pending' ? '아직 점검을 실행하지 않았습니다.' : `${result.note || ''}\n${result.result || '-'}`}];
+      const nodeDetail = logIssueNodes.length ? `<details class="node-log-detail"><summary>노드별 전전날 대비 신규·변경 오류</summary>${logIssueNodes.map(node => `<details class="node-log-entry"><summary><strong>${escapeText(node.hostname)}</strong><span>${escapeText(node.role)}</span><em class="${escapeText(node.status)}">${labels[node.status] || '확인 불가'}</em><b>신규 ${Number(node.new_count) || 0}건 · 지속 ${Number(node.persistent_count) || 0}건 · 보기</b><small>${escapeText(node.previous_log_date || '전전날')} → ${escapeText(node.log_date || '전날')} · 전체 ${Number(node.count) || 0}건 · 해소 ${Number(node.resolved_count) || 0}건${Number(node.excluded_count) ? ` · 제외 ${Number(node.excluded_count)}건` : ''}${node.note ? ` · ${escapeText(node.note)}` : ''}</small></summary>${logNodeSections(node, key)}</details>`).join('')}</details>` : '';
       const isLogItem = key.endsWith('_log');
+      const details = result.details?.length ? result.details : [{title:'조회 결과', output:result.status === 'pending' ? '아직 점검을 실행하지 않았습니다.' : `${result.note || ''}\n${result.result || '-'}`}];
       const visibleDetails = isLogItem ? details.filter(detail => detail.title.includes('신규/변경 로그')) : details;
       const rawOutput = isLogItem
-        ? (logIssueNodes.length ? logIssueNodes.map(node => `<article><strong>${escapeText(`${node.hostname} (${node.role}) · 전전날 대비 신규/변경 로그`)}</strong><pre>${escapeText(groupRepeatedLogLines(node.new_output || node.note || '전전날과 다른 신규 오류 없음'))}</pre></article>`).join('') : '<article><strong>신규·변경 오류</strong><pre>주의 또는 확인이 필요한 노드가 없습니다.</pre></article>')
+        ? (logIssueNodes.length ? logIssueNodes.map(node => `<article><strong>${escapeText(`${node.hostname} (${node.role}) · 전체 ${Number(node.count) || 0}건 · 신규 ${Number(node.new_count) || 0}건 · 지속 ${Number(node.persistent_count) || 0}건`)}</strong>${logNodeSections(node, key)}</article>`).join('') : '<article><strong>신규·변경 오류</strong><pre>주의 또는 확인이 필요한 노드가 없습니다.</pre></article>')
         : (visibleDetails.length ? visibleDetails : details).map(detail => `<article><strong>${escapeText(detail.title)}</strong><pre>${escapeText(detail.output || '출력 없음')}</pre></article>`).join('');
       const hasResult = result.status !== 'pending';
-      const actions = hasResult ? `<div class="inspection-detail-actions"><span>${escapeText(name)} 상세 결과</span>${result.status === 'warning' ? `<button type="button" data-row-action="exception" data-key="${escapeText(key)}">예외 등록</button>` : ''}${result.status === 'warning' || result.status === 'unavailable' ? `<button type="button" data-row-action="alerts" data-key="${escapeText(key)}">관련 알림</button>` : ''}<button type="button" data-row-action="copy" data-key="${escapeText(key)}" data-detail-id="${detailId}">출력 복사</button></div>` : '';
+      const durationBadge = Number.isFinite(Number(result.duration_seconds)) && result.duration_seconds !== null ? `<em class="detail-duration" title="가장 오래 걸린 노드 또는 명령 기준">소요 ${escapeText(formatDuration(result.duration_seconds))}</em>` : '';
+      const actions = hasResult ? `<div class="inspection-detail-actions"><span>${escapeText(name)} 상세 결과${durationBadge}</span><button type="button" data-row-action="rerun" data-key="${escapeText(key)}" title="이 항목만 다시 점검합니다">이 항목만 재점검</button>${result.status === 'warning' ? `<button type="button" data-row-action="exception" data-key="${escapeText(key)}">예외 등록</button>` : ''}${isLogItem && result.status === 'warning' ? `<button type="button" data-row-action="log-exclusion" data-key="${escapeText(key)}">제외 패턴 등록</button>` : ''}${result.status === 'warning' || result.status === 'unavailable' ? `<button type="button" data-row-action="alerts" data-key="${escapeText(key)}">관련 알림</button>` : ''}<button type="button" data-row-action="copy" data-key="${escapeText(key)}" data-detail-id="${detailId}">출력 복사</button></div>${result.compacted ? '<p class="compacted-note">보관 정책에 따라 이 결과의 원본 출력은 정리되었습니다. 상태와 판정 결과만 표시됩니다.</p>' : ''}` : '';
       const exceptionNote = result.status === 'excepted' && result.exception_reason ? `<span class="exception-inline" title="${escapeText(result.exception_reason)}">예외</span>` : '';
-      return `<tr class="inspection-row" data-status="${result.status}" data-key="${escapeText(key)}" data-detail-id="${detailId}" tabindex="0" aria-expanded="false"><td><span class="category-badge">${category}</span></td><td><strong>${name}</strong><small class="detail-hint">클릭하여 상세 결과 보기</small></td><td><div class="check-method">${escapeText(method)}</div></td><td><span class="check-state ${result.status}">${labels[result.status]}</span>${changeBadge(key)}${exceptionNote}</td><td>${escapeText(result.note)}${nodeDetail}</td><td class="inspection-value">${escapeText(result.result)}</td></tr><tr class="inspection-detail-row${isLogItem ? ' log-output-row' : ''}" id="${detailId}" hidden><td colspan="6">${actions}${isLogItem ? '<div class="log-output-heading"><strong>전전날 대비 신규·변경 오류</strong><span>중복 메시지는 발생 시각으로 묶어서 표시</span></div>' : ''}<div class="inspection-raw-output">${rawOutput}</div></td></tr>`;
+      return `<tr class="inspection-row" data-status="${result.status}" data-key="${escapeText(key)}" data-detail-id="${detailId}" tabindex="0" aria-expanded="false"><td><span class="category-badge">${category}</span></td><td><strong>${name}</strong>${itemTrendMarkup(key)}<small class="detail-hint">클릭하여 상세 결과 보기</small></td><td><div class="check-method">${escapeText(method)}</div></td><td><span class="check-state ${result.status}">${labels[result.status]}</span>${changeBadge(key)}${exceptionNote}</td><td>${escapeText(result.note)}${nodeDetail}</td><td class="inspection-value">${escapeText(result.result)}</td></tr><tr class="inspection-detail-row${isLogItem ? ' log-output-row' : ''}" id="${detailId}" hidden><td colspan="6">${actions}${isLogItem ? '<div class="log-output-heading"><strong>신규·변경 오류와 지속 오류</strong><span>전전날에도 발생한 오류는 지속 오류로 분리 · 중복 메시지는 발생 시각으로 묶어서 표시 · 표본은 전날 마지막 100줄</span></div>' : ''}<div class="inspection-raw-output">${rawOutput}</div></td></tr>`;
     }).join('');
     const collapsed = collapsedInspectionGroups.has(groupIndex);
     const contentId = `inspection-group-content-${groupIndex}`;
@@ -1109,7 +1502,12 @@ function renderInspectionChecklist() {
   document.querySelector('#healthyInspectionItems').textContent = healthy;
   document.querySelector('#warningInspectionItems').textContent = warning;
   document.querySelector('#unavailableInspectionItems').textContent = unavailable;
-  document.querySelector('#pendingInspectionItems').textContent = total - healthy - warning - unavailable;
+  document.querySelector('#pendingInspectionItems').textContent = pending;
+  const pendingCard = document.querySelector('.inspection-summary-filter[data-summary-filter="pending"]');
+  if (pendingCard) pendingCard.hidden = !pending;
+  const pendingFilterButton = document.querySelector('.inspection-filter button[data-filter="pending"]');
+  if (pendingFilterButton) pendingFilterButton.hidden = !pending;
+  document.querySelector('.inspection-summary')?.classList.toggle('no-pending', !pending);
   document.querySelector('#inspectionCount').textContent = total;
   document.querySelector('#selectedInspectionCount').textContent = selectedInspectionKeys.size;
   renderNodeFilterChip();
@@ -1202,257 +1600,3 @@ document.querySelectorAll('.inspection-summary-filter').forEach(card => {
     }
   });
 });
-
-function formatCapacity(kilobytes) {
-  const value = Number(kilobytes) || 0;
-  if (!value) return '-';
-  const gib = value / 1024 / 1024;
-  return gib >= 1024 ? `${(gib / 1024).toFixed(1)} TiB` : `${gib.toFixed(gib >= 100 ? 0 : 1)} GiB`;
-}
-
-function renderInfrastructure(data) {
-  const nodes = data.nodes || [];
-  const summaries = new Map((data.node_summary || []).map(node => [node.hostname, node]));
-  const reachable = nodes.filter(node => node.reachable);
-  const nodeStatus = node => !node.reachable ? 'unreachable' : (summaries.get(node.hostname)?.status || node.status || 'healthy');
-  const healthy = nodes.filter(node => nodeStatus(node) === 'healthy').length;
-  const unreachable = nodes.filter(node => !node.reachable).length;
-  const warning = nodes.length - healthy - unreachable;
-  document.querySelector('#infraTotalNodes').textContent = nodes.length;
-  document.querySelector('#infraHealthyNodes').textContent = healthy;
-  document.querySelector('#infraWarningNodes').textContent = warning;
-  document.querySelector('#infraUnreachableNodes').textContent = unreachable;
-  document.querySelector('#infraRoleCounts').textContent = `Controller ${nodes.filter(node => node.role === 'controller').length} · Compute ${nodes.filter(node => node.role === 'compute').length}`;
-  document.querySelector('#infraCpuCapacity').textContent = `${reachable.reduce((sum, node) => sum + (Number(node.metrics?.cpu_cores) || 0), 0) || '-'} Core`;
-  document.querySelector('#infraMemoryCapacity').textContent = formatCapacity(reachable.reduce((sum, node) => sum + (Number(node.metrics?.memory_total_kb) || 0), 0));
-  document.querySelector('#infraDiskCapacity').textContent = formatCapacity(reachable.reduce((sum, node) => sum + (Number(node.metrics?.disk_total_kb) || 0), 0));
-  document.querySelector('#infraCheckedAt').textContent = data._checked_at ? new Intl.DateTimeFormat('ko-KR', {dateStyle:'short', timeStyle:'short'}).format(new Date(data._checked_at)) : '-';
-  const statusLabels = {healthy:'정상', problem:'문제', review:'확인 필요', warning:'주의', unreachable:'접속 불가'};
-  const nodeGrid = document.querySelector('#infrastructureNodeGrid');
-  nodeGrid.innerHTML = nodes.length ? [...nodes].sort((a, b) => a.role.localeCompare(b.role) || a.hostname.localeCompare(b.hostname)).map(node => {
-    const status = nodeStatus(node);
-    const metrics = node.metrics || {};
-    const gauges = [['CPU', metrics.cpu_used_percent], ['Memory', metrics.memory_used_percent], ['Disk', metrics.disk_used_percent]];
-    return `<article class="infrastructure-node-card ${escapeText(status)}" data-infra-hostname="${escapeText(node.hostname)}"><header><span class="node-role ${escapeText(node.role)}">${node.role === 'controller' ? 'C' : 'N'}</span><div><strong>${escapeText(node.hostname)}</strong><small>${escapeText(node.address || '')} · ${node.role === 'controller' ? 'Controller' : 'Compute'}</small></div><em>${statusLabels[status] || '확인 필요'}</em></header><div class="infra-node-gauges">${gauges.map(([label, value]) => { const numeric = Number(value); const available = Number.isFinite(numeric); const percent = available ? Math.max(0, Math.min(100, numeric)) : 0; return `<div data-infra-metric="${label.toLowerCase()}"><span>${label}</span><b>${available ? `${numeric.toFixed(1)}%` : '-'}</b><i><u style="width:${percent}%"></u></i></div>`; }).join('')}</div><div class="infra-live-network" data-infra-network>Prometheus 네트워크: -</div>${node.warnings?.length ? `<p>${node.warnings.slice(0, 3).map(escapeText).join(' · ')}</p>` : ''}</article>`;
-  }).join('') : '<div class="empty-provider">최근 일일점검 노드 데이터가 없습니다.</div>';
-  const tableDataCount = item => {
-    if (!item?.details?.length || item.status === 'unavailable') return null;
-    const output = item.details.map(detail => detail.output || '').join('\n');
-    const rows = output.split('\n').filter(line => /^\s*\|/.test(line));
-    return rows.length ? Math.max(0, rows.length - 1) : null;
-  };
-  const renderStates = (containerId, definitions, showResourceCount = false) => {
-    const container = document.querySelector(containerId);
-    container.innerHTML = definitions.map(([key, label]) => {
-      const item = data.items?.[key];
-      const status = item?.status || 'pending';
-      const labels = {healthy:'정상', warning:'주의', unavailable:'확인 불가', excepted:'예외', pending:'미수집'};
-      const count = showResourceCount ? tableDataCount(item) : null;
-      const display = showResourceCount ? (count === null ? '-' : `${count}개`) : (item ? '확인 완료' : '-');
-      return `<article><span class="state-dot ${escapeText(status)}"></span><div><strong>${escapeText(label)}</strong><small>${escapeText(item?.note || '최근 점검에서 수집되지 않음')}</small></div><em class="${escapeText(status)}">${labels[status] || '확인 필요'}</em><b>${display}</b></article>`;
-    }).join('');
-  };
-  renderStates('#infrastructureServiceList', [['endpoint','Endpoint'],['nova','Nova'],['neutron','Neutron'],['cinder','Cinder'],['manila','Manila'],['octavia','Octavia'],['masakari','Masakari'],['swift','Swift'],['heat','Heat']]);
-  renderStates('#infrastructureResourceList', [['vm','VM'],['network','Network Agent'],['volume','Volume'],['snapshot','Snapshot'],['share','Share'],['lb','Load Balancer'],['amphora','Amphora'],['heat_stack','Heat Stack']], true);
-}
-
-function renderPrometheusChart(svgId, points) {
-  const svg = document.querySelector(svgId);
-  if (!points?.length) { svg.innerHTML = '<text x="150" y="43" text-anchor="middle">수집 데이터 없음</text>'; return; }
-  const values = points.map(point => Number(point[1])).filter(Number.isFinite);
-  const max = Math.max(100, ...values);
-  const coordinates = values.map((value, index) => `${values.length === 1 ? 0 : index / (values.length - 1) * 300},${76 - value / max * 68}`).join(' ');
-  svg.innerHTML = `<line x1="0" y1="76" x2="300" y2="76"></line><line x1="0" y1="42" x2="300" y2="42"></line><polyline points="${coordinates}"></polyline>`;
-}
-
-async function loadInfrastructureMetrics(providerId) {
-  const connection = document.querySelector('#prometheusConnection');
-  connection.className = 'prometheus-connection pending';
-  connection.innerHTML = '<i></i>연결 중';
-  try {
-    const response = await fetch(`/api/providers/${encodeURIComponent(providerId)}/infrastructure/metrics`, {cache:'no-store'});
-    const data = await response.json();
-    if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Prometheus 조회 실패');
-    connection.className = 'prometheus-connection connected';
-    connection.innerHTML = `<i></i>${data.targets}개 노드 연결`;
-    document.querySelector('#prometheusSource').textContent = `수집원: ${data.source}`;
-    document.querySelector('#prometheusCollectedAt').textContent = `수집: ${new Intl.DateTimeFormat('ko-KR', {timeStyle:'medium'}).format(new Date(data.collected_at))}`;
-    ['cpu','memory','disk'].forEach(metric => {
-      const values = data.nodes.map(node => Number(node[metric])).filter(Number.isFinite);
-      const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-      document.querySelector(`#prometheus${metric[0].toUpperCase()}${metric.slice(1)}Now`).textContent = average === null ? '-' : `${average.toFixed(1)}%`;
-      renderPrometheusChart(`#prometheus${metric[0].toUpperCase()}${metric.slice(1)}Chart`, data.history?.[metric]);
-    });
-    data.nodes.forEach(node => {
-      const card = [...document.querySelectorAll('[data-infra-hostname]')].find(item => item.dataset.infraHostname === node.hostname);
-      if (!card) return;
-      ['cpu','memory','disk'].forEach(metric => {
-        const row = card.querySelector(`[data-infra-metric="${metric}"]`);
-        const value = Number(node[metric]);
-        if (!row || !Number.isFinite(value)) return;
-        row.querySelector('b').textContent = `${value.toFixed(1)}%`;
-        row.querySelector('u').style.width = `${Math.max(0, Math.min(100, value))}%`;
-      });
-      const bytes = Number(node.network);
-      card.querySelector('[data-infra-network]').textContent = Number.isFinite(bytes) ? `현재 네트워크 송수신 ${bytes >= 1048576 ? `${(bytes / 1048576).toFixed(2)} MiB/s` : `${(bytes / 1024).toFixed(1)} KiB/s`}` : '현재 네트워크 송수신 -';
-    });
-  } catch (error) {
-    connection.className = 'prometheus-connection failed';
-    connection.innerHTML = '<i></i>연결 실패';
-    document.querySelector('#prometheusSource').textContent = error.message;
-  }
-}
-
-function showPage(page) {
-  document.querySelector('#dashboardPage').hidden = page !== 'dashboard';
-  document.querySelector('#inspectionPage').hidden = page !== 'daily-inspection';
-  document.querySelector('#infrastructurePage').hidden = page !== 'infrastructure';
-  document.querySelector('#alertsPage').hidden = page !== 'alerts';
-  document.querySelector('#historyPage').hidden = page !== 'history';
-  document.querySelector('#settingsPage').hidden = page !== 'settings';
-  document.querySelector('#currentPageName').textContent = page === 'daily-inspection' ? '일일점검' : (page === 'infrastructure' ? '인프라 현황' : (page === 'alerts' ? '알림 및 장애' : (page === 'history' ? '작업 이력' : (page === 'settings' ? '설정' : '대시보드'))));
-  document.querySelectorAll('[data-page]').forEach(link => link.classList.toggle('active', link.dataset.page === page));
-  sidebar.classList.remove('open');
-}
-
-const alertSeverityLabels = {critical:'위험', warning:'주의', info:'정보'};
-const alertStatusLabels = {open:'미확인', acknowledged:'확인', resolved:'해소'};
-
-function renderAlertSummary(summary, alerts = []) {
-  document.querySelector('#activeAlertCount').textContent = summary.active || 0;
-  document.querySelector('#criticalAlertCount').textContent = summary.critical || 0;
-  document.querySelector('#warningAlertCount').textContent = (summary.groups || []).filter(item => item.status !== 'resolved' && item.severity === 'warning').reduce((sum, item) => sum + item.count, 0);
-  document.querySelector('#resolvedAlertCount').textContent = (summary.groups || []).filter(item => item.status === 'resolved').reduce((sum, item) => sum + item.count, 0);
-  document.querySelectorAll('.alert-count').forEach(element => { element.textContent = summary.active || 0; element.hidden = !(summary.active || 0); });
-}
-
-async function loadAlertSummary() {
-  try { const response = await fetch('/api/alerts/summary', {cache:'no-store'}); if (response.ok) renderAlertSummary(await response.json()); } catch (_) { /* Badge is non-critical. */ }
-}
-
-async function loadAlerts() {
-  const params = new URLSearchParams();
-  [['provider_id','#alertProviderFilter'],['severity','#alertSeverityFilter'],['status','#alertStatusFilter'],['q','#alertSearch']].forEach(([key, selector]) => { const value = document.querySelector(selector).value.trim(); if (value) params.set(key, value); });
-  const list = document.querySelector('#alertManagementList'); list.innerHTML = '<div class="empty-provider">알림을 불러오는 중입니다.</div>';
-  try {
-    const response = await fetch(`/api/alerts?${params}`, {cache:'no-store'}); const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || '알림을 불러오지 못했습니다.'); renderAlertSummary(data.summary, data.alerts);
-    if (!data.alerts.length) { list.innerHTML = '<div class="empty-provider">조건에 맞는 알림이 없습니다.</div>'; return; }
-    list.innerHTML = data.alerts.map(item => `<article class="managed-alert ${item.severity} ${item.status}" data-alert-id="${item.id}"><span class="managed-alert-icon">${item.severity === 'critical' ? '!' : (item.severity === 'warning' ? '△' : 'i')}</span><div><header><span class="alert-severity ${item.severity}">${alertSeverityLabels[item.severity] || escapeText(item.severity)}</span><span class="alert-state ${item.status}">${alertStatusLabels[item.status] || escapeText(item.status)}</span><h2>${escapeText(item.title)}</h2></header><p>${escapeText(item.description)}</p><small>${escapeText(item.provider_name || '공통')} · ${escapeText(item.target || '대상 미지정')} · 최근 감지 ${new Intl.DateTimeFormat('ko-KR', {dateStyle:'short', timeStyle:'short'}).format(new Date(item.last_detected_at))}</small>${item.assignee || item.work_history_title ? `<div class="alert-links">${item.assignee ? `<span>담당자 ${escapeText(item.assignee)}</span>` : ''}${item.work_history_title ? `<a href="#history">작업이력: ${escapeText(item.work_history_title)}</a>` : ''}</div>` : ''}${item.resolution_note ? `<blockquote>${escapeText(item.resolution_note)}</blockquote>` : ''}</div><button data-alert-action="manage" type="button">${item.status === 'resolved' ? '내용 보기' : '처리'}</button></article>`).join('');
-  } catch (error) { list.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`; }
-}
-
-async function openAlertAction(id) {
-  const [alertResponse, historiesResponse] = await Promise.all([fetch(`/api/alerts/${id}`), fetch('/api/work-histories')]);
-  const item = await alertResponse.json(); if (!alertResponse.ok) return showToast('알림을 불러오지 못했습니다.', item.detail || '다시 시도하세요.');
-  const histories = historiesResponse.ok ? (await historiesResponse.json()).histories : [];
-  const select = document.querySelector('#alertWorkHistory'); select.innerHTML = '<option value="">연결하지 않음</option>' + histories.map(history => `<option value="${history.id}">${escapeText(history.title)} · ${escapeText(history.operator)}</option>`).join('');
-  document.querySelector('#alertActionId').value = item.id; document.querySelector('#alertActionStatus').value = item.status; document.querySelector('#alertAssignee').value = item.assignee || ''; select.value = item.work_history_id || ''; document.querySelector('#alertResolutionNote').value = item.resolution_note || ''; document.querySelector('#alertActionTitle').textContent = item.title; document.querySelector('#alertActionEditor').hidden = false; document.querySelector('#alertActionEditor').scrollIntoView({behavior:'smooth'});
-}
-
-document.querySelector('#refreshAlerts').addEventListener('click', loadAlerts);
-document.querySelector('#searchAlerts').addEventListener('click', loadAlerts);
-document.querySelector('#alertSearch').addEventListener('keydown', event => { if (event.key === 'Enter') loadAlerts(); });
-document.querySelector('#closeAlertAction').addEventListener('click', () => { document.querySelector('#alertActionEditor').hidden = true; });
-document.querySelector('#alertManagementList').addEventListener('click', event => { const historyLink = event.target.closest('.alert-links a'); if (historyLink) { event.preventDefault(); history.replaceState(null, '', '#history'); showPage('history'); loadWorkHistories(); return; } const button = event.target.closest('[data-alert-action]'); if (button) openAlertAction(button.closest('[data-alert-id]').dataset.alertId); });
-document.querySelector('#alertActionForm').addEventListener('submit', async event => {
-  event.preventDefault(); const id = document.querySelector('#alertActionId').value; const payload = {status:document.querySelector('#alertActionStatus').value, assignee:document.querySelector('#alertAssignee').value, work_history_id:document.querySelector('#alertWorkHistory').value || null, resolution_note:document.querySelector('#alertResolutionNote').value}; const button = event.submitter; button.disabled = true;
-  try { const response = await fetch(`/api/alerts/${id}`, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}); const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '처리 내용을 확인하세요.'); document.querySelector('#alertActionEditor').hidden = true; showToast('알림 처리 내용을 저장했습니다.', `${alertStatusLabels[data.status]} 상태로 반영되었습니다.`); await loadAlerts(); } catch (error) { showToast('알림을 처리하지 못했습니다.', error.message); } finally { button.disabled = false; }
-});
-
-const workTypeLabels = {inspection:'점검', incident:'장애 대응', change:'설정 변경', restart:'재시작', deployment:'배포', maintenance:'유지보수', other:'기타'};
-const workStatusLabels = {planned:'예정', in_progress:'진행 중', completed:'완료', failed:'실패'};
-const historyFields = ['Title','Provider','Type','Status','Operator','Target','Ticket','StartedAt','CompletedAt','Description','Commands','BeforeState','AfterState','Result','FollowUp'];
-
-function localDateTimeValue(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
-}
-
-function resetWorkHistoryForm() {
-  document.querySelector('#workHistoryForm').reset();
-  document.querySelector('#workHistoryId').value = '';
-  document.querySelector('#historyStartedAt').value = localDateTimeValue();
-  document.querySelector('#workHistoryFormTitle').textContent = '작업 이력 등록';
-}
-
-function workHistoryPayload() {
-  const value = id => document.querySelector(`#history${id}`).value;
-  return {provider_id:value('Provider') || null, title:value('Title'), work_type:value('Type'), status:value('Status'), operator:value('Operator'), target:value('Target'), ticket:value('Ticket'), description:value('Description'), commands:value('Commands'), before_state:value('BeforeState'), after_state:value('AfterState'), result:value('Result'), follow_up:value('FollowUp'), started_at:new Date(value('StartedAt')).toISOString(), completed_at:value('CompletedAt') ? new Date(value('CompletedAt')).toISOString() : null};
-}
-
-async function loadWorkHistories() {
-  const params = new URLSearchParams();
-  [['provider_id','#historyProviderFilter'],['work_type','#historyTypeFilter'],['status','#historyStatusFilter'],['q','#historySearch']].forEach(([key, selector]) => { const value = document.querySelector(selector).value.trim(); if (value) params.set(key, value); });
-  const list = document.querySelector('#workHistoryList');
-  list.innerHTML = '<div class="empty-provider">작업 이력을 불러오는 중입니다.</div>';
-  try {
-    const response = await fetch(`/api/work-histories?${params}`, {cache:'no-store'});
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || '작업 이력을 불러오지 못했습니다.');
-    if (!data.histories.length) { list.innerHTML = '<div class="empty-provider">조건에 맞는 작업 이력이 없습니다.</div>'; return; }
-    list.innerHTML = data.histories.map(item => `<article class="work-history-card" data-history-id="${item.id}"><header><div><span class="history-type">${workTypeLabels[item.work_type] || escapeText(item.work_type)}</span><span class="history-status ${item.status}">${workStatusLabels[item.status] || escapeText(item.status)}</span><h2>${escapeText(item.title)}</h2><small>${escapeText(item.provider_name || '공통')} · ${escapeText(item.target || '대상 미지정')} · ${escapeText(item.operator)}</small></div><time>${new Intl.DateTimeFormat('ko-KR', {dateStyle:'medium', timeStyle:'short'}).format(new Date(item.started_at))}</time></header><p>${escapeText(item.description)}</p><div class="history-detail" hidden>${item.ticket ? `<section><b>티켓 / 요청 번호</b><pre>${escapeText(item.ticket)}</pre></section>` : ''}${item.commands ? `<section><b>실행 명령 / 절차</b><pre>${escapeText(item.commands)}</pre></section>` : ''}${item.before_state ? `<section><b>변경 전 상태</b><pre>${escapeText(item.before_state)}</pre></section>` : ''}${item.after_state ? `<section><b>변경 후 상태</b><pre>${escapeText(item.after_state)}</pre></section>` : ''}${item.result ? `<section><b>결과 및 검증</b><pre>${escapeText(item.result)}</pre></section>` : ''}${item.follow_up ? `<section><b>후속 조치</b><pre>${escapeText(item.follow_up)}</pre></section>` : ''}</div><footer><button data-history-action="toggle" type="button">상세 보기</button><button data-history-action="edit" type="button">수정</button><button class="danger" data-history-action="delete" type="button">삭제</button></footer></article>`).join('');
-  } catch (error) { list.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`; }
-}
-
-document.querySelector('#newWorkHistory').addEventListener('click', () => { resetWorkHistoryForm(); document.querySelector('#workHistoryEditor').hidden = false; document.querySelector('#workHistoryEditor').scrollIntoView({behavior:'smooth'}); });
-document.querySelector('#closeWorkHistory').addEventListener('click', () => { document.querySelector('#workHistoryEditor').hidden = true; });
-document.querySelector('#searchWorkHistory').addEventListener('click', loadWorkHistories);
-document.querySelector('#historySearch').addEventListener('keydown', event => { if (event.key === 'Enter') loadWorkHistories(); });
-document.querySelector('#workHistoryForm').addEventListener('submit', async event => {
-  event.preventDefault(); const id = document.querySelector('#workHistoryId').value; const button = event.submitter; button.disabled = true;
-  try { const response = await fetch(id ? `/api/work-histories/${id}` : '/api/work-histories', {method:id ? 'PUT' : 'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(workHistoryPayload())}); const data = await response.json(); if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : '입력값을 확인하세요.'); document.querySelector('#workHistoryEditor').hidden = true; showToast(id ? '작업 이력을 수정했습니다.' : '작업 이력을 등록했습니다.', '저장된 기록은 작업 이력에서 조회할 수 있습니다.'); await loadWorkHistories(); } catch (error) { showToast('작업 이력을 저장하지 못했습니다.', error.message); } finally { button.disabled = false; }
-});
-document.querySelector('#workHistoryList').addEventListener('click', async event => {
-  const button = event.target.closest('[data-history-action]'); if (!button) return; const card = button.closest('[data-history-id]'); const id = card.dataset.historyId;
-  if (button.dataset.historyAction === 'toggle') { const detail = card.querySelector('.history-detail'); detail.hidden = !detail.hidden; button.textContent = detail.hidden ? '상세 보기' : '상세 닫기'; return; }
-  if (button.dataset.historyAction === 'delete') { if (!confirm('이 작업 이력을 삭제하시겠습니까?')) return; const response = await fetch(`/api/work-histories/${id}`, {method:'DELETE'}); if (response.ok) { showToast('작업 이력을 삭제했습니다.', '삭제한 기록은 복구할 수 없습니다.'); loadWorkHistories(); } return; }
-  const response = await fetch(`/api/work-histories/${id}`); const item = await response.json(); if (!response.ok) return showToast('작업 이력을 불러오지 못했습니다.', item.detail || '다시 시도하세요.');
-  const values = {Title:item.title, Provider:item.provider_id || '', Type:item.work_type, Status:item.status, Operator:item.operator, Target:item.target, Ticket:item.ticket, StartedAt:localDateTimeValue(item.started_at), CompletedAt:item.completed_at ? localDateTimeValue(item.completed_at) : '', Description:item.description, Commands:item.commands, BeforeState:item.before_state, AfterState:item.after_state, Result:item.result, FollowUp:item.follow_up};
-  historyFields.forEach(name => { if (name in values) document.querySelector(`#history${name}`).value = values[name] || ''; }); document.querySelector('#workHistoryId').value = id; document.querySelector('#workHistoryFormTitle').textContent = '작업 이력 수정'; document.querySelector('#workHistoryEditor').hidden = false; document.querySelector('#workHistoryEditor').scrollIntoView({behavior:'smooth'});
-});
-
-document.querySelector('#menuSettingsList').addEventListener('change', event => {
-  if (!event.target.matches('input[type="checkbox"]')) return;
-  if (event.target.checked) visibleMenus.add(event.target.value); else visibleMenus.delete(event.target.value);
-  saveMenuPreferences();
-});
-document.querySelector('#selectAllMenus').addEventListener('click', () => { visibleMenus = new Set(configurableMenus.map(menu => menu[0])); saveMenuPreferences(); });
-document.querySelector('#clearAllMenus').addEventListener('click', () => { visibleMenus.clear(); saveMenuPreferences(); });
-applyMenuPreferences();
-renderMenuSettings();
-
-function renderCheck(data) {
-  const metrics = data.metrics || {};
-  document.querySelector('#checkStatus').innerHTML = data.status === 'healthy' ? '정상 <small>/ 점검 완료</small>' : '주의 <small>/ 확인 필요</small>';
-  document.querySelector('#checkMessage').textContent = data.warnings?.[0] || '확인된 경고 없음';
-  document.querySelector('#cpuValue').textContent = metrics.cpu_cores ?? '-';
-  document.querySelector('#memoryValue').textContent = `${metrics.memory_used_percent ?? '-'}%`;
-  document.querySelector('#diskValue').textContent = `${metrics.disk_used_percent ?? '-'}%`;
-  document.querySelector('#memoryMessage').textContent = metrics.hostname ? `${metrics.hostname} 기준` : '점검 완료';
-  document.querySelector('#diskMessage').textContent = data.warnings?.find(value => value.includes('디스크')) || '정상 범위';
-}
-
-function showToast(title, description) {
-  toast.querySelector('strong').textContent = title;
-  toast.querySelector('small').textContent = description;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 3500);
-}
-
-function updateClock() {
-  const now = new Date();
-  clock.textContent = new Intl.DateTimeFormat('ko-KR', {
-    year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false
-  }).format(now).replace(/\. /g, '. ');
-}
-updateClock();
-setInterval(updateClock, 30000);
-loadProviders();
-renderInspectionChecklist();
-renderInspectionSelection();
-const initialPage = location.hash === '#daily-inspection' ? 'daily-inspection' : (location.hash === '#infrastructure' ? 'infrastructure' : (location.hash === '#alerts' ? 'alerts' : (location.hash === '#history' ? 'history' : (location.hash === '#settings' ? 'settings' : 'dashboard'))));
-showPage(initialPage);
-if (initialPage === 'history') loadWorkHistories();
-if (initialPage === 'alerts') loadAlerts(); else loadAlertSummary();

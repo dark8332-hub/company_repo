@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인 | OKESTRO Cloud Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css?v=20260903-3">
+</head>
+<body class="login-body">
+  <div class="login-shell" role="main">
+    <section class="login-brand" aria-hidden="true">
+      <div class="brand login-brand-mark"><span class="brand-mark"><i></i><i></i><i></i></span><span><b>OKESTRO</b><small>Cloud Operations</small></span></div>
+      <h1>OpenStack 운영 지원 플랫폼</h1>
+      <p>일일점검, 모니터링, 알림 및 장애, 작업 이력을 한 화면에서 관리합니다.</p>
+      <ul>
+        <li><span>✓</span>공급자별 일일점검 자동 실행과 이력 비교</li>
+        <li><span>◉</span>Prometheus 기반 노드 자원 모니터링</li>
+        <li><span>△</span>주의·확인 불가 항목의 알림 자동 생성과 해소</li>
+      </ul>
+    </section>
+
+    <section class="login-card">
+      <form id="loginForm" class="login-form" autocomplete="on" novalidate>
+        <p class="login-eyebrow">SIGN IN</p>
+        <h2>관리자 로그인</h2>
+        <span class="login-subtitle">플랫폼 관리자 계정으로 로그인하세요.</span>
+        <label>아이디<input id="loginUsername" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required autofocus></label>
+        <label>비밀번호<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+        <div class="login-error" id="loginError" role="alert" hidden></div>
+        <button class="primary-button login-button" id="loginButton" type="submit">로그인</button>
+        <p class="login-hint">초기 비밀번호는 설치 시 안내된 기본값 또는 서버 환경 변수 <code>ADMIN_PASSWORD</code>입니다. 첫 로그인 후 변경합니다.</p>
+      </form>
+
+      <form id="passwordForm" class="login-form" autocomplete="on" novalidate hidden>
+        <p class="login-eyebrow">FIRST LOGIN</p>
+        <h2>비밀번호 변경</h2>
+        <span class="login-subtitle">초기 비밀번호로 로그인했습니다. 계속하려면 새 비밀번호를 설정하세요.</span>
+        <input name="username" id="passwordUsername" autocomplete="username" hidden>
+        <label>현재 비밀번호<input id="currentPassword" name="current_password" type="password" autocomplete="current-password" required></label>
+        <label>새 비밀번호<input id="newPassword" name="new_password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <label>새 비밀번호 확인<input id="confirmPassword" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>
+        <div class="login-error" id="passwordError" role="alert" hidden></div>
+        <button class="primary-button login-button" id="passwordButton" type="submit">비밀번호 변경 후 시작</button>
+        <p class="login-hint">8자 이상, 영문·숫자·특수문자 중 두 종류 이상을 섞어 입력하세요.</p>
+      </form>
+    </section>
+  </div>
+  <script src="/login.js?v=20260903-3"></script>
+</body>
+</html>

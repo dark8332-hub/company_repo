@@ -6,10 +6,18 @@ services:
     container_name: openstack-ops-platform
     restart: unless-stopped
     ports:
-      - "9080:9080"
+      - "8090:8090"
     environment:
       # 예약 실행 시각의 기준 시간대 (기본 Asia/Seoul)
       INSPECTION_TIMEZONE: Asia/Seoul
+      # 관리자 로그인 계정. ADMIN_PASSWORD를 비우면 기본 초기 비밀번호 Okestro2018@ 로 계정을 만듭니다.
+      # 첫 로그인에서 비밀번호 변경을 요구하며, 이후 이 값은 사용되지 않습니다.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ""
+      # 비밀번호를 잊었을 때만 "1"로 두고 ADMIN_PASSWORD를 채워 재시작합니다. 로그인 후 반드시 다시 비웁니다.
+      ADMIN_PASSWORD_RESET: ""
+      # 로그인 세션 유지 시간(시간 단위, 기본 8)
+      SESSION_TTL_HOURS: "8"
     volumes:
       - provider-data:/app/data
 

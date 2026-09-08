@@ -6,9 +6,9 @@
 
 - 프로젝트명: OpenStack 운영 지원 플랫폼 (가칭)
 - 시작일: 2026-08-21
-- 현재 단계: 일일점검 화면 고도화(이력·변화 비교·예약 실행) 및 운영 검증
+- 현재 단계: 전체 화면 고도화 1차 완료(구조 정리·회귀 테스트·설정 서버 저장·감사 로그·통합 뷰·화면별 기능). 다음 단계는 신규 기능의 실제 환경 검증과 알림 발송 채널·다중 사용자 역할
 - 대상 사용자: OpenStack 운영 엔지니어 및 관리자
-- 문서 상태: 2026-08-31 갱신
+- 문서 상태: 2026-09-04 갱신
 
 ## 추진 목표
 
@@ -93,11 +93,18 @@
 | 대시보드 | 자체 UI 또는 Grafana 연동 검토 | 검토 필요 |
 | 알림 채널 | 이메일, 메신저 등 검토 | 검토 필요 |
 | 배포 방식 | Docker Compose 지원, 현재 systemd/Uvicorn 운영 | 적용 |
-| 기본 서비스 포트 | 9080 | 확정 |
+| 기본 서비스 포트 | 8090 (2026-09-03, 이전 9080) | 확정 |
 | 초기 패키징 | Nginx 기반 Docker 이미지 및 Compose | 완료 |
 | 공급자 연결 방식 | VIP를 통한 SSH 접속 후 활성 Controller 확인 | 확정 |
 | OpenStack API 인증 | 환경 내부의 기존 OpenRC 또는 clouds.yaml 활용 우선 검토 | 검토 필요 |
 | SSH 인증 방식 | 개인키 또는 비밀번호 선택 인증 | 확정 |
+| 플랫폼 로그인 | 관리자 단일 계정, scrypt 해시, 서버 세션 + HttpOnly 쿠키 | 적용 |
+| 프론트엔드 구조 | 단일 SPA(`index.html`) + 화면별 11개 JS 모듈, 인라인 스크립트 없음 | 적용 |
+| 테스트 | pytest 회귀 테스트 160개, quickjs 기반 JS 스모크 | 적용 |
+| 운영 설정 저장 | 환경 변수 기본값 + DB(`app_settings`) 우선, 화면에서 수정 | 적용 |
+| 감사 로그 | `audit_logs` 테이블, 52종 동작 기록, 보관 기간 자동 정리 | 적용 |
+| 보고서 형식 | PDF(fpdf2) + Excel(openpyxl, 운영자 점검표 양식) | 적용 |
+| 알림 채널 | 이메일·웹훅 발송 미구현(화면 내 알림만) | 검토 필요 |
 
 ## 진행 현황
 
@@ -215,6 +222,57 @@
 | 2026-08-31 | 보고서 | `점검 내용 보기`의 텍스트 복사를 서버 생성(fpdf2·NanumGothic) PDF 자동 다운로드 `PDF 저장`으로 교체 | 완료 |
 | 2026-08-31 | 노드 요약 UI | 노드별 점검 요약을 문제·확인·예외 건수 줄과 클릭 가능한 항목 칩으로 재구성, 범례에 노드 수 표시 | 완료 |
 | 2026-08-31 | UI/UX | 전체 화면 글자색 대비 보정(WCAG AA 4.5:1 기준, 49개 색상 자동 보정) 및 상태색·구분선·행 강조색 조정 | 완료 |
+| 2026-09-01 | 변화 비교 UI | 직전 대비 변화 항목 클릭 시 선택되지 않은 항목도 자동으로 선택·표시하고 해당 행으로 이동해 상세를 펼치도록 수정 | 완료 |
+| 2026-09-01 | 요약 카드 UI | 정상·주의·확인 불가·전체 카드의 `직전 대비 ±N` 클릭 시 늘어난(+)·줄어든(−) 항목 목록 팝오버 표시 및 항목 클릭 시 결과 행 이동 | 완료 |
+| 2026-09-01 | 보고서 | 상단 `PDF 저장`(이상 항목 보고서)을 브라우저 인쇄 대화상자 대신 서버 생성(fpdf2) PDF 파일 자동 다운로드로 변경(`POST /api/reports/issues.pdf`) | 완료 |
+| 2026-09-01 | 권한 모델 | root SSH가 차단된 환경을 위해 sudo 권한 계정 등록 지원: 점검·탐색·사용자 정의 스크립트를 `sudo`(NOPASSWD 또는 비밀번호)로 root 실행, sudo 비밀번호 암호화 저장·검증·관리 UI 추가 | 완료 |
+| 2026-09-01 | 실제 환경 검증 | sudo 비밀번호 방식은 로컬 흉내 연결로 분기 검증까지 완료, 실제 non-root 계정이 있는 노드에서의 end-to-end 점검은 미실시 | 확인 필요 |
+| 2026-09-02 | 오류 수정 | 배포 서버가 클러스터 노드 호스트명을 해석하지 못해 전체 점검이 `gaierror`로 실패하던 문제 수정: 탐색 시 Controller에서 `getent`로 노드 IP를 해석·저장하고 점검·사용자 정의 점검은 저장된 IP를 우선 사용 | 완료 |
+| 2026-09-02 | 오류 수정 | 활성 Controller 점검 접속 주소를 인벤토리 IP → 해석 가능한 호스트명 → VIP 순으로 결정, VIP ping 점검의 하드코딩된 `10.255.191.150`을 공급자 VIP로 교체 | 완료 |
+| 2026-09-02 | 오류 안내 | 호스트명 해석 실패·호스트 키 미등록 시 `gaierror` 같은 예외명 대신 원인과 조치 방법을 한글 문구로 표시 | 완료 |
+| 2026-09-02 | 실제 환경 검증 | sudo NOPASSWD 계정(`rocky`, katech Controller 3대)으로 등록·탐색·전체 점검 end-to-end 성공(53.9초, Controller 항목 포함). sudo 비밀번호 방식 검증은 계속 미실시 | 완료 |
+| 2026-09-03 | UI/UX | 왼쪽 상단 OKESTRO 로고 클릭 시 대시보드로 이동 | 완료 |
+| 2026-09-03 | 인증 | 관리자 단일 계정 로그인 화면, 서버 세션·HttpOnly 쿠키, 전체 API·화면 접근 제어, 첫 로그인 비밀번호 변경 강제, 설정 화면 비밀번호 변경·로그아웃 | 완료 |
+| 2026-09-03 | 실행 환경 | 웹 서비스 포트를 9080에서 8090으로 변경(systemd 유닛·Dockerfile·compose·nginx.conf·README) | 완료 |
+| 2026-09-03 | 오류 수정 | 모니터링 화면의 공급자 선택 목록이 비어 있던 문제 수정: `index.html` 호환용 인라인 스크립트가 먼저 채운 select를 기준으로 `app.js`가 나머지 select 채우기를 건너뛰어 모니터링 select만 비었음. select별로 독립 채우기로 변경하고 인라인 목록에도 모니터링 select 추가 | 완료 |
+| 2026-09-03 | 오류 수정 | 로그인 화면 레이아웃 수정: 전역 `main{grid-column:2}` 규칙으로 카드가 오른쪽으로 밀리던 문제(컨테이너를 `div`로 교체), `.login-form{display:flex}`가 `hidden`을 덮어 비밀번호 변경 폼이 함께 보이던 문제(`[hidden]` 강제 숨김) | 완료 |
+| 2026-09-03 | 인증 | 기본 초기 비밀번호를 임의 생성에서 고정값 `Okestro2018@`로 변경(`ADMIN_PASSWORD` 미지정 시), 첫 로그인 변경 강제 유지 | 완료 |
+| 2026-09-03 | 모니터링 UI | 제목 설명이 길어 상단 조작부가 줄바꿈되고 `새로고침` 버튼이 둘째 줄로 떨어지던 문제 수정(조작부 축소 금지·오른쪽 정렬, 1180px 이하는 제목 아래 배치) | 완료 |
+| 2026-09-03 | 구조 정리 | `app.js`(약 2,200줄)를 화면별 11개 모듈(`js/core·settings·inspection·providers·infrastructure·monitoring·dashboard·runbooks·alerts·history·main.js`)로 분할 | 완료 |
+| 2026-09-03 | 구조 정리 | 별도 페이지였던 `provider.html`·`provider.js`를 SPA에 통합해 삭제, `index.html` 하단 인라인 호환 스크립트 제거(`/api/providers` 2회 호출·select 경합 해소) | 완료 |
+| 2026-09-03 | 테스트 | pytest 회귀 테스트 도입(`tests/` 9개 파일 160개: 인증·공급자·인벤토리·모니터링·알림·작업 이력·설정) 및 quickjs 기반 JS 스모크 테스트 | 완료 |
+| 2026-09-03 | 설정 | 제한 시간·보관 정책·시간대·감사 로그 보관을 환경 변수 대신 화면에서 수정해 DB(`app_settings`)에 저장하고 즉시 적용, 사용자별 메뉴·대시보드 구성 서버 저장 | 완료 |
+| 2026-09-03 | 감사 로그 | 로그인·공급자·인증정보·점검·알림·작업 이력·설정 변경 등 52종 동작을 행위자·대상·결과와 함께 기록하고 설정 화면에서 조회·필터, 보관 기간 자동 정리 | 완료 |
+| 2026-09-03 | 통합 뷰 | 전체 공급자 상태와 오늘의 할 일(예약 점검 실행 여부·미확인 위험 알림·예정 작업)을 한 번에 주는 `GET /api/overview` 및 대시보드 상단 통합 카드 | 완료 |
+| 2026-09-03 | 일일점검 | 공급자별 판정 임계치(CPU·메모리·디스크·로그 오류 건수)와 기본 점검 항목 세트를 설정으로 분리, 코드 고정 80% 기준 제거 | 완료 |
+| 2026-09-03 | 일일점검 | 실행 중 점검 취소(`POST .../checks/cancel`), 노드별 진행 상태 표시, 항목별 소요 시간 통계와 제한 시간 권장값(`GET .../check-timing`) | 완료 |
+| 2026-09-03 | 일일점검 | 점검자 확인 워크플로(확인자·항목별 메모·확인 완료 기록, `GET/PUT .../checks/{id}/review`) | 2026-09-04 제거 |
+| 2026-09-03 | 보고서 | 운영자 기존 점검표 양식 그대로의 Excel 내보내기 추가(`POST /api/reports/inspection.xlsx`, `inspection_excel.py`, openpyxl) | 완료 |
+| 2026-09-03 | 조치 가이드 | 점검 항목별 런북(`runbooks.py`, 확인 순서→원인 후보→조치→확인)과 공급자별 재정의, 결과·알림 상세에서 바로 열기(`GET /api/runbooks/{item_key}`) | 완료 |
+| 2026-09-03 | 공급자 연결 | 공급자 수정(`PUT /api/providers/{id}`, 이름·VIP·계정·키 교체 시 이력 유지), 사이트·환경·담당자·태그 프로필 | 완료 |
+| 2026-09-03 | 공급자 연결 | 연결 진단(`POST .../diagnose`): VIP 도달, 호스트 키 신뢰, SSH 로그인, root 권한 상승, OpenRC·CLI, 노드 도달, Prometheus, DB 인증정보를 한 번에 점검 | 완료 |
+| 2026-09-03 | 공급자 연결 | 노드 인벤토리 수동 편집(`POST/PATCH/DELETE .../nodes`, `provider_nodes` 테이블): 노드 추가·역할 수정·점검 제외. katech Compute 미탐색 우회 수단 | 완료 |
+| 2026-09-03 | 인프라 현황 | 인벤토리 수집기 분리(`inventory_collector.py`, 네트워크 비의존 파서)와 주기 수집(`POST .../inventory/collect`), 노드 상세·용량 지표(`GET .../infrastructure/metrics`) | 완료 |
+| 2026-09-03 | 모니터링 | 임계치 알림 규칙 등록·평가(`monitoring/rules`, `/evaluate`)로 초과 시 알림 및 장애 자동 생성, 정비 시간 창 적용 시 억제 | 완료 |
+| 2026-09-03 | 모니터링 | 노드 클릭 상세 차트(`monitoring/nodes/{hostname}`), OpenStack 계층 패널(API 응답·HAProxy·RabbitMQ·Galera, `monitoring/openstack`), Alertmanager 발화 알림, 자유 PromQL(`monitoring/query`) | 완료 |
+| 2026-09-03 | 모니터링 | 공급자별 Prometheus·Grafana·Alertmanager 주소와 인증·TLS 설정(`monitoring/settings`, 9090 고정 해제)과 연결 테스트 | 완료 |
+| 2026-09-03 | 알림 및 장애 | 원인별 그룹화(`/api/alerts/groups`), 알림 타임라인(`alert_events`)과 코멘트, 일괄 처리(`/api/alerts/bulk`), 반복·해소 시간 통계(`/api/alerts/stats`) | 완료 |
+| 2026-09-03 | 알림 및 장애 | 정비 시간 창(`/api/maintenance-windows`): 기간·대상 공급자 지정 시 알림 억제, 작업 이력 연동 | 완료 |
+| 2026-09-03 | 작업 이력 | 예정·승인·완료 상태 전이(`/transition`), 작업 전후 점검 자동 실행·연결과 diff 첨부(`/checks/{phase}`, `/comparison`), 파일 첨부, 월간 보고서 CSV | 완료 |
+
+| 2026-09-04 | 일일점검 | 점검자 확인(sign-off) 기능 제거: 화면·API·`check_reviews` 저장 코드와 감사 동작 `check.review` 삭제 | 완료 |
+
+| 2026-09-04 | 일일점검 UI | 요약 카드·상태 필터의 `수집 대기`를 결과 없는 항목이 있을 때만 표시(0이면 숨기고 카드 4개 배치, `수집 대기` 필터 선택 중 0이 되면 전체로 복귀) | 완료 |
+
+| 2026-09-04 | 일일점검 UI | 설정 요약 카드 6개가 5+1로 줄바꿈되던 배치를 한 줄 6열로 정리(요약 카드 4 + 설정 카드 6)하고, 좁아진 `판정 임계치` 카드에 맞춰 값 표기를 `CPU/MEM/DISK 80%`(값이 다르면 `80/85/90%`)로 압축 | 완료 |
+
+| 2026-09-04 | 일일점검 UI | `점검 이력 및 변화`의 주의·확인 불가 건수 추이 그래프를 켜고 끄는 `건수 추이 표시` 선택 추가(브라우저에 유지, 기본 표시) | 완료 |
+
+| 2026-09-04 | 일일점검 UI | 항목별 최근 결과 미니 추이(사각형)를 항목 이름 옆 인라인에서 이름과 `클릭하여 상세 결과 보기` 사이의 고정 줄로 이동, 이력이 없어도 빈 줄을 남겨 모든 항목에서 같은 위치에 표시 | 완료 |
+
+| 2026-09-04 | UI/UX | 왼쪽 메뉴 순서를 대시보드 → 공급자 연결 → 인프라 현황 → 일일점검으로 변경(화면·설정 목록·`MENU_KEYS` 동일 적용) | 완료 |
+
+| 2026-09-04 | UI/UX | 왼쪽 메뉴의 `OVERVIEW`·`OPERATIONS` 그룹 라벨 제거하고 8개 항목을 한 목록으로 정리 | 완료 |
 
 ## 2026-08-25 실제 환경 검증 결과
 
@@ -396,7 +454,7 @@
 - 한글 출력을 위해 NanumGothic Regular·Bold(OFL 라이선스)를 `fonts/`에 동봉하고 Dockerfile에서 함께 복사
 - PDF 구성: 제목·공급자·점검 시각·수동/예약·소요 시간·생성 시각, 요약 5칸(전체·정상·주의·확인 불가·수집 대기·제외), 영역별 표(점검 분류·점검 사항·상태·점검 결과·특이사항·직전 대비), 주의·확인 불가 행 배경 강조, 페이지마다 헤더 반복
 - 셀 텍스트는 700자에서 잘라 한 행이 페이지를 넘지 않도록 제한. 생성은 스레드로 실행해 스케줄러·진행 조회를 막지 않음
-- 상단 `PDF 저장`(이상 항목 요약 보고서, 브라우저 인쇄 방식)은 기존 그대로 유지
+- 상단 `PDF 저장`(이상 항목 요약 보고서)은 당시 브라우저 인쇄 방식으로 유지했으며 2026-09-01에 서버 생성 PDF 다운로드로 교체
 
 ### 설정 요약 카드
 
@@ -461,12 +519,509 @@
 - 결과에 `started_at`, `finished_at`, `duration_seconds`, `trigger`를 기록해 소요 시간과 실행 구분 표시
 - 일부 항목만 점검한 경우 점검한 항목의 알림만 자동 해소하도록 `sync_check_alerts` 수정
 
+## 2026-09-01 일일점검 화면 개선(직전 대비 탐색·PDF 다운로드)
+
+### 직전 대비 변화 항목 클릭 개선
+
+- 기존에는 `점검 이력 및 변화` 패널의 변화 항목(신규 이상·해소·상태 변경·추가·제외)이 현재 항목 선택에 없으면 `선택되지 않은 항목입니다` 안내만 표시되고 결과가 보이지 않았음
+- `focusInspectionItem`이 해당 항목을 항목 선택에 자동 추가하고(선택 패널·설정 요약 카드 갱신) 상태 필터·검색·노드 필터를 해제한 뒤 결과 행으로 이동해 상세를 펼치도록 변경
+- 이번 결과에 점검되지 않은 항목(`제외`)은 `점검 실행 필요` 행으로 표시하고 안내 문구로 구분
+- 현재 점검 항목 목록에 없는 키(삭제된 사용자 정의 항목 등)는 `표시할 수 없는 항목입니다` 안내
+- 노드 요약 카드의 항목 칩 클릭도 같은 함수를 사용하므로 동일하게 적용
+- 정적 자산 버전 `20260901-1`, 서버 재기동 불필요(정적 파일 직접 제공)
+
+### 요약 카드 `직전 대비 ±N` 항목 보기
+
+- 전체·정상·주의·확인 불가 요약 카드의 `직전 대비 +1` 문구를 클릭하면 카드 아래 팝오버로 어떤 항목이 늘고 줄었는지 표시
+  - `새로 <상태>(으)로 바뀐 항목` (+)과 `<상태>에서 벗어난 항목` (−)을 나누어 항목명과 `이전 상태 → 현재 상태` 표시
+  - 전체 항목 카드는 이번 점검에 추가·제외된 항목 기준
+  - 증감이 0이어도 들어오고 나간 항목이 있으면 `직전과 동일 · 변동 N건`으로 표시하고 클릭 가능
+- 팝오버의 항목을 클릭하면 `focusInspectionItem`으로 결과 목록의 해당 행으로 이동해 상세를 펼침
+- 카드 자체 클릭(상태 필터)과 충돌하지 않도록 캡처 단계에서 이벤트를 분리하고, 바깥 클릭·Esc로 닫힘. 키보드(Enter/Space) 지원
+- 계산은 diff API의 `items`(상태가 바뀐 모든 항목의 before/after)를 클라이언트에서 카드 상태 기준으로 분류하며, 정상 카드는 서버 `healthy_delta`와 같이 예외 처리 항목을 정상으로 취급
+- 정적 자산 버전 `20260901-2`
+
+### 상단 `PDF 저장` 파일 다운로드 전환
+
+- 일일점검 상단의 `PDF 저장`이 `window.print()`로 브라우저 인쇄 대화상자를 열던 방식을 제거하고, `점검 내용 보기`와 같이 서버에서 PDF를 생성해 `일일점검_이상항목_<공급자>_<YYYYMMDD-HHMM>.pdf`로 바로 내려받도록 변경
+- 화면의 `collectIssueReportItems()`가 기존 인쇄 보고서와 같은 기준으로 주의·확인 불가 항목(커널 오류 제외)을 수집: 항목별 점검 방법·판정 결과, 이상 노드의 원본 출력(예외 처리 노드 제외), 로그 항목은 중복을 묶은 신규·변경 오류를 노드별 최대 10개
+- `POST /api/reports/issues.pdf`(`IssueReportRequest`: provider, checked_at, trigger, duration_seconds, items[group, name, method, status, note, result, outputs[title, output]])가 `inspection_report.build_issue_report_pdf`로 A4 가로형 PDF 생성
+  - 구성: 제목·메타 헤더, 이상 항목·주의·확인 불가 건수, `1. 이상 항목 요약` 표(영역·점검 항목·상태·특이사항·결과, 주의·확인 불가 행 배경), `2. 이상 항목 상세 내용`(항목별 상태색 세로선, 점검 방법, 판정 결과, 출력별 제목과 회색 배경 원문)
+  - 원문은 출력당 80행·6,000자, 항목당 100개 출력으로 제한. 이상 항목이 없으면 `이상 항목 없음` 보고서 생성
+- 인쇄 전용 DOM(`#printIssueReport`, `.print-report-meta`)과 `buildPrintIssueReport` 제거. `@media print` 규칙은 남아 있으나 사용 경로 없음
+- `hnti` 최신 결과(이상 20개)로 22쪽 PDF 생성 확인, 서비스 재기동 후 엔드포인트 200 응답 확인
+- 정적 자산 버전 `20260901-3`
+
+### 추가된 API
+
+| 메서드 | 경로 | 용도 |
+|---|---|---|
+| POST | `/api/reports/issues.pdf` | 화면이 수집한 주의·확인 불가 항목과 원본 출력을 받아 이상 항목 보고서 PDF 생성(첨부 파일 응답) |
+
+### 변경 파일
+
+- `app.js`: `focusInspectionItem` 자동 선택, `summaryDeltaItems`·`renderSummaryDeltas`·`toggleSummaryDeltaPopover` 요약 카드 팝오버, `collectIssueReportItems`와 상단 `PDF 저장` 다운로드 처리
+- `styles.css`: `.summary-delta.clickable`, `.summary-delta-popover` 스타일
+- `index.html`: 인쇄 전용 섹션 제거, 정적 자산 버전 `20260901-3`
+- `inspection_report.py`: `_ReportPDF` 제목 매개변수화, `build_issue_report_pdf` 추가
+- `server.py`: `IssueReportRequest` 모델과 `POST /api/reports/issues.pdf`
+- `README.md`: PDF 저장 절을 상단 이상 항목 보고서와 점검 내용 PDF 두 가지로 정리
+
+## 2026-09-01 sudo 권한 계정 점검 지원
+
+### 배경
+
+- 대상 사이트에서 root SSH 접속이 차단되어 sudo 권한이 있는 운영 계정으로 점검해야 함. NOPASSWD sudo는 정책상 허용되지 않음
+- 기존 코드는 등록 시 `sudo_mode`만 감지하고 실제 점검 스크립트는 로그인 계정 권한으로 실행했음. root가 아니면 `pcs`·`rabbitmqctl`·`dmesg`·`ovs-vsctl`·`smartctl`·`mdadm`·`/root/contrabass-openrc`가 권한 오류로 확인 불가가 되고, `/var/log/{nova,…}/*.log`·`/var/log/syslog`는 `cat … 2>/dev/null`이 조용히 실패해 오류 0건 정상으로 오판, `virsh list`는 `qemu:///session`의 빈 목록을 정상으로 오판하는 문제가 있었음
+
+### 구현
+
+- `run_as_root(connection, provider, script, timeout)` (`server.py`): root 로그인은 기존과 동일하게 실행. 그 외 계정은 노드마다 `sudo -k -n true`로 NOPASSWD 여부를 확인한 뒤 `sudo -n -H bash -s` 또는 `sudo -S -p '' -k -H bash -s`(표준입력 첫 줄 비밀번호, 이후 스크립트)로 실행
+  - `-k`로 캐시된 인증을 무효화해 비밀번호 줄이 반드시 sudo에 소비되게 하고(그렇지 않으면 bash가 비밀번호를 명령으로 실행), `-H`로 `HOME=/root`가 되어 OpenRC 탐색이 유지됨
+  - 스크립트 첫 줄에 `__OKESTRO_ROOT_SHELL__` 마커를 출력해 sudo가 실패한 경우를 스크립트 실패와 구분하고 `PrivilegeError`를 발생. 일반 권한으로 대체 실행하지 않음
+  - `sudo_failure_reason`이 stderr를 비밀번호 불일치·sudoers 미등록·requiretty·비밀번호 필요로 분류
+- 적용 지점: 노드 점검(120초), 활성 Controller 점검(240초), 사용자 정의 점검, 클러스터 노드 탐색. 실패 시 노드 요약 `SSH 점검 실패: root 권한 획득 실패 — …`, Controller 항목 전체 `활성 Controller root 권한 획득 실패`, 탐색 502 응답
+- 등록(`POST /api/providers/connect`): `sudo_password` 필드 추가. 프로브가 `sudo=root|passwordless|authentication_required`를 구분하고, `authentication_required`이면 입력한 sudo 비밀번호(없으면 비밀번호 인증의 SSH 비밀번호)를 `sudo -S -p '' -k -H true`로 검증한 뒤 `sudo_mode=password`로 저장. 비밀번호가 없거나 틀리면 400으로 등록 거부
+- 관리 API: `GET/PUT/DELETE /api/providers/{id}/sudo-credentials` — 상태 조회(`username`, `sudo_mode`, `sudo_password_configured`), Controller 검증 후 저장, 삭제. 비밀번호는 SSH 인증정보 blob 안에 함께 암호화 저장(`provider_store.update_provider_sudo`)
+- 화면(`provider.html`, `provider.js`): 등록 폼에 `sudo 비밀번호` 입력(사용자명이 root가 아닐 때 표시), 공급자 목록에 `root 계정`/`sudo NOPASSWD`/`sudo 인증 완료`/`sudo 비밀번호 등록` 표시와 `sudo 인증 관리` 패널, 등록 완료 문구에 sudo 방식 표시. 정적 자산 버전 `20260901-4`
+- 등록 프로브의 도구 탐지 `PATH`에 `/usr/sbin`·`/sbin` 추가(일반 계정은 `pcs` 등이 PATH에 없음)
+
+### 검증
+
+- 로컬 흉내 연결(명령을 로컬에서 실행)로 root 경로 무변경, NOPASSWD 경로 마커 제거, 비밀번호 미등록·불일치 시 `PrivilegeError`, 비밀번호 경로에서 표준입력 첫 줄만 sudo가 소비하고 비밀번호가 출력에 노출되지 않음을 확인
+- 기존 root 공급자 `hnti`는 `run_as_root`가 스크립트를 그대로 실행하므로 동작 변화 없음
+- 미실시: 실제 non-root sudo 계정이 있는 노드에서의 등록·전체 점검. 배포 서버에 임시 계정을 만들거나 대상 노드의 운영 계정으로 등록해 확인 필요
+
+### 변경 파일
+
+- `server.py`: `SUDO_*` 상수, `PrivilegeError`, `sudo_failure_reason`, `run_as_root`, `SudoCredentialsRequest`, `DiscoveryRequest.sudo_password`, 등록 프로브·검증, sudo-credentials API, 4개 실행 지점 교체와 예외 처리
+- `provider_store.py`: `update_provider_sudo`, `sudo_status`, `sudo_password_configured`
+- `provider.html`, `provider.js`, `styles.css`: sudo 비밀번호 입력·관리 UI, 목록 컬럼 추가
+- `README.md`: `root가 아닌 sudo 계정으로 점검` 절 추가
+
+## 2026-09-02 노드 주소 해석 수정(신규 사이트 gaierror)
+
+### 배경
+
+- 신규 katech 사이트에서 sudo NOPASSWD 계정(`rocky`)으로 공급자 등록은 성공했으나 전체 점검 항목이 `SSH 점검 실패: gaierror` 또는 `활성 Controller SSH 연결 실패: gaierror`로 실패
+- 원인은 sudo가 아니라 이름 해석: 노드 점검이 항상 `socket.gethostbyname(hostname)`을 배포 서버에서 수행했고, OpenStack 점검도 `controller_hostname`으로 접속했음. `pcs`로 탐색된 노드는 인벤토리 `address`에 호스트명이 저장됨
+- 기존 `hnti` 환경은 배포 서버 `/etc/hosts`에 `hcon01~hcom02`가 수동 등록되어 있어 문제가 드러나지 않았음
+
+### 구현
+
+- 클러스터 탐색: Controller에서 각 노드 이름을 `getent ahostsv4`(실패 시 `getent hosts`)로 해석해 `addr=이름|IP` 라인으로 반환하고 인벤토리 `address`에 IP 저장(루프백 제외). 해석 실패 노드는 경고 문구로 안내하고 활성 Controller는 VIP로 폴백
+- `resolve_node_address`: 인벤토리 `address`가 IP면 그대로 사용, 호스트명이면 배포 서버 해석을 시도하고 실패 시 조치 방법이 담긴 `AddressResolutionError` 발생. 노드 점검·사용자 정의 점검에 적용
+- 활성 Controller 접속 주소: 인벤토리의 활성 Controller IP → 배포 서버에서 해석 가능한 `controller_hostname` → VIP 순으로 결정
+- `node_failure_reason`: 주소 해석 실패, `HostKeyNotVerifiable`(known_hosts 미등록, `ssh-keyscan` 안내), `gaierror`를 한글 문구로 변환
+- VIP ping 점검(`emit_check vip`)의 하드코딩된 `10.255.191.150`을 `PROVIDER_VIP` 환경 변수(공급자 VIP)로 교체
+- 인프라 현황 Prometheus 탐색도 Controller 인벤토리 IP를 우선 사용하고 VIP를 마지막 후보로 추가
+- 서버 코드만 변경(`server.py`), 정적 자산 변경 없음
+
+### 검증 (katech `rocky` 공급자)
+
+- 재탐색 후 인벤토리에 실제 IP 저장 확인: `katech-mixed1~3` = `10.255.192.191~193` (VIP `10.255.192.190`)
+- 노드 호스트 키를 배포 서버 `/root/.ssh/known_hosts`에 등록(`ssh-keyscan`) 후 전체 점검 53.9초 완료: Controller 3대 모두 접속 성공, sudo NOPASSWD로 root 전용 로그 수집 정상(Cinder 로그 오류 100건 감지)
+- 잔여 `unavailable` 항목은 환경 특성: Manila·Octavia·Masakari·Swift·Heat 미설치, Compute 역할 노드 없음(`openstack compute service list --service nova-compute` 결과 없음 — mixed 노드 구성 확인 필요)
+
+## 2026-09-02 판정 정밀화·로그 제외 패턴·타임아웃·보관 정책·추이 차트
+
+이전 문서의 `다음 작업` 1~5번과 7번을 한 번에 적용했다. 6번(이메일·메신저 알림 채널 연동)은 이번 범위에서 제외했다.
+
+### 1. Cinder·Manila 등 서비스 판정 상세화
+
+- 활성 Controller 결과를 `describe_cluster_item`(server.py)이 후처리한다. `openstack ... -f table` 출력을 `parse_openstack_table`로 행 단위로 읽어 실제 데이터 행 수를 세고(이전에는 표 테두리까지 세어 `13건`처럼 표시), 항목 종류별로 판정과 특이사항을 만든다
+  - 서비스 목록(`cinder`·`manila`·`nova`·`heat`): `State=down` 또는 `Status=disabled` 서비스를 `Binary Host down (마지막 갱신 1일 19시간 전)` 형식으로 특이사항에 나열. 결과는 `서비스 9개 · Down 3 · Disabled 0` 또는 `서비스 6개 모두 정상`, 정상일 때는 Binary별 구성 수를 표시. 데이터 행이 없으면 `등록된 서비스 없음 · 서비스 미배포`로 확인 불가
+  - 에이전트 목록(`neutron`·`network`): `Alive`가 `:-)`가 아니거나 `State=DOWN`인 에이전트를 `Agent Type Host 응답 없음/admin down`으로 나열
+  - 리소스 목록(`vm`·`volume`·`snapshot`·`share`·`lb`·`amphora`·`heat_stack`): 상태 열을 기준으로 이상 상태(`error`, `*_FAILED`, 장기 `creating` 등) 건수와 이름·상태를 최대 6개 나열, 없으면 상태별 건수 표시
+  - 원인 구분: `is not an openstack command` → `Manila CLI 플러그인 미설치 · 서비스가 배포되지 않았을 가능성`, `command not found`(rc 127) → CLI 설치·PATH 확인, Endpoint 없음·인증 실패·API 연결 실패·명령 제한 시간 초과를 각각 다른 문구로 구분
+  - 항목마다 `problems` 배열과 `duration_seconds`를 함께 저장
+- katech(`rocky`) 최근 결과로 검증: Cinder `서비스 9개 · Down 3` 에 `cinder-volume katech-mixed1@kyj-lvm down (마지막 갱신 1일 19시간 전)` 3건 표시, Manila `CLI 플러그인 미설치`, Neutron `에이전트 12개 모두 정상 · DHCP agent 3 · L3 agent 3 …`
+- 화면 점검 방법 문구(`app.js`의 `inspectionGroups`)를 새 판정 기준에 맞게 수정
+
+### 2. 로그 오류 제외 패턴(공급자별)
+
+- 새 테이블 `log_exclusions(id, provider_id, service, pattern, reason, created_at)`, `service`가 빈 값이면 전체 로그 항목에 적용
+- API `GET/POST/DELETE /api/providers/{id}/log-exclusions`. 등록 시 Python `re.compile`과 배포 서버의 `grep -E`로 두 번 검증해 노드에서 해석되지 않는 패턴을 거부(`정규식 오류: unterminated character set` 확인)
+- 노드 점검 스크립트가 서비스별 패턴 파일을 임시 디렉터리에 만들고 `grep -Eiv -f`로 전날·전전날 로그 모두에서 제외한다. 제외는 `tail -n 100` 표본 추출 전에 적용되므로 반복되는 무해한 오류가 표본을 가득 채워 실제 오류를 가리는 일이 없다
+- 노드별 `excluded_count`, 항목 `excluded_count`를 저장하고 특이사항에 `제외 패턴 N건`, 노드별 상세에 `제외 N건` 표시
+- 오류 건수를 표본 추출 전에 세도록 바꿔 `100건`으로 잘리던 카운트가 실제 건수를 반영한다
+- 화면: 예외 처리 패널 하단에 `로그 오류 제외 패턴` 섹션(서비스 선택·정규식·사유·목록·삭제), 설정 요약 카드에 `로그 제외 N` 표시, 로그 항목 상세의 `제외 패턴 등록` 버튼이 해당 서비스를 미리 선택한 채 입력란으로 이동
+- 로컬 검증: 전날 날짜의 ERROR 3줄(그중 1줄이 패턴 일치) → `count 2 · excluded 1`
+
+### 3. Bonding·Mount 역할별 적용 기준 확정
+
+| 항목 | 대상 | 정상 | 주의 | 판정 제외 |
+|---|---|---|---|---|
+| Bonding | 전체 역할 중 `/proc/net/bonding`이 있는 노드 | 모든 bond와 slave의 MII Status가 up | bond 또는 slave MII down/going back, slave 없음 | bond 미구성 노드는 `미구성`으로 표시하고 판정에서 제외. 전체가 미구성이면 항목 결과 `미구성`·정상 |
+| Mount | Controller 역할만 | fstab 등록 경로가 모두 마운트되고 네트워크 마운트가 응답 | `/var/lib/{glance,cinder,nova}` 아래 fstab 등록 경로 미마운트, 또는 nfs/nfs4/cifs/glusterfs/ceph 마운트가 5초 안에 `stat -f` 응답 없음 | Compute는 `인스턴스 저장소` 항목에서 점검. Cinder NFS 공유는 활성 cinder-volume 노드만 마운트하므로 미마운트 자체는 정보로만 표시 |
+
+- Bonding 스크립트가 bond별 `이름|모드|MII|slave:상태` 요약을 만들고 상세에 `bond0: MII up · IEEE 802.3ad … · slaves eno1 up, eno2 up` 형식으로 표시. 이전에는 bond가 없는 모든 노드가 `확인 불가`로 집계되어 hnti·katech 모두 항목이 확인 불가였음
+- Mount 스크립트가 `findmnt`로 마운트 목록·fstab 미마운트·무응답 마운트·Cinder `nfs_shares_config` 공유 수·Glance 저장소 파일시스템을 수집하고, 상세 첫 줄에 `마운트 N개 (네트워크 M개) · Cinder NFS 공유 설정 K개 · Glance 저장소 …`를 표시. 이전에는 디렉터리 존재 여부만 보고 정상 처리했음
+- 노드 요약에서 bonding `미구성`은 확인 필요 항목으로 집계하지 않음(`not_applicable`)
+
+### 4. 제한 시간·타임아웃 최적화
+
+- 원격 명령마다 개별 제한 시간을 두어 한 명령이 멈춰도 해당 항목만 확인 불가가 되고 노드 결과 전체가 버려지지 않는다(`timeout -k`). 환경 변수로 조정하며 기본값은 다음과 같다
+
+| 환경 변수 | 기본값 | 적용 |
+|---|---|---|
+| `INSPECTION_COMMAND_TIMEOUT` | 20초 | 노드 시스템 명령 1개(smartctl, virsh, findmnt 등) |
+| `INSPECTION_LOG_TIMEOUT` | 45초 | 노드 로그 검색 1개 서비스(전날·전전날 각각) |
+| `INSPECTION_OPENSTACK_TIMEOUT` | 45초 | 활성 Controller의 openstack CLI·pcs·rabbitmqctl·mysql 명령 1개 |
+| `INSPECTION_NODE_TIMEOUT` | 240초 | 노드 스크립트 전체(SSH 세션 멈춤 보호선, 기존 120초) |
+| `INSPECTION_CONTROLLER_TIMEOUT` | 600초 | 활성 Controller 스크립트 전체(기존 240초) |
+| `INSPECTION_NODE_CONCURRENCY` | 8대 | 동시에 SSH 점검하는 노드 수(세마포어) |
+
+- 제한 시간 초과(rc 124)는 항목 특이사항에 `제한 시간 초과: 노드명` 또는 `명령 제한 시간 45초 초과 · API 응답 지연 또는 VIP 장애 확인`으로 표시
+- 항목별·노드별 소요 시간을 측정해 저장한다: 항목 `duration_seconds`(노드 항목은 가장 느린 노드 기준), 노드 `duration_seconds`/`script_seconds`, 결과 `timing`(노드 단계·Controller 단계 시간, 노드별 시간, 가장 느린 항목 5개, 적용된 제한 시간). 화면 상세 결과 제목 옆에 `소요 N초` 배지 표시
+- root 계정도 `bash -s`로 스크립트를 실행해 로그인 셸과 무관하게 bash 기능(`export -f`, `$'\n'`)을 사용
+- 모든 원격 명령의 표준입력을 `/dev/null`로 고정했다. 스크립트는 `bash -s`의 표준입력으로 전달되므로 표준입력을 읽는 자식 명령이 나머지 스크립트를 삼킬 수 있는데, hnti 검증 중 `timeout`으로 감싼 `rabbitmqctl cluster_status`가 그 뒤의 mysql·OpenStack 항목 전체를 삼켜 결과에서 사라지는 문제를 재현하고 수정했다
+- 설정 화면에 `점검 실행 제한 시간` 패널(`GET /api/settings/inspection`)을 추가해 적용 값과 환경 변수명을 확인
+
+### 5. 점검 이력 보관 정책
+
+- 정책(환경 변수): `INSPECTION_RETENTION_DAYS`(기본 180일, 지나면 삭제) · `INSPECTION_RAW_RETENTION_DAYS`(기본 30일, 지나면 원본 출력 정리) · `INSPECTION_RETENTION_MAX`(공급자별 최대 200건) · `INSPECTION_RETENTION_KEEP`(최신 10건은 항상 원본 보존). 0이면 해당 규칙 사용 안 함
+- 원본 정리(`compact_check_result`): 노드 `*_raw`·로그 표본·bonding/mount 요약, 항목 `details` 원문, 로그 노드 `output/new_output`을 제거하고 상태·판정·특이사항·건수·소요 시간은 유지. `check_results.compacted_at` 컬럼과 항목 `compacted` 플래그로 표시하며 화면 상세에 `보관 정책에 따라 원본 출력이 정리되었습니다` 안내
+- 삭제된 공급자의 남은 결과도 함께 삭제하고, 변경이 있으면 `VACUUM`으로 파일 크기를 줄인다
+- 실행: 서버 시작 직후와 이후 24시간마다 스케줄러 루프에서 실행(점검 실행 중이면 건너뜀), `POST /api/settings/retention/prune`으로 수동 실행. 마지막 실행 결과는 `maintenance_runs` 테이블에 저장
+- 설정 화면 `점검 이력 보관` 패널: 정책 값, 공급자별 보관 건수·원본 정리 건수·용량·기간, 데이터베이스 파일 크기, 마지막 정리 결과, `지금 정리` 버튼
+- 데이터베이스 복사본에 15일 간격의 가짜 이력 15건을 넣고 검증: 180일 초과 3건 삭제, 30일 초과 10건 원본 정리(470KB → 110KB), 최신 3건 원본 유지
+
+### 7. 점검 결과 추이 차트
+
+- `점검 이력 및 변화` 패널의 변화 요약과 이력 표 사이에 최근 30회의 주의(주황 `#d4741a`)·확인 불가(파랑 `#2a78d6`) 건수 선 그래프 추가. 두 색은 색각 이상 시뮬레이션 검증기로 구분 가능(protan ΔE 26.8)과 대비(3:1 이상)를 확인해 선택
+- 구성: 눈금선 최대 4개, 날짜 x축 라벨, 2px 선과 흰 테두리 점, 선 끝 직접 라벨(`주의 N`, `확인 불가 N`), 범례에 최신값과 직전 대비 증감. 컨테이너 너비 기준으로 그려 글자가 늘어나지 않으며 창 크기 변경 시 다시 그림
+- 상호작용: 마우스 이동 시 가장 가까운 점검에 십자선과 툴팁(시각·건수·수동/예약·문제 노드·소요), 점 클릭 또는 키보드 ←→ 후 Enter로 해당 결과 조회. 현재 조회 중인 점검 위치를 십자선으로 표시. 이력 표가 표 보기 역할
+- 점검이 2회 미만이면 안내 문구만 표시
+
+### 실제 환경 검증 (hnti, 2026-09-02)
+
+- 전체 52개 항목 점검 171.9초(노드 단계 76.4초, 활성 Controller 단계 95.1초). 가장 느린 항목은 System log 61.2초(전날 오류 518,327건을 전수 집계), 다음은 endpoint 7.4초·swift 6.5초 등 OpenStack CLI 개별 호출 4~7초
+- Cinder `서비스 9개 · Down 1` — `cinder-volume hcon01@nfs1 down (마지막 갱신 6일 0시간 전)`, Manila `서비스 6개 · Down 3` — `manila-scheduler hcon01/02/03 down (마지막 갱신 11일 19시간 전)`, Nova `서비스 8개 모두 정상 · nova-compute 2 · nova-conductor 3 · nova-scheduler 3`, Neutron `에이전트 14개 모두 정상`, Masakari `CLI 플러그인 미설치`, Heat stack `서비스 Endpoint 없음`, Volume `1건 모두 정상 · available 1`
+- Bonding 전체 5대 미구성으로 항목 정상(`미구성`), Mount는 hcon02·hcon03의 Cinder NFS 마운트 1개와 Glance 저장소 `/ ext4`를 표시하고 hcon01은 마운트 없음(활성 cinder-volume이 아니므로 정상)
+- 로그 오류 건수가 표본 한도 100건이 아닌 실제 건수(Nova 48,300건 등)로 집계되며, 임시 등록한 Nova 제외 패턴이 311줄을 제외한 뒤 삭제 확인
+- 첫 실행에서 활성 Controller 항목이 pcs·vip·rabbitmq 3개만 남는 문제를 발견해 표준입력 `/dev/null` 고정으로 수정 후 재검증
+
+### 추가된 API
+
+| 메서드 | 경로 | 용도 |
+|---|---|---|
+| GET | `/api/providers/{id}/log-exclusions` | 로그 제외 패턴 목록과 적용 가능한 서비스 |
+| POST | `/api/providers/{id}/log-exclusions` | 패턴 등록(`service`, `pattern`, `reason`), 정규식 검증 |
+| DELETE | `/api/providers/{id}/log-exclusions/{exclusion_id}` | 패턴 삭제 |
+| GET | `/api/settings/inspection` | 제한 시간·동시 실행 수·시간대·보관 정책·저장 현황 |
+| POST | `/api/settings/retention/prune` | 보관 정책 즉시 적용(점검 실행 중이면 409) |
+
+### 변경 파일
+
+- `server.py`: `env_int`, `INSPECTION_TIMEOUTS`, `INSPECTION_NODE_CONCURRENCY`, `RETENTION_POLICY`, `LOG_SERVICES`, `LogExclusionRequest`, `validate_log_pattern`, 로그 제외·설정·정리 API, `parse_openstack_table`, `describe_age`, `describe_cluster_item`, 노드 스크립트(timeout·타이밍·bonding·mount·로그 제외·건수 계산), Controller 스크립트(`run_limited`·rc·ms), `aggregate_bonding_item`, `aggregate_mount_item`, 로그 집계 제외 건수, `timing`, `run_retention_if_due`, root도 `bash -s`
+- `provider_store.py`: `log_exclusions`·`maintenance_runs` 테이블, `check_results.compacted_at`, 로그 제외 CRUD, `compact_check_result`, `check_storage_stats`, `prune_check_results`, 공급자 삭제 시 제외 패턴 삭제, `get_check`에 `compacted_at`
+- `app.js`: 점검 방법 문구, 로그 제외 UI(`loadLogExclusions` 등), 설정 카드 힌트, `제외 패턴 등록` 행 동작, 소요 시간 배지·원본 정리 안내, `renderInspectionTrend`·`showTrendTooltip`, 설정 화면 `loadInspectionSettings`·`renderInspectionSettings`·정리 버튼
+- `index.html`: 로그 제외 섹션, `#inspectionTrend`, 설정 화면 두 패널, 정적 자산 버전 `20260902-1`
+- `styles.css`: `.log-exclusion-*`, `.inspection-trend`·`.trend-*`, `.detail-duration`, `.compacted-note`, `.settings-facts`, `.retention-*`
+- `README.md`: 로그 제외 패턴, 제한 시간, 보관 정책 절 추가
+
+## 2026-09-02 대시보드 클러스터 노드 탐색 버튼
+
+- 공급자 등록은 VIP의 활성 Controller만 확인하고 노드 인벤토리를 저장하지 않으므로, 일일점검 전에 클러스터 탐색이 반드시 필요하다(인벤토리가 없으면 점검 API가 409 반환). 일일점검 화면의 설정 카드 안에만 있던 탐색 버튼을 대시보드 상단 `일일점검 실행` 옆에도 추가했다
+- 버튼은 선택한 공급자로 `POST /api/providers/{id}/discover`를 호출하고 노드 수(`5대`), `미탐색`, `탐색 중`, `탐색 실패`를 배지로 표시한다. 일일점검 화면의 인벤토리 패널과 같은 `loadProviderNodes`를 사용하므로 두 화면의 상태가 함께 갱신된다
+- 정적 자산 버전 `20260902-2`. 변경 파일: `index.html`, `app.js`, `styles.css`
+
+## 2026-09-02 상단 알림 아이콘·사이드바 하단 정보 연결
+
+- 8월 21일 프로토타입의 자리표시자였던 상단 다이아몬드(♢) 아이콘과 `시스템 정상` 문구, 왼쪽 아래 `KA · 관리자 · Cloud Operator · •••` 사용자 블록을 실제 데이터와 연결했다. 사용자 인증·권한 체계는 미정이므로 가짜 사용자 정보와 사용자 메뉴 버튼은 제거했다
+- 알림 아이콘: `/api/alerts/summary`의 활성 알림 수를 배지로 표시(99건 초과는 `99+`), 위험 알림이 있으면 빨간색·주의만 있으면 주황색, 없으면 배지 숨김. 클릭하면 `알림 및 장애` 화면으로 이동. 60초마다 갱신
+- `서버 연결 정상`: `/api/health`를 30초마다 호출해 연결 상태(정상·끊김)와 실행 중인 점검 수(`점검 실행 중 1건`)를 표시. `/api/health`가 버전·시간대·공급자 수·실행 중 점검 수를 반환하도록 확장
+- 사이드바 하단: `OpenStack 운영 지원 플랫폼`과 `v0.1.0 · Asia/Seoul · 공급자 N개` 표시
+- 정적 자산 버전 `20260902-3`. 변경 파일: `index.html`, `app.js`, `styles.css`, `server.py`
+
+## 2026-09-02 로그 점검의 지속 오류 표시
+
+- 문제: hnti의 `cinder-volume hcon01@nfs1` 장애로 hcon01 `cinder-volume.log`에 하루 1만 건 넘는 `Manager for service cinder-volume ... not sending heartbeat` ERROR가 기록되고 Cinder log 항목도 주의(전체 10,570건)로 집계되었지만, 화면·PDF가 `전전날 대비 신규/변경 로그`만 표시해 며칠째 반복되는 오류는 `전전날과 다른 신규 오류 없음`으로만 보였다. 오래 지속되는 장애일수록 화면에서 사라지는 구조였음
+- 서버(`aggregate_log_item`): 표본의 각 줄을 신규(`new_output`)와 지속(`persistent_output`, 전전날에도 같은 메시지 존재)으로 나누고 노드별 `persistent_count`·`sample_count`·상위 메시지 5개(`top_messages`, 횟수 포함)를 저장. 항목 `persistent_count`와 특이사항 `지속 N건(표본)` 추가, 상세에 `지속 오류(전전날에도 발생)` 항목 추가
+- 화면(`logNodeSections`): 로그 항목의 노드별 상세를 `신규·변경 오류`와 `지속 오류` 두 구역으로 표시. 지속 오류는 상위 메시지와 횟수를 먼저 보여주고 표본 전체는 접힘. 특이사항의 노드 요약에 `전체 N건 · 신규 N건 · 지속 N건` 표기
+- 이상 항목 PDF(`collectIssueReportItems`): 노드별 `지속 오류` 출력을 추가
+- 표본은 전날 마지막 100줄이므로 지속 건수는 표본 기준이며 전체 건수(`count`)와 함께 표시한다
+- 정적 자산 버전 `20260902-4`. 변경 파일: `server.py`, `app.js`, `styles.css`, `index.html`
+
+## 2026-09-02 대시보드 고도화와 항목별 최신 결과 API
+
+### 배경
+
+- 대시보드는 8월 21일 프로토타입 그대로였다. 자원 사용량(vCPU 1,248/2,400 등)·OpenStack 서비스(Keystone·Ceph)·최근 알림이 모두 고정된 가짜 값이었고, 실제 데이터는 `일일점검 상태`·CPU Core·메모리·디스크 4개 카드뿐이었다
+- 인프라 현황은 "가장 최근 점검 1건"의 항목만 보여줘서 Cinder log 단일 항목 점검처럼 부분 점검을 실행하면 OpenStack 서비스·리소스가 모두 `미수집`으로 바뀌는 문제가 있었다
+
+### `GET /api/providers/{id}/overview`
+
+- 공급자 정보(VIP·활성 Controller·계정·sudo 방식·노드 인벤토리), 최근 점검 요약, 최근 14회 이력, 예약 설정, 미해소 알림(건수·위험·최근 6건), 최근 작업 이력 5건, 실행 중 여부를 한 번에 반환
+- `items`: 점검 항목마다 **그 항목을 포함한 가장 최근 점검**의 상태·결과·특이사항·문제 목록·점검 시각. 최신 이력부터 거슬러 올라가며 아직 채워지지 않은 항목이 있을 때만 원본 결과를 읽고(최대 10건), 부분 점검이 나머지 항목을 지우지 않는다
+- `node_snapshot`: 노드 결과가 포함된 가장 최근 점검의 노드별 CPU·메모리·디스크·가동 시간·상태(원본 출력 제외)
+- `issue_items`: 주의·확인 불가 항목 목록(주의 우선)
+- hnti 응답 시간 0.08초
+
+### 대시보드 화면
+
+1. 제목 줄: 날짜·시간대별 인사말과 공급자 요약(`hnti · VIP … · 활성 Controller hcon03 · 계정 ubuntu · sudo · 노드 5대`)
+2. KPI 카드 6개(클릭 시 해당 화면으로 이동): 일일점검 상태(시각·수동/예약·항목 수·소요), 주의 항목(직전 대비), 확인 불가 항목(직전 대비), 활성 알림(위험·주의), 노드 상태(정상/전체, 문제·확인 필요·접속 불가), 예약 실행(다음 실행)
+3. 노드 자원 사용 현황: CPU 평균·최대, 메모리·루트 디스크 사용률과 용량 합계, 노드별 CPU·메모리·디스크 게이지(80% 이상 주황, 90% 이상 빨강), 상태 순 정렬
+4. OpenStack 서비스·Middleware: PCS·VIP·RabbitMQ·MySQL·Endpoint·Nova·Neutron·Cinder·Manila·Octavia·Masakari·Swift·Heat·nova-compute 14개를 항목별 최신 결과로 표시(문제 목록 첫 줄 또는 결과 문구, 점검 시각). 클릭하면 일일점검의 해당 항목으로 이동
+5. 주의·확인 불가 항목: 최대 8개와 나머지 건수, 클릭 시 일일점검 상세로 이동
+6. 활성 알림: 최근 6건, 클릭 시 알림 및 장애 화면에서 해당 알림 처리 창을 연다
+7. 점검 추이: 일일점검 화면과 같은 차트(`renderTrendChart`로 공용화), 점 클릭 시 해당 결과 조회
+8. 최근 작업 이력 5건
+- 가짜 데이터·`renderCheck`·기존 4개 카드 제거. 인프라 현황 화면도 개요 API의 항목별 최신 결과와 노드 스냅샷을 사용하도록 변경하고, 리소스 개수는 표를 다시 세지 않고 판정 결과 문구(`볼륨 1건 모두 정상`)와 점검 시각을 표시
+- 정적 자산 버전 `20260902-5`. 변경 파일: `server.py`, `index.html`, `app.js`, `styles.css`
+- 인프라 현황의 서비스·리소스 점검 결과 글씨가 기본 크기로 커 보이던 문제 수정: 잘못된 선택자(`>b`)를 `article>b`로 고치고 9px·줄바꿈 허용·결과 열 폭 `minmax(70px,160px)` 적용. 정적 자산 버전 `20260902-6`
+
+## 2026-09-02 모니터링 탭 구현
+
+### `GET /api/providers/{id}/monitoring?range=1h|6h|24h|7d`
+
+- `discover_prometheus`: Controller 인벤토리 IP → 등록된 Controller 이름 → VIP 순으로 9090 포트의 `/-/ready`를 확인
+- Prometheus가 있으면 node_exporter 기준 즉시값(CPU·메모리·루트 디스크 사용률, 물리 인터페이스 수신/송신 rate, load1, Core 수, 가동 시간, 메모리·디스크 용량)과 범위 시계열(CPU·메모리·디스크 평균/최대, 네트워크 수신/송신 합계)을 조회. 간격은 1h 60초, 6h 5분, 24h 15분, 7d 1시간. `up` 쿼리로 job·instance별 수집 대상 상태를 반환(down 우선 정렬)
+- 노드 역할은 인벤토리 호스트명(FQDN 앞부분 포함)으로 매핑
+- Prometheus가 없거나 조회에 실패하면 `inspection_resource_history`가 최근 점검 이력(최대 20건)의 노드 지표로 점검 시각별 CPU·메모리·디스크 평균/최대 시계열을 만들고, 최근 점검의 노드별 수치를 `inspection_nodes`로 반환
+- 응답 시간: hnti(Prometheus 10.255.191.151:9090, 대상 52개) 0.54초, rocky(대체 경로) 0.14초
+
+### 화면
+
+- 왼쪽 메뉴의 `모니터링`(그동안 `href="#"`로 비어 있던 항목)을 `#monitoring` 페이지에 연결. 공급자 선택은 대시보드·일일점검·인프라 현황과 동기화
+- 상단: 조회 범위 버튼(1시간·6시간·24시간·7일), `30초 자동 갱신` 체크, 새로고침. 페이지를 벗어나면 자동 갱신 중지
+- 수집원 표시: `Prometheus 연결 · 수집원 URL · 대상 45/52 up · 범위·간격 · 갱신 시각` 또는 `Prometheus 없음 · 일일점검 이력으로 대체(최근 N회)`
+- 요약 카드 4개: CPU·메모리·루트 디스크 평균(최대 병기, 80% 주황·90% 빨강)과 네트워크 송수신 합계(대체 경로에서는 기준 점검 시각)
+- 시계열 차트 4개(`renderTimeSeriesChart`): 평균(파랑 면적)·최대(주황) 선, 80% 기준선, 시간축 라벨, 선 끝 직접 라벨, 범례에 최신값, 마우스 이동 시 십자선과 시각·값 툴팁. 네트워크는 수신/송신 두 선. 대체 경로는 점검 시각마다 점을 찍는다
+- 노드별 현재 상태 표: CPU·메모리·디스크 게이지, 수신·송신, Load 1m / Core, 가동 시간(대체 경로에서는 점검 시각 기준임을 명시)
+- Prometheus 수집 대상 표: UP/DOWN, job, instance, 노드. hnti에서는 `haproxy-exporter`·`mole_*_exporter` 7개 대상이 DOWN으로 확인됨
+- 정적 자산 버전 `20260902-7`. 변경 파일: `server.py`, `index.html`, `app.js`, `styles.css`
+
+## 2026-09-03 관리자 로그인 도입
+
+### 배경
+
+- 9080 포트에 접속하면 누구나 화면과 API(공급자 등록·삭제, 점검 실행, sudo·DB 비밀번호 등록)를 쓸 수 있었다. 사용자 권한 체계는 미정이라 우선 관리자 1개 계정만 두기로 했다
+
+### 구현
+
+- `provider_store.py`: `admin_account`(id 1 고정, `scrypt` 해시·salt, `must_change_password`, 비밀번호 변경·마지막 로그인 시각)와 `auth_sessions`(토큰 SHA-256, 만료·마지막 사용·주소·User-Agent) 테이블. `ensure_admin_account`, `reset_admin_password`, `verify_admin_password`(상수 시간 비교), `change_admin_password`, `create_session`/`get_session`/`delete_session`/`delete_other_sessions`/`purge_expired_sessions`
+- `server.py`: `require_login` 미들웨어가 `okestro_session` 쿠키로 세션을 확인하고 `request.state.user`에 넣는다. 미인증 시 `/api/*`는 401 JSON, 화면 경로는 `/login?next=` 302. 공개 경로는 `/login`, `/api/auth/login`, `/api/health`, `/styles.css`, `/login.js`
+  - `POST /api/auth/login`(주소별 5회 실패 시 300초 차단, 로그인 성공·실패 로그), `POST /api/auth/logout`, `GET /api/auth/session`, `POST /api/auth/password`(현재 비밀번호 확인, 8자 이상·문자 종류 2가지 이상, 다른 세션 전부 해제)
+  - 시작 시 `ADMIN_USERNAME`(기본 `admin`)·`ADMIN_PASSWORD`로 계정 생성. 비밀번호가 없으면 기본 초기 비밀번호 `Okestro2018@`(`DEFAULT_ADMIN_PASSWORD`)를 사용하고 첫 로그인에서 변경을 요구(처음엔 임의 생성·로그 출력 방식이었으나 사용자 요청으로 고정 기본값으로 변경). `ADMIN_PASSWORD_RESET=1`이면 강제 교체와 전체 세션 해제. `SESSION_TTL_HOURS`(기본 8), `SESSION_COOKIE_SECURE`
+  - `/api/health`는 Docker·systemd 헬스체크용으로 공개하되 미인증에는 상태·버전·시각만 반환하고 공급자 수·실행 중 점검 수는 로그인 후에만 포함
+- `login.html`·`login.js`(신규): OKESTRO 남색 테마의 로그인 카드. 첫 로그인(`must_change_password`)이면 같은 화면에서 새 비밀번호 설정 단계로 전환. `next`는 같은 출처의 경로만 허용하고 해시(`#daily-inspection`)를 유지
+- `app.js`·`provider.js`: `fetch`를 감싸 401 응답이면 로그인 화면으로 이동(호출 37곳을 개별 수정하지 않음). 사이드바 하단에 로그인 계정과 로그아웃 버튼, 설정 화면에 `관리자 계정` 패널(계정·로그인 시각·세션 만료·마지막 비밀번호 변경·활성 세션 수, 비밀번호 변경 폼, 로그아웃)
+- `Dockerfile`에 `login.html`·`login.js` 복사, `compose.yaml`에 `ADMIN_*`·`SESSION_TTL_HOURS` 환경 변수, README `로그인` 절. 정적 자산 버전 `20260903-1`
+
+### 적용 후 수정(2026-09-03)
+
+- 로그인 카드가 화면 오른쪽으로 밀려 보임: 앱 셸용 전역 규칙 `main{grid-column:2}`가 로그인 페이지의 `<main>`에도 적용되어 단일 열 그리드의 2번째 열로 배치됨. 컨테이너를 `<div role="main">`으로 바꾸고 `.login-body .login-shell{grid-column:1;grid-row:1;margin:auto}` 방어 규칙 추가
+- 로그인 폼과 비밀번호 변경 폼이 동시에 표시됨: `.login-form{display:flex}`가 `hidden` 속성의 기본 `display:none`보다 우선함. `.login-form[hidden],.login-form [hidden]{display:none!important}` 추가
+- 초기 비밀번호: 임의 생성 후 로그 출력 방식은 운영자가 로그를 찾아야 해서 고정 기본값 `Okestro2018@`(`DEFAULT_ADMIN_PASSWORD`)로 변경. 로그에는 비밀번호를 남기지 않고 기본값 사용 사실만 기록. 계정 초기화 후 재기동해 기본값 로그인(200, `must_change_password: true`) 확인
+- 운영 주의: 검증용 curl 세션을 정리하려고 `auth_sessions` 테이블 전체를 지우면 운영자의 브라우저 로그인도 함께 끊긴다(실제로 발생). 테스트 세션은 해당 토큰만 `DELETE /api/auth/logout`으로 지우고, 서버 쪽 확인은 웹 로그인 없이 `server.provider_monitoring` 같은 함수를 직접 호출한다
+- 정적 자산 버전: `login.html` `20260903-3`, `index.html` styles `20260903-4` · app.js `20260903-2`, `provider.html` `20260903-1`
+
+### 검증 (curl, 2026-09-03)
+
+- 미인증 `GET /` → `302 /login?next=%2F`, `GET /api/providers` → 401, 잘못된 비밀번호 → 401
+- 로그인 → `HttpOnly` 쿠키 발급과 `must_change_password: true`, 로그인 상태에서 `/login` → `302 /`
+- 약한 비밀번호 400, 현재 비밀번호 불일치 400, 정상 변경 시 다른 브라우저 세션 1개 해제(401)와 현재 세션 유지, 로그아웃 후 401
+- 5회 연속 실패 후 6번째 요청 429(300초 차단)
+- 검증 후 계정을 초기화하고 재기동해 새 초기 비밀번호를 발급했다. 브라우저 화면 확인은 배포 서버에 브라우저가 없어 미실시
+
+### 변경 파일
+
+- `server.py`, `provider_store.py`, `login.html`(신규), `login.js`(신규), `app.js`, `provider.js`, `index.html`, `provider.html`, `styles.css`, `Dockerfile`, `compose.yaml`, `README.md`
+
+## 2026-09-03 모니터링 화면 수정
+
+### 공급자 선택 목록이 비어 있던 문제
+
+- 증상: 모니터링 화면의 공급자 select에 항목이 없어 조회가 시작되지 않음(접속 로그에 `/monitoring?range=` 호출이 전혀 없음)
+- 원인: `index.html` 하단에 08-26 캐시 문제 대응용으로 남은 인라인 스크립트가 `app.js`보다 먼저 `/api/providers`를 받아 select들을 채우는데 09-02에 추가한 `#monitoringProviderSelect`가 그 목록에 없었음. 이어 실행되는 `app.js`의 `loadProviders`는 대시보드 select에 옵션이 이미 있으면 항목 전체를 건너뛰어(`if (providerSelect.querySelector(...)) return`) 모니터링 select만 비게 됨. 두 요청의 도착 순서에 따라 달라지는 경합
+- 수정: `loadProviders`가 7개 select를 각각 독립적으로 채우도록 변경, 인라인 스크립트의 대상 목록에 모니터링 select 추가. `/api/providers`가 페이지 로드마다 2회 호출되는 구조는 그대로이며 인라인 스크립트 제거는 후속 검토
+
+### 상단 조작부 정렬
+
+- 제목 설명 문장이 길어 `space-between` 배치의 오른쪽 조작부가 축소·줄바꿈되고 `새로고침` 버튼만 둘째 줄 왼쪽으로 떨어짐
+- `.monitoring-content .page-heading>div:first-child{flex:1 1 auto;min-width:0}`, `.monitoring-actions{flex:0 0 auto;justify-content:flex-end}`, 1180px 이하에서는 제목 아래 한 줄 배치
+
+### 현재 구현 범위와 미구현(기획 대비)
+
+- 구현: node_exporter 기반 CPU·메모리·루트 디스크·네트워크 시계열(1h·6h·24h·7d), 30초 자동 갱신, 요약 카드, 노드별 현재 상태 표, Prometheus 수집 대상 표, Prometheus 부재 시 일일점검 이력 대체. 09-03 함수 직접 호출 검증: hnti Prometheus 연결(노드 5·대상 52 중 45 up·시계열 4종), rocky 대체 경로(이력 2건)
+- 미구현: OpenStack API·HAProxy 백엔드 실시간 상태, 자원 임계치 기반 경고의 알림 및 장애 연동(현재 80·90% 색상 표시만), 모니터링 탭 내 장애 이력, 노드별 상세 차트, 루트 외 파티션, 9090 외 포트·인증이 있는 Prometheus 연결
+
+## 2026-09-03 전체 화면 고도화
+
+### 배경과 범위
+
+- 전체 페이지 고도화 방향을 코드 기준으로 검토한 결과 다음 공백이 확인되었다. 공급자 수정 API가 없어 삭제 후 재등록해야 하고 이력이 함께 사라진다. CPU·메모리·디스크 80% 같은 판정 임계치가 서버 코드에 고정되어 있다. 점검 항목 선택이 예약 설정 외에는 저장되지 않는다. 실행 중인 점검을 취소할 수 없다. 회귀 테스트가 없고 `app.js` 한 파일이 약 2,200줄이다.
+- 진행 순서는 **구조 정리 → 설정 서버 저장 → 감사 로그 → 전체 공급자 통합 뷰 → 화면별 기능**으로 정했다. 구조 정리와 테스트를 먼저 둔 이유는 이어지는 기능 추가에서 기존 화면이 조용히 깨지는 것을 막기 위해서다.
+
+### 1. 구조 정리
+
+- `app.js`(약 2,200줄)를 화면별 11개 모듈로 분할했다: `js/core.js`(공통 상태·fetch 래퍼·페이지 전환), `settings.js`, `inspection.js`, `providers.js`, `infrastructure.js`, `monitoring.js`, `dashboard.js`, `runbooks.js`, `alerts.js`, `history.js`, `main.js`(초기화). 모듈은 로드 순서에 의존하는 전역 스크립트로 두고 `main.js`가 마지막에 초기화한다.
+- 별도 페이지였던 `provider.html`·`provider.js`를 SPA의 공급자 연결 화면으로 통합하고 삭제했다. `server.py`의 `/providers` 라우트와 `Dockerfile` 복사 목록도 함께 정리했다.
+- `index.html` 하단의 08-26 캐시 대응용 인라인 호환 스크립트를 제거했다. 09-03 모니터링 select 경합의 원인이었고, `/api/providers`가 페이지 로드마다 2회 호출되던 문제도 함께 해소됐다(문서 `다음 작업` 8번).
+- 정적 자산 버전은 `20260903-7`.
+
+### 2. 회귀 테스트 도입
+
+- `pytest.ini`와 `tests/` 추가. `conftest.py`가 임시 DB·마스터 키로 `server`를 임포트하고 로그인 세션을 만들어 준다. 테스트 파일 9개, 총 160개(159 통과·1 건너뜀, 약 60초).
+  - `test_auth.py`(로그인·세션·비밀번호 정책·차단), `test_providers.py`(등록·수정·삭제·인증정보·호스트 키·노드 편집), `test_inventory.py`(수집 스크립트 파서), `test_monitoring.py`(Prometheus 파싱·임계치 규칙·대체 경로), `test_alerts_features.py`·`test_alerts_history.py`(그룹화·타임라인·정비 시간 창), `test_work_history.py`(상태 전이·전후 점검), `test_settings.py`(설정 검증·per-user 저장), `test_js_smoke.py`
+- JS는 호스트에 node가 없어 `tests/js_smoke_env.js`가 최소 DOM·fetch 스텁을 제공하고 quickjs로 모든 모듈을 실행해 구문 오류와 초기화 예외를 잡는다.
+
+### 3. 설정의 서버 저장
+
+- `app_settings` 테이블과 `GET/PUT/DELETE /api/settings/{key}`. 항목은 `inspection.timeouts`, `inspection.retention`, `inspection.timezone`, `audit.retention`, `ui.menus`(사용자별), `ui.dashboard`(사용자별) 6종이며 각 항목에 허용 범위를 정의해 서버에서 검증한다.
+- 저장 값이 있으면 그 값을, 없으면 환경 변수 기본값을 사용한다(`ENV_DEFAULTS`). 변경은 재기동 없이 즉시 반영되고 `DELETE`로 환경 변수 기본값에 되돌린다. 설정 화면은 조회만 되던 제한 시간·보관 정책·시간대를 편집 가능한 폼으로 바꿨다.
+- 브라우저 `localStorage`에만 있던 왼쪽 메뉴 설정을 계정별 서버 저장으로 옮겨 다른 PC에서도 유지된다.
+- 공급자별 설정은 `PROVIDER_SETTING_SPECS`로 분리했다: `thresholds`(CPU·메모리·디스크 경고 비율, 로그 오류 허용 건수), `default_items`(기본 점검 항목 세트), `profile`(사이트·환경·담당자·메모·태그), `monitoring`, `runbooks`, `alert_rules`.
+
+### 4. 감사 로그
+
+- `audit_logs` 테이블(시각·행위자·동작·대상 종류/ID/이름·상세·결과·주소·User-Agent)과 `audit(...)` 헬퍼. 헬퍼는 예외를 삼켜 감사 기록 실패가 원래 작업을 깨뜨리지 않는다. 행위자는 요청 컨텍스트에서 가져오고 예약 실행은 `scheduler`로 남는다.
+- 기록 대상 51종·호출 지점 63곳(점검자 확인 제거 후): 로그인·로그아웃·비밀번호 변경, 공급자 등록·수정·삭제·탐색·진단, sudo·DB 인증정보 변경, 호스트 키 승인·폐기·변경 감지, 점검 예외·제외 패턴·사용자 정의 점검·예약, 알림 처리·코멘트·일괄 변경, 정비 시간 창, 작업 이력 전체, 설정 변경·초기화, 이력 정리, 인벤토리 수집, 모니터링 설정·규칙.
+- `GET /api/audit-logs`(행위자·동작·대상·기간·검색 필터, 페이지네이션)와 `/api/audit-logs/facets`. 설정 화면에서 조회하며 보관 기간은 `audit.retention`(기본 365일)으로 자동 정리한다.
+
+### 5. 전체 공급자 통합 뷰
+
+- `GET /api/overview`: 공급자별 최신 점검 시각·상태·주의/확인 불가 건수·활성 알림, 그리고 오늘의 할 일(오늘 예약 점검의 실행 여부, 미확인 위험 알림, 오늘 예정된 작업)을 한 번에 반환한다. 기준 시각은 예약 실행과 같은 `INSPECTION_TIMEZONE`.
+- 대시보드 최상단에 전체 공급자 카드 행을 두고 카드를 클릭하면 해당 공급자를 선택해 아래 상세로 이동한다. 자동 갱신은 `startFleetRefresh()`.
+
+### 6. 일일점검 고도화
+
+- 판정 임계치를 공급자 설정으로 옮겨 코드 고정 80% 기준을 제거했다. 사이트마다 다른 기준을 반영할 수 있다.
+- 기본 점검 항목 세트를 저장해 화면을 열 때마다 다시 선택하지 않는다.
+- `POST /api/providers/{id}/checks/cancel`: 실행 중인 점검 태스크를 취소한다(진행률 패널의 `취소` 버튼). 실행 중이 아니면 409. 진행 패널에 노드별 상태를 표시한다.
+- `GET /api/providers/{id}/check-timing`: 최근 N회 점검의 항목·노드별 소요 시간과 관측된 최댓값에서 유도한 제한 시간 권장값(문서 `다음 작업` 3번의 근거 데이터).
+- ~~`GET/PUT /api/providers/{id}/checks/{check_id}/review`(`check_reviews` 테이블): 점검자 확인~~ → 2026-09-04 제거(아래 참조).
+- `POST /api/reports/inspection.xlsx`(`inspection_excel.py`, openpyxl): 운영자의 기존 점검표 양식(번호 붙은 섹션 제목 + 점검 분류·점검 사항·점검 방법·점검 결과·특이사항 표)을 단일 시트로 재현해 보고 업무를 그대로 대체한다.
+- `runbooks.py`: 점검 항목별 조치 가이드를 "확인 순서 → 원인 후보 → 조치 → 확인" 구조의 짧은 Markdown으로 내장하고, 공급자 설정 `runbooks`로 사이트별 재정의를 허용한다. `GET /api/runbooks/{item_key}`로 결과 상세와 알림에서 바로 연다.
+
+### 7. 공급자 연결 고도화
+
+- `PUT /api/providers/{id}`: 이름·VIP·계정·SSH 키를 이력 손실 없이 교체한다(`providers.updated_at` 추가).
+- `POST /api/providers/{id}/diagnose`: VIP 도달, 호스트 키 신뢰, SSH 로그인, root 권한 상승, OpenRC·OpenStack CLI, 노드 도달, Prometheus 발견, DB 인증정보 등록 여부를 한 번에 진단해 항목별 성공·실패와 조치 문구를 돌려준다.
+- `provider_nodes` 테이블과 `POST/PATCH/DELETE /api/providers/{id}/nodes`: 탐색 결과에 노드를 수동으로 추가하거나 역할을 고치고, 정비 중인 노드를 점검에서 제외한다. katech처럼 `nova-compute`가 없어 Compute가 탐색되지 않는 사이트의 우회 수단이다(문서 `다음 작업` 4번의 임시 대응).
+- 공급자 프로필(사이트·환경·담당자·메모·태그)과 마지막 성공 접속 시각 표시. 호스트 키 변경 감지 시 감사 로그에 실패로 기록한다.
+
+### 8. 인프라 현황·모니터링 고도화
+
+- `inventory_collector.py`로 인벤토리 수집 스크립트와 파서를 `server.py`에서 분리했다. 이 모듈은 네트워크를 타지 않으므로 캡처한 명령 출력만으로 단위 테스트가 가능하다(SSH 구동부는 `server.py`의 `execute_inventory_collection`에 남는다). 스크립트 출력 규약은 `section=<이름>|<종료 코드>|<base64 출력>`이며 모든 자식 명령은 `timeout -k 5`와 `</dev/null`을 갖는다.
+- `POST /api/providers/{id}/inventory/collect`(+`/progress`), `GET /api/providers/{id}/infrastructure/metrics`: 일일점검과 별개로 노드 상세(OS·커널·CPU 모델·메모리·디스크·NIC·서비스)와 용량 지표를 수집한다.
+- 모니터링 임계치 규칙(`GET/PUT/DELETE .../monitoring/rules`, `POST .../monitoring/evaluate`): 초과 시 알림 및 장애를 자동 생성하고 후속 정상 값에서 해소한다. 정비 시간 창이 열려 있으면 `suppressed_until`로 억제한다. 색상 표시만 하던 구조에서 실제 알림 연동으로 바뀌었다(문서 `다음 작업` 7번).
+- `GET .../monitoring/nodes/{hostname}`(노드 상세 차트), `GET .../monitoring/openstack`(플랫폼에서 OpenStack API 직접 프로브 + Prometheus에 있으면 HAProxy 백엔드·RabbitMQ 큐·Galera 상태), `GET .../monitoring/alertmanager`(발화 중인 알림), `GET .../monitoring/query`(자유 PromQL).
+- `GET/PUT .../monitoring/settings`, `POST .../monitoring/test`: 공급자별 Prometheus·Grafana·Alertmanager 주소와 인증 방식·자격증명(암호화 저장)·TLS 검증을 설정한다. 9090 포트 고정과 인증 없는 Prometheus 전제를 해제했다.
+
+### 9. 알림 및 장애·작업 이력 고도화
+
+- `GET /api/alerts/groups`: Controller SSH 실패 1건이 확인 불가 20건으로 쏟아지던 구조를 노드·서비스·원인 기준으로 묶어 1건으로 보여주고 하위 항목을 펼친다.
+- `alert_events` 테이블 기반 타임라인(상태·담당자 변경, 코멘트, 연결된 작업)과 `POST /api/alerts/{id}/comments`, 다건 일괄 처리 `POST /api/alerts/bulk`, 반복·평균 확인/해소 시간 통계 `GET /api/alerts/stats`.
+- 정비 시간 창 `GET/POST/DELETE /api/maintenance-windows`(`maintenance_windows`·`maintenance_runs`): 기간과 대상 공급자를 지정하면 그동안 알림을 억제하고 작업 이력과 연결한다.
+- 작업 이력: 상태 전이(`POST /api/work-histories/{id}/transition`, 예정→진행→완료·승인), 작업 전후 점검 자동 실행과 연결(`POST .../checks/{phase}`)과 diff 조회(`GET .../comparison`), 파일 첨부(`work_history_attachments`), 월간 보고서 `GET /api/work-history-reports/monthly.csv`. 작업자는 로그인 계정으로 채운다.
+
+### 검증 (2026-09-04)
+
+- `pytest`: 160개 중 159 통과·1 건너뜀(59.98초).
+- 서비스 재기동 후 신규 라우트 등록 확인: `/api/overview`, `/api/audit-logs`, `/api/alerts/groups`, `/api/maintenance-windows`, `/api/settings`, `/api/runbooks/{item_key}` 모두 미인증 401(라우트 존재). 기동 로그에 예외 없음.
+- 실제 공급자(hnti·rocky)를 대상으로 한 end-to-end 점검·수집 재검증은 미실시. 브라우저 화면 확인도 배포 서버에 브라우저가 없어 미실시.
+
+### 변경 파일
+
+- 신규: `js/`(11개 모듈), `tests/`(9개 테스트 + `conftest.py` + `js_smoke_env.js`), `pytest.ini`, `runbooks.py`, `inspection_excel.py`, `inventory_collector.py`
+- 삭제: `app.js`, `provider.html`, `provider.js`
+- 수정: `server.py`, `provider_store.py`, `index.html`, `styles.css`, `inspection_report.py`, `requirements.txt`(openpyxl·python-multipart), `Dockerfile`, `compose.yaml`, `README.md`
+
+## 2026-09-04 점검자 확인(sign-off) 제거
+
+- 09-03에 추가한 점검자 확인 기능을 사용하지 않기로 해 제거했다. 점검 결과 배너의 `점검자 확인` 버튼과 확인 대화상자, `GET/PUT /api/providers/{id}/checks/{check_id}/review`, `provider_store.py`의 `check_reviews` 테이블 생성·조회·저장 함수(`get_check_review`, `save_check_review`, `list_check_reviews`), 감사 동작 `check.review`, 관련 스타일을 모두 삭제했다.
+- 노드 상태의 `review`(확인 필요)는 이름만 같을 뿐 다른 개념이므로 그대로 둔다.
+- 이미 운영 DB에 만들어진 `check_reviews` 테이블은 참조하는 코드가 없어 그대로 남겨 두었다(데이터 삭제 없음). 새로 만드는 DB에는 생성되지 않는다.
+- 검증: `pytest` 159 통과·1 건너뜀, 서비스 재기동 후 화면 정상. JS 스모크 테스트가 모든 모듈을 실행하므로 삭제된 DOM 요소를 참조하는 코드가 남아 있지 않음을 함께 확인했다. 정적 자산 버전 `20260904-1`.
+
+### 변경 파일
+
+- `server.py`, `provider_store.py`, `js/inspection.js`, `index.html`, `styles.css`, `README.md`, `PROGRESS.md`
+
+## 2026-09-04 `수집 대기` 요약 카드 조건부 표시
+
+- `수집 대기`는 서버가 내려주는 항목 상태가 아니라 화면 계산값이다. 선택한 항목 중 결과(`healthy`·`excepted`·`warning`·`unavailable`)가 없는 항목 수이며, 결과가 없는 항목은 `{status:'pending', note:'점검 실행 필요'}` 자리표시자로 그려진다.
+- 결과를 불러오면 선택 항목이 실제 점검된 항목(`selected_items`)으로 맞춰지므로 이 값은 대부분 0이고, 다음 두 경우에만 0보다 크다. ① 아직 점검을 한 번도 실행하지 않은 공급자 ② 결과를 본 뒤 항목 선택 패널에서 이번에 점검하지 않은 항목을 추가로 켠 경우.
+- 항상 0을 표시하는 카드가 자리를 차지해, 값이 0이면 요약 카드와 상태 필터 버튼에서 `수집 대기`를 감추도록 했다. 감춘 동안 요약 카드는 5열 대신 4열로 배치한다(`.inspection-summary.no-pending`, 1100px·760px 구간은 기존 3열·2열 유지). `수집 대기` 필터를 선택한 상태에서 값이 0이 되면 필터를 `전체`로 되돌린다.
+- 검증: quickjs로 `js/inspection.js`를 실행해 결과 없음 → 표시, 전 항목 결과 있음 → 숨김, 1건만 미수집 → 다시 표시, `수집 대기` 필터 선택 중 0이 되면 `전체`로 복귀(재귀 없음)를 확인했다. `pytest` 159 통과·1 건너뜀. 정적 자산 버전 `20260904-2`.
+- 상태 필터가 `pending`과 함께 잡도록 되어 있는 `skipped`(점검 제외)는 서버가 항목 상태로 내려주는 곳이 없어 현재는 동작하지 않는 분기다. 이번 변경에서는 건드리지 않았다.
+
+### 변경 파일
+
+- `js/inspection.js`, `styles.css`, `index.html`(자산 버전)
+
+## 2026-09-04 일일점검 상단 카드 배치 정리
+
+- 09-03에 `판정 임계치` 설정 카드가 추가되면서 설정 요약 카드가 6개가 됐는데 `.inspection-setup-cards`가 5열이라 6번째만 다음 줄로 떨어져, 화면 상단이 4(요약) · 5 · 1로 보였다. 5열을 6열로 바꿔 4 · 6 두 줄로 정리했다. 1100px 이하 3열, 760px 이하 2열은 그대로라 6개가 각각 3+3, 2+2+2로 균등하게 나뉜다.
+- 카드 폭이 1/5에서 1/6로 좁아져 `CPU 80% · MEM 80% · DISK 80%`가 두 줄로 넘쳤다. 세 값이 같으면 `CPU/MEM/DISK 80%`, 다르면 `80/85/90%`로 줄이고 항목 순서는 설명 줄로 옮겼다.
+- 검증: quickjs로 기본값·저장값·항목별 상이 세 경우의 카드 문구를 확인했다. `pytest` 159 통과·1 건너뜀. 정적 자산 버전 `20260904-3`.
+
+### 변경 파일
+
+- `styles.css`, `js/inspection.js`, `index.html`
+
+## 2026-09-04 건수 추이 그래프 표시 선택
+
+- `점검 이력 및 변화` 패널의 비교 기준 줄에 `건수 추이 표시` 체크박스를 두고, 끄면 주의·확인 불가 건수 추이 그래프(`#inspectionTrend`)를 감춘다. 기본값은 표시이며 선택은 브라우저에 남는다(`localStorage` 키 `okestro-inspection-trend`, 알림 화면의 `원인별 묶어 보기`와 같은 방식).
+- 그래프는 컨테이너의 실제 픽셀 폭으로 SVG를 그리는데 숨은 동안에는 폭을 잴 수 없으므로, 다시 켤 때 `renderInspectionTrend()`로 새로 그린다. 꺼진 동안에는 렌더링과 마우스 오버 강조를 건너뛴다.
+- 대시보드의 `점검 추이` 카드는 별개 영역이라 이 선택의 영향을 받지 않는다.
+- 검증: quickjs로 기본 표시 → 끄기(숨김·저장값 `0`) → 다시 켜기(표시·재렌더) → 설정 없음(기본 표시)을 확인했다. `pytest` 159 통과·1 건너뜀. 정적 자산 버전 `20260904-4`.
+
+### 변경 파일
+
+- `index.html`, `js/inspection.js`, `styles.css`
+
+## 2026-09-04 항목별 미니 추이 위치 고정
+
+- 점검 사항 칸의 사각형(항목별 최근 14회 판정)이 `display:inline-flex`로 항목 이름 바로 뒤에 붙어 있어서, 이름 길이에 따라 행마다 시작 위치가 달랐다. `display:flex`로 바꿔 이름 아래 한 줄을 차지하게 하고 `클릭하여 상세 결과 보기` 안내를 그 아래에 두었다. 모든 행에서 이름 → 사각형 → 상세 안내 순서와 시작 위치가 같아진다.
+- 점검 이력이 2회 미만이면 마크업 자체를 만들지 않아 그 행만 세로 높이가 달랐다. 빈 `<span class="item-trend empty">`를 남기고 `min-height:7px`를 줘 이력이 없어도 자리를 유지한다.
+- 검증: quickjs로 이력 없음·이력 3회 두 경우 모두 결과 행 52개 전부에서 사각형 줄이 이름과 상세 안내 사이에 있음을 확인했다. `pytest` 159 통과·1 건너뜀. 정적 자산 버전 `20260904-5`.
+
+### 변경 파일
+
+- `js/inspection.js`, `styles.css`, `index.html`(자산 버전)
+
+## 2026-09-04 왼쪽 메뉴 순서 변경
+
+- OVERVIEW 묶음을 `대시보드 → 공급자 연결 → 인프라 현황 → 일일점검` 순으로 바꿨다. 환경을 연결하고(공급자 연결) 구성을 확인한 뒤(인프라 현황) 점검을 수행하는(일일점검) 실제 사용 순서와 맞춘다.
+- 순서를 정의하는 세 곳을 함께 고쳤다. `index.html`의 메뉴 링크, `js/core.js`의 `configurableMenus`(설정 화면의 `왼쪽 메뉴 표시` 목록 순서), `server.py`의 `MENU_KEYS`(기본값과 검증 목록).
+- 정적 자산 버전 `20260904-6`. `pytest` 159 통과·1 건너뜀.
+
+### 변경 파일
+
+- `index.html`, `js/core.js`, `server.py`
+
+## 2026-09-04 왼쪽 메뉴 그룹 라벨 제거
+
+- `OVERVIEW`·`OPERATIONS` 라벨은 08-21 초기 프로토타입에서 메뉴가 4~5개였을 때 붙인 것으로, 이후 기능이 늘면서 실제 성격과 맞지 않게 됐다. 일일점검과 공급자 연결은 조회가 아니라 작업인데 OVERVIEW에 있었고, 모니터링은 조회 전용인데 OPERATIONS에 있었다. 메뉴가 8개뿐이라 묶지 않고 한 목록으로 두기로 했다.
+- 라벨과 함께 `styles.css`의 `.navigation p` 규칙, `js/core.js`에서 그룹에 보이는 항목이 없으면 라벨을 숨기던 처리를 삭제했다(`applyMenuPreferences`는 이제 메뉴 링크만 다룬다).
+- 정적 자산 버전 `20260904-7`. `pytest` 159 통과·1 건너뜀.
+
+### 변경 파일
+
+- `index.html`, `styles.css`, `js/core.js`
+
 ## 결정사항
 
 - 진행사항은 이 문서에 지속적으로 누적한다.
 - 세부 기술 스택은 운영 환경과 요구사항을 확인한 후 결정한다.
 - 전체 화면은 OKESTRO의 상징색인 어두운 남색을 중심으로 디자인한다.
-- 경고, 장애, 정상 상태가 명확히 구분되도록 상태 색상은 기본 테마와 별도로 정의한다.
+- 경고, 장애, 정상 상태는 명확히 구분되도록 상태 색상은 기본 테마와 별도로 정의한다.
+- root가 아닌 계정으로 등록한 공급자는 점검 스크립트를 항상 `sudo`로 root 실행하며, root 권한을 얻지 못하면 일반 권한으로 대체 실행하지 않고 확인 불가로 표시한다(로그 오판 방지). NOPASSWD가 허용되지 않는 사이트를 위해 sudo 비밀번호를 암호화 저장한다.
+- Bonding은 bond가 구성된 노드만 판정하고 미구성 노드는 제외한다. Mount는 Controller만 대상으로 fstab 미마운트와 네트워크 마운트 무응답만 주의로 본다. Compute 저장소는 `인스턴스 저장소` 항목이 담당한다.
+- 로그 제외 패턴은 표본 추출 전에 노드에서 적용하고 제외 건수를 남긴다. 제외 패턴이 실제 오류를 숨기지 않도록 사유를 필수로 기록한다.
+- 원격 명령은 개별 제한 시간을 갖고, 초과 시 해당 항목만 확인 불가로 처리한다. 스크립트 전체 제한 시간은 보호선으로만 사용한다.
+- 플랫폼 로그인은 관리자 단일 계정으로 시작한다. 다중 사용자·역할과 LDAP 연동은 권한 체계가 확정된 뒤 검토한다.
+- 점검 이력은 최신 10건을 항상 원본으로 보존하고, 30일이 지나면 원본 출력만 정리, 180일 또는 200건을 넘으면 삭제한다.
+- 운영 설정(제한 시간·보관 정책·시간대·감사 로그 보관)은 환경 변수를 기본값으로 두고 DB 저장 값이 있으면 그것을 우선한다. 화면에서 바꾸면 재기동 없이 반영되고, 초기화하면 환경 변수 값으로 돌아간다.
+- 판정 임계치와 기본 점검 항목은 코드가 아니라 공급자 설정에 둔다. 사이트마다 기준이 다르기 때문이다.
+- 감사 기록은 원래 작업을 절대 방해하지 않는다. 기록 실패는 로그만 남기고 작업은 계속 진행한다.
+- 인벤토리 수집은 스크립트·파서(`inventory_collector.py`)와 SSH 구동부(`server.py`)를 분리해, 파서는 캡처한 출력만으로 테스트한다.
+- 기능을 추가할 때는 해당 API의 회귀 테스트를 함께 추가한다.
 
 ## 확인이 필요한 사항
 
@@ -488,13 +1043,17 @@
 
 ## 다음 작업
 
-1. Cinder와 Manila 서비스의 실제 비정상 판정 결과 상세화
-2. 로그 오류 제외 패턴을 공급자별로 설정하는 기능 적용
-3. Bonding 및 Mount 점검의 역할별 적용 기준 확정
-4. 점검 실행 제한 시간과 항목별 타임아웃 최적화
-5. 점검 이력 보관 기간·용량 정책(오래된 원본 결과 정리) 결정
-6. 이메일·메신저 알림 채널 연동 및 예약 실행 결과 발송
-7. 점검 결과 추이(주의·확인 불가 건수) 차트 표시
+1. 2026-09-03 고도화로 추가된 기능을 실제 환경(hnti·rocky)에서 검증: 점검 취소, 공급자 수정·연결 진단, 노드 수동 편집, 인벤토리 수집, 모니터링 임계치 규칙 발화·해소, 작업 전후 점검 자동 첨부, Excel 내보내기. 지금까지는 테스트와 라우트 확인만 마쳤다
+2. 로그인·설정·감사 로그 화면의 브라우저 표시 확인(배포 서버에 브라우저가 없어 미실시)
+3. 이메일·웹훅(Slack, Teams) 알림 채널 연동과 예약 점검 결과·위험 알림 발송. 알림 그룹화와 정비 시간 창이 준비되어 발송만 붙이면 된다
+4. 다중 사용자와 역할(조회자·운영자·관리자). 작업 이력 작업자와 알림 담당자, 감사 로그 행위자가 모두 이 계정 체계 위에 올라간다
+5. Bonding·Mount 판정 기준을 bond 구성 노드와 NFS Glance 저장소가 있는 사이트에서 실제 검증
+6. `GET .../check-timing`의 누적 데이터로 제한 시간 기본값 재조정
+7. katech 사이트의 Compute 역할 노드 미탐색(`nova-compute` 서비스 없음) 근본 원인 확인. 현재는 노드 수동 추가로 우회 가능
+8. 로그 제외 패턴의 사이트 공통 기본 목록(벤더 확인된 무해한 메시지) 정리
+9. 설정 화면의 백업·복원(DB와 마스터 키를 암호화 묶음으로 내려받기·복원)
+10. 인프라 현황의 하이퍼바이저 용량·오버커밋 비율과 프로젝트별 자원 사용 화면
+11. 사이트 배포 시 앞단 TLS 적용 여부 결정
 
 ## 변경 기록
 
@@ -540,4 +1099,32 @@
 | 2026-08-31 | `점검 내용 보기`의 텍스트 복사를 fpdf2 서버 생성 PDF 자동 다운로드로 교체 |
 | 2026-08-31 | 노드별 점검 요약을 건수 줄과 클릭 가능한 항목 칩 구조로 재구성 |
 | 2026-08-31 | 전체 화면 글자색 대비(WCAG AA) 자동 보정과 상태색·구분선 팔레트 조정 |
-
+| 2026-09-01 | 직전 대비 변화 항목 클릭 시 미선택 항목도 자동 선택·표시하도록 수정 |
+| 2026-09-01 | 요약 카드의 `직전 대비 ±N` 클릭 시 늘거나 줄어든 항목 팝오버 표시 추가 |
+| 2026-09-01 | 상단 `PDF 저장`을 브라우저 인쇄에서 서버 생성 이상 항목 PDF 다운로드로 전환 |
+| 2026-09-01 | root SSH 차단 환경을 위한 sudo 권한 계정 점검 지원(sudo 비밀번호 검증·암호화 저장·관리 UI, 모든 점검 스크립트 root 실행) 추가 |
+| 2026-09-02 | 클러스터 탐색 시 Controller에서 노드 IP를 해석·저장하고 점검이 저장된 IP를 사용하도록 수정, 신규 katech 사이트에서 sudo NOPASSWD 계정 전체 점검 검증 |
+| 2026-09-02 | 대시보드 상단에 클러스터 노드 탐색 버튼과 노드 수 배지 추가 |
+| 2026-09-02 | 모니터링 탭 구현: Prometheus node_exporter 실시간 지표·시계열·수집 대상 상태, Prometheus가 없으면 점검 이력 기반 대체 표시 |
+| 2026-09-02 | 대시보드를 실제 데이터 기반으로 재구성(KPI 6개·노드 자원·서비스 상태·이상 항목·알림·추이·작업 이력)하고 항목별 최신 결과 개요 API 추가, 인프라 현황도 같은 API 사용 |
+| 2026-09-02 | 로그 점검 상세를 신규 오류와 지속 오류(전전날에도 발생)로 분리해 장기 반복 오류가 화면·PDF에 보이도록 수정 |
+| 2026-09-02 | 상단 알림 아이콘을 활성 알림 수·심각도와 연결하고 서버 연결 상태 표시, 사이드바 하단 가짜 사용자 블록을 플랫폼 정보로 교체 |
+| 2026-09-02 | OpenStack 서비스·에이전트·리소스 표 분석 기반 상세 판정, 공급자별 로그 오류 제외 패턴, Bonding·Mount 역할별 판정 기준, 명령별 제한 시간과 소요 시간 기록, 점검 이력 보관 정책과 원본 정리, 주의·확인 불가 추이 차트 추가 |
+| 2026-09-03 | 로고 클릭 시 대시보드 이동, 관리자 단일 계정 로그인(세션 쿠키·접근 제어·첫 로그인 비밀번호 변경·설정 화면 비밀번호 변경) 추가 |
+| 2026-09-03 | 웹 서비스 포트 9080 → 8090 변경 |
+| 2026-09-03 | 로그인 화면 레이아웃·폼 표시 수정, 기본 초기 비밀번호 고정, 모니터링 공급자 목록 경합 수정과 상단 조작부 정렬, 모니터링 구현 범위·미구현 정리 |
+| 2026-09-03 | 구조 정리: `app.js`를 화면별 11개 모듈로 분할, 공급자 페이지 SPA 통합(`provider.html`·`provider.js` 삭제), 인라인 호환 스크립트 제거, pytest 회귀 테스트 160개와 quickjs JS 스모크 도입 |
+| 2026-09-03 | 설정의 서버 저장(제한 시간·보관 정책·시간대·감사 로그 보관 화면 편집, 사용자별 메뉴·대시보드 구성)과 공급자별 판정 임계치·기본 항목·프로필 분리 |
+| 2026-09-03 | 감사 로그 도입(52종 동작 기록·조회·보관 정리)과 전체 공급자 통합 뷰(`GET /api/overview`, 오늘의 할 일) 추가 |
+| 2026-09-03 | 일일점검 고도화: 실행 취소, 노드별 진행 상태, 소요 시간 통계와 제한 시간 권장값, 점검자 확인 워크플로(2026-09-04 제거), 운영자 양식 Excel 내보내기, 항목별 조치 가이드(런북) |
+| 2026-09-03 | 공급자 연결 고도화: 공급자 수정, 연결 진단, 노드 인벤토리 수동 편집, 공급자 프로필 |
+| 2026-09-03 | 인프라·모니터링 고도화: 인벤토리 수집기 분리와 주기 수집, 임계치 알림 규칙 연동, 노드 상세 차트, OpenStack 계층 패널, Alertmanager·자유 PromQL, 공급자별 Prometheus 주소·인증 설정 |
+| 2026-09-03 | 알림·작업 이력 고도화: 원인별 그룹화, 타임라인·코멘트·일괄 처리·통계, 정비 시간 창, 작업 상태 전이와 작업 전후 점검 자동 첨부, 월간 보고서 CSV |
+| 2026-09-04 | 2026-09-03 고도화 작업 내용을 문서에 반영하고 재기동·테스트(159 통과·1 건너뜀)로 검증 |
+| 2026-09-04 | 점검자 확인(sign-off) 기능 제거(화면·API·저장 코드·감사 동작·스타일) |
+| 2026-09-04 | 일일점검 요약 카드·상태 필터의 `수집 대기`를 결과 없는 항목이 있을 때만 표시 |
+| 2026-09-04 | 일일점검 상단 설정 요약 카드를 한 줄 6열로 정리하고 `판정 임계치` 카드 문구 압축 |
+| 2026-09-04 | `점검 이력 및 변화`의 건수 추이 그래프 표시 여부 선택 추가 |
+| 2026-09-04 | 항목별 최근 결과 미니 추이를 항목 이름 아래 고정 줄로 이동해 모든 항목에서 같은 위치에 표시 |
+| 2026-09-04 | 왼쪽 메뉴 순서를 대시보드 → 공급자 연결 → 인프라 현황 → 일일점검으로 변경 |
+| 2026-09-04 | 왼쪽 메뉴의 그룹 라벨(OVERVIEW·OPERATIONS) 제거 |
