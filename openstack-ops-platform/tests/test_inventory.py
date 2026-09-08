@@ -149,7 +149,8 @@ def test_parse_controller_output_capacity_projects_and_storage():
     per = {item["hostname"]: item for item in capacity["hypervisors"]}
     assert per["hcom01"]["instances"] == 3 and per["hcom01"]["disk_percent"] == 16.7 and per["hcom02"]["disk_percent"] is None
     projects = {item["name"]: item for item in capacity["projects"]}
-    assert projects["platform"] == {"id": "p1", "name": "platform", "instances": 2, "active": 2, "vcpus": 8, "ram_mb": 16384, "disk_gb": 160}
+    assert {key: value for key, value in projects["platform"].items() if key != "quota"} == {"id": "p1", "name": "platform", "instances": 2, "active": 2, "vcpus": 8, "ram_mb": 16384, "disk_gb": 160}
+    assert projects["platform"]["quota"]["available"] is False  # no quota sections in this fixture
     assert projects["database"]["instances"] == 1 and projects["database"]["active"] == 0
     assert capacity["instances"] == {"total": 3, "by_status": {"ACTIVE": 2, "ERROR": 1}}
     storage = result["storage"]
@@ -166,6 +167,132 @@ def test_parse_controller_output_when_openstack_cli_fails():
     assert "openrc" in result["openstack"]["errors"] and "command not found" in result["openstack"]["errors"]["hypervisors"]
     assert result["capacity"]["hypervisors"] == [] and result["capacity"]["totals"]["vcpus"] == 0
     assert result["storage"]["backend"] == "none" and result["storage"]["ceph"] is None
+
+
+PLACEMENT_RPS = json.dumps({"resource_providers": [
+    {"uuid": "rp-1", "name": "hcom01", "parent_provider_uuid": None},
+    {"uuid": "rp-2", "name": "hcom02", "parent_provider_uuid": None},
+    {"uuid": "rp-3", "name": "hcom01_pgpu", "parent_provider_uuid": "rp-1"}]})
+PLACEMENT_INV_1 = json.dumps({"inventories": {
+    "VCPU": {"total": 32, "reserved": 0, "allocation_ratio": 16.0, "min_unit": 1, "step_size": 1},
+    "MEMORY_MB": {"total": 131072, "reserved": 512, "allocation_ratio": 1.5},
+    "DISK_GB": {"total": 1800, "reserved": 0, "allocation_ratio": 1.0}}})
+PLACEMENT_USE_1 = json.dumps({"usages": {"VCPU": 12, "MEMORY_MB": 24576, "DISK_GB": 300}})
+QUOTA_COMPUTE = json.dumps({"quota_set": {"id": "p1", "instances": {"in_use": 2, "reserved": 0, "limit": 10},
+                                          "cores": {"in_use": 8, "reserved": 0, "limit": 100},
+                                          "ram": {"in_use": 16384, "reserved": 0, "limit": 51200}}})
+QUOTA_VOLUME = json.dumps({"quota_set": {"id": "p1", "volumes": {"in_use": 3, "reserved": 0, "limit": 10},
+                                         "gigabytes": {"in_use": 160, "reserved": 0, "limit": -1}}})
+QUOTA_NETWORK = json.dumps({"quota": {"floatingip": {"used": 3, "reserved": 0, "limit": 50},
+                                      "network": {"used": 2, "reserved": 0, "limit": 10}}})
+AGGREGATES = json.dumps([{"ID": 1, "Name": "az-a-hosts", "Availability Zone": "az-a", "Hosts": ["hcom01"]},
+                         {"ID": 2, "Name": "az-b-hosts", "Availability Zone": "az-b", "Hosts": "hcom02"}])
+NOVA_CONF = """=== /etc/nova/nova.conf
+cpu_allocation_ratio = 0.0
+initial_cpu_allocation_ratio = 8.0
+ram_allocation_ratio = 1.2
+reserved_host_memory_mb = 4096
+=== /etc/nova/nova.conf.d/override.conf
+ram_allocation_ratio = 2.0
+"""
+
+
+def controller_with_apis(**overrides) -> str:
+    parts = {"api_access": "placement=http://p compute=http://c volume=http://v network=http://n",
+             "placement_providers": PLACEMENT_RPS, "placement_inv|rp-1": PLACEMENT_INV_1, "placement_use|rp-1": PLACEMENT_USE_1,
+             "quota_compute|p1": QUOTA_COMPUTE, "quota_volume|p1": QUOTA_VOLUME, "quota_network|p1": QUOTA_NETWORK,
+             "aggregates": AGGREGATES}
+    parts.update(overrides)
+    return controller_stdout(**parts)
+
+
+def test_parse_nova_conf_prefers_configured_over_initial_and_later_files():
+    parsed = ic.parse_nova_conf(NOVA_CONF)
+    # cpu is configured as 0.0, which nova treats as "unset", so the initial_ value stands.
+    assert parsed["ratios"]["vcpu"] == 8.0
+    # the drop-in file is read after the base file and wins.
+    assert parsed["ratios"]["memory"] == 2.0
+    assert "disk" not in parsed["ratios"]
+    assert parsed["reserved"] == {"vcpu": 0, "memory": 4096, "disk": 0.0}
+    assert parsed["files"] == ["/etc/nova/nova.conf", "/etc/nova/nova.conf.d/override.conf"]
+    assert ic.parse_nova_conf("")["ratios"] == {}
+
+
+def test_placement_drives_overcommit_capacity_and_headroom():
+    result = ic.parse_controller_output(controller_with_apis())
+    capacity = result["capacity"]
+    assert result["api_access"]["ok"] and result["api_access"]["placement"] and result["api_access"]["quota_projects"] == 1
+    rows = {row["hostname"]: row for row in capacity["hypervisors"]}
+    allocation = rows["hcom01"]["allocation"]
+    assert allocation["source"] == "placement"
+    # 32 cores x 16 = 512 schedulable vCPU; nova reports 12 allocated.
+    assert allocation["vcpu"] == {"total": 32, "reserved": 0, "ratio": 16.0, "capacity": 512, "used": 12, "percent": 2.3, "physical_percent": 37.5, "free": 500}
+    # memory reserves 512 MB before the 1.5 ratio applies: (131072 - 512) * 1.5
+    assert allocation["memory"]["capacity"] == 195840 and allocation["memory"]["used"] == 24576
+    assert rows["hcom02"]["allocation"]["source"] == "", "the nested pgpu provider must not be matched to a hypervisor"
+    overcommit = capacity["totals"]["overcommit"]
+    assert overcommit["source"] == "placement" and overcommit["known_hypervisors"] == 1 and overcommit["mixed"] is False
+    assert overcommit["vcpus"] == {"capacity": 512, "used": 12, "free": 500, "percent": 2.3, "reserved": 0, "ratio": 16.0, "uniform_ratio": True}
+    headroom = {item["name"]: item for item in capacity["headroom"]["results"]}
+    # only hcom01 is up with a known allocation: 500 free vCPU / 4, 171264 free MB / 8192, 1500 free GB / 80.
+    assert headroom["m1.large"]["fits"] == 18 and headroom["m1.large"]["limited_by"] == "disk"
+    assert headroom["m1.small"]["fits"] == 75 and headroom["m1.small"]["limited_by"] == "disk"
+    zones = {zone["name"]: zone for zone in capacity["zones"]}
+    assert zones["az-a"]["vcpu_capacity"] == 512 and zones["az-b"]["hypervisors_up"] == 0
+
+
+def test_project_quota_merges_compute_volume_and_network():
+    capacity = ic.parse_controller_output(controller_with_apis())["capacity"]
+    assert capacity["quota_available"] is True
+    projects = {item["id"]: item for item in capacity["projects"]}
+    quota = projects["p1"]["quota"]
+    assert quota["available"] and quota["resources"]["vcpus"] == {"label": "vCPU", "used": 8, "limit": 100, "unlimited": False, "percent": 8.0, "estimated": False}
+    assert quota["resources"]["disk_gb"]["unlimited"] is True and quota["resources"]["disk_gb"]["percent"] is None
+    assert quota["resources"]["floating_ips"]["used"] == 3 and quota["resources"]["networks"]["limit"] == 10
+    assert quota["exceeded"] == [] and quota["near_limit"] == [] and quota["worst_percent"] == 32.0
+    # p2 has instances but no quota sections, so it falls back to the estimate from its instances.
+    assert projects["p2"]["quota"]["available"] is False and projects["p2"]["quota"]["resources"]["vcpus"]["estimated"] is True
+
+
+def test_quota_exceeded_and_near_limit_are_flagged():
+    tight = json.dumps({"quota_set": {"id": "p1", "instances": {"in_use": 10, "reserved": 0, "limit": 10},
+                                      "cores": {"in_use": 85, "reserved": 0, "limit": 100}}})
+    capacity = ic.parse_controller_output(controller_with_apis(**{"quota_compute|p1": tight}))["capacity"]
+    quota = {item["id"]: item for item in capacity["projects"]}["p1"]["quota"]
+    assert quota["exceeded"] == ["instances"] and quota["near_limit"] == ["vcpus"] and quota["worst_percent"] == 100.0
+
+
+def test_nova_conf_fills_hypervisors_placement_did_not_cover():
+    capacity = ic.parse_controller_output(controller_with_apis())["capacity"]
+    nodes = [{"hostname": "hcom02.example.com", "nova_conf": ic.parse_nova_conf(NOVA_CONF)},
+             {"hostname": "hcom01", "nova_conf": {"ratios": {"vcpu": 99.0}, "reserved": {}}}]
+    ic.apply_node_allocation_ratios(capacity, nodes)
+    rows = {row["hostname"]: row for row in capacity["hypervisors"]}
+    assert rows["hcom01"]["allocation"]["vcpu"]["ratio"] == 16.0, "placement must win over nova.conf"
+    fallback = rows["hcom02"]["allocation"]
+    assert fallback["source"] == "nova.conf" and fallback["vcpu"]["capacity"] == 32 * 8
+    assert fallback["memory"]["capacity"] == int((131072 - 4096) * 2.0)
+    assert "disk" not in fallback, "nova.conf sets no disk ratio, so disk stays unknown"
+    assert capacity["totals"]["overcommit"]["mixed"] is True and capacity["totals"]["overcommit"]["known_hypervisors"] == 2
+    # hcom02 is down, so the extra capacity must not appear as headroom.
+    assert {item["name"]: item["fits"] for item in capacity["headroom"]["results"]}["m1.large"] == 18
+
+
+def test_api_sections_absent_leaves_capacity_usable():
+    capacity = ic.parse_controller_output(controller_stdout())["capacity"]
+    assert capacity["quota_available"] is False and capacity["zones"] == []
+    assert all(row["allocation"] == {"source": ""} for row in capacity["hypervisors"])
+    assert capacity["totals"]["overcommit"]["source"] == "" and capacity["totals"]["overcommit"]["vcpus"]["capacity"] == 0
+    assert [item["fits"] for item in capacity["headroom"]["results"]] == [None, None]
+
+
+def test_placement_and_quota_failures_are_reported_not_raised():
+    stdout = controller_with_apis(**{"placement_providers": "401 Unauthorized"})
+    keep = [line for line in stdout.splitlines() if "placement_inv|" not in line and "placement_use|" not in line and "section=api_access|" not in line]
+    stdout = "\n".join(keep + [section("api_access", "인증 토큰을 발급하지 못했습니다", rc=77)])
+    result = ic.parse_controller_output(stdout)
+    assert result["api_access"]["ok"] is False and result["api_access"]["placement"] is False
+    assert result["capacity"]["totals"]["overcommit"]["known_hypervisors"] == 0
 
 
 def test_scripts_use_timeouts_and_stdin_guard():

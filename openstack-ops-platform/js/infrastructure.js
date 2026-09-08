@@ -248,37 +248,124 @@ function renderInventory(inventory) {
   if (nodeDetailHostname) renderNodeDetail(nodeDetailHostname);
 }
 
+// Capacity can be read two ways: the physical totals nova reports, or the capacity overcommit
+// actually allows ((total - reserved) * allocation_ratio). Operators need both, so the panel keeps
+// a basis toggle and remembers the choice per browser.
+let capacityBasis = (typeof localStorage !== 'undefined' && localStorage.getItem('okestro-capacity-basis')) || 'overcommit';
+
+function allocationOf(row, key) { const allocation = row?.allocation || {}; return allocation.source ? allocation[key] : null; }
+
+function capacityCell(row, key, physicalUsed, physicalTotal, format) {
+  const entry = allocationOf(row, key);
+  const showOvercommit = capacityBasis === 'overcommit' && entry;
+  if (!physicalTotal && !entry) return '<small>정보 없음</small>';
+  if (!showOvercommit) return `${usageBar(entry ? entry.physical_percent : (physicalTotal ? physicalUsed / physicalTotal * 100 : null))}<small>${escapeText(format(physicalUsed))} / ${escapeText(format(physicalTotal))}</small>`;
+  return `${usageBar(entry.percent)}<small>${escapeText(format(entry.used))} / ${escapeText(format(entry.capacity))} <b>×${entry.ratio}</b></small>`;
+}
+
 function renderHypervisorCapacity(payload) {
   const box = document.querySelector('#hypervisorCapacity');
   const capacity = payload.capacity || {};
   const totals = capacity.totals || {};
+  const overcommit = totals.overcommit || {};
   const hypervisors = capacity.hypervisors || [];
-  document.querySelector('#hypervisorCapacityMeta').textContent = hypervisors.length ? `하이퍼바이저 ${totals.hypervisors_up ?? 0}/${totals.hypervisors ?? 0}대 up · 실행 중 VM ${totals.running_vms ?? 0}개` : 'nova hypervisor 정보가 없습니다';
+  const basisBox = document.querySelector('#capacityBasis');
+  const known = overcommit.known_hypervisors || 0;
+  basisBox.hidden = !known;
+  if (!known && capacityBasis === 'overcommit') basisBox.querySelectorAll('button').forEach(button => button.classList.toggle('active', button.dataset.basis === 'physical'));
+  else basisBox.querySelectorAll('button').forEach(button => button.classList.toggle('active', button.dataset.basis === capacityBasis));
+  const sourceLabel = overcommit.source === 'placement' ? 'Placement' : (overcommit.source === 'nova.conf' ? 'nova.conf' : '');
+  document.querySelector('#hypervisorCapacityMeta').textContent = hypervisors.length
+    ? `하이퍼바이저 ${totals.hypervisors_up ?? 0}/${totals.hypervisors ?? 0}대 up · 실행 중 VM ${totals.running_vms ?? 0}개${sourceLabel ? ` · 오버커밋 ${sourceLabel} 기준 ${known}/${hypervisors.length}대${overcommit.mixed ? ' (혼합)' : ''}` : ' · 오버커밋 비율 미수집'}`
+    : 'nova hypervisor 정보가 없습니다';
   if (!hypervisors.length) { box.innerHTML = `<div class="empty-provider">${escapeText(payload.openstack?.errors?.hypervisors || payload.controller?.error || '하이퍼바이저 정보를 수집하지 못했습니다.')}</div>`; return; }
+  const useOvercommit = capacityBasis === 'overcommit' && known;
   const totalCards = [
-    ['vCPU 할당', `${totals.vcpus_used ?? 0} / ${totals.vcpus ?? 0}`, totals.vcpu_percent],
-    ['메모리 할당', `${formatMiB(totals.memory_mb_used)} / ${formatMiB(totals.memory_mb)}`, totals.memory_percent],
-    ['로컬 디스크 할당', `${formatGiB(totals.local_gb_used)} / ${formatGiB(totals.local_gb)}`, totals.disk_percent],
-  ];
-  const rows = [...hypervisors].sort((a, b) => (b.vcpu_percent ?? 0) - (a.vcpu_percent ?? 0)).map(h => {
-    const worst = Math.max(h.vcpu_percent ?? 0, h.memory_percent ?? 0, h.disk_percent ?? 0);
-    return `<tr class="${worst >= 90 ? 'crit' : (worst >= 80 ? 'warn' : '')}"><td><strong>${escapeText(h.hostname)}</strong><small>${escapeText(h.type || '-')}${h.host_ip ? ` · ${escapeText(h.host_ip)}` : ''}</small></td><td><span class="state-pill ${String(h.state).toLowerCase() === 'up' ? 'up' : 'down'}">${escapeText(h.state || '-')}</span></td><td class="num">${h.instances ?? h.running_vms ?? 0}</td><td>${usageBar(h.vcpu_percent)}<small>${h.vcpus_used} / ${h.vcpus}</small></td><td>${usageBar(h.memory_percent)}<small>${escapeText(formatMiB(h.memory_mb_used))} / ${escapeText(formatMiB(h.memory_mb))}</small></td><td>${h.local_gb ? `${usageBar(h.disk_percent)}<small>${escapeText(formatGiB(h.local_gb_used))} / ${escapeText(formatGiB(h.local_gb))}</small>` : '<small>정보 없음</small>'}</td></tr>`;
+    ['vCPU', 'vcpus', totals.vcpus_used, totals.vcpus, totals.vcpu_percent, value => `${Number(value) || 0}`],
+    ['메모리', 'memory_mb', totals.memory_mb_used, totals.memory_mb, totals.memory_percent, formatMiB],
+    ['로컬 디스크', 'local_gb', totals.local_gb_used, totals.local_gb, totals.disk_percent, formatGiB],
+  ].map(([label, key, used, total, percent, format]) => {
+    const entry = overcommit[key];
+    if (useOvercommit && entry && entry.capacity) return `<article><small>${escapeText(label)} 할당 (오버커밋 반영)</small><strong>${escapeText(format(entry.used))} / ${escapeText(format(entry.capacity))}</strong>${usageBar(entry.percent)}<em>여유 ${escapeText(format(entry.free))}${entry.uniform_ratio ? ` · 비율 ×${entry.ratio}` : (entry.ratio ? ` · 평균 비율 ×${entry.ratio}` : '')}</em></article>`;
+    return `<article><small>${escapeText(label)} 할당 (물리)</small><strong>${escapeText(format(used))} / ${escapeText(format(total))}</strong>${usageBar(percent)}<em>물리 용량 기준</em></article>`;
   }).join('');
-  box.innerHTML = `<div class="capacity-totals">${totalCards.map(([label, value, percent]) => `<article><small>${escapeText(label)}</small><strong>${escapeText(value)}</strong>${usageBar(percent)}</article>`).join('')}</div>
-    <table class="inventory-table"><thead><tr><th>하이퍼바이저</th><th>상태</th><th class="num">VM</th><th>vCPU</th><th>메모리</th><th>로컬 디스크</th></tr></thead><tbody>${rows}</tbody></table>
-    <p class="capacity-note">할당량은 nova가 보고한 원시 값(vcpus_used / vcpus)입니다. nova.conf의 오버커밋 비율(cpu_allocation_ratio 등)은 수집하지 않으므로 100%를 넘을 수 있으며, 실제 여유는 오버커밋 비율을 곱해 판단하세요.</p>`;
+  const sortKey = row => { const entry = allocationOf(row, 'vcpu'); return (useOvercommit && entry ? entry.percent : row.vcpu_percent) ?? -1; };
+  const rows = [...hypervisors].sort((a, b) => sortKey(b) - sortKey(a)).map(h => {
+    const percents = ['vcpu', 'memory', 'disk'].map(key => { const entry = allocationOf(h, key); return (useOvercommit && entry ? entry.percent : ({vcpu:h.vcpu_percent, memory:h.memory_percent, disk:h.disk_percent})[key]) ?? 0; });
+    const worst = Math.max(...percents);
+    const ratios = ['vcpu', 'memory', 'disk'].map(key => allocationOf(h, key)).filter(Boolean);
+    return `<tr class="${worst >= 90 ? 'crit' : (worst >= 80 ? 'warn' : '')}"><td><strong>${escapeText(h.hostname)}</strong><small>${escapeText(h.type || '-')}${h.host_ip ? ` · ${escapeText(h.host_ip)}` : ''}</small></td><td><span class="state-pill ${String(h.state).toLowerCase() === 'up' ? 'up' : 'down'}">${escapeText(h.state || '-')}</span>${String(h.status || '').toLowerCase() === 'disabled' ? '<small>disabled</small>' : ''}</td><td>${escapeText(h.availability_zone || '-')}</td><td class="num">${h.instances ?? h.running_vms ?? 0}</td><td>${capacityCell(h, 'vcpu', h.vcpus_used, h.vcpus, value => `${Number(value) || 0}`)}</td><td>${capacityCell(h, 'memory', h.memory_mb_used, h.memory_mb, formatMiB)}</td><td>${capacityCell(h, 'disk', h.local_gb_used, h.local_gb, formatGiB)}</td><td><small>${ratios.length ? escapeText(`CPU ×${allocationOf(h, 'vcpu')?.ratio ?? '-'} · RAM ×${allocationOf(h, 'memory')?.ratio ?? '-'} · DISK ×${allocationOf(h, 'disk')?.ratio ?? '-'}`) : '미수집'}</small></td></tr>`;
+  }).join('');
+  const headroom = (capacity.headroom?.results || []).filter(item => item.fits !== null);
+  const limitLabels = {vcpu:'vCPU', memory:'메모리', disk:'디스크'};
+  const headroomBlock = headroom.length ? `<section class="capacity-sub"><h3>Flavor별 배치 여유<span>up·enabled 하이퍼바이저의 남은 용량 기준</span></h3>
+    <table class="inventory-table"><thead><tr><th>Flavor</th><th class="num">vCPU</th><th class="num">메모리</th><th class="num">디스크</th><th class="num">추가 배치 가능</th><th>먼저 소진되는 자원</th></tr></thead><tbody>${headroom.map(item => `<tr class="${item.fits === 0 ? 'crit' : (item.fits < 5 ? 'warn' : '')}"><td><strong>${escapeText(item.name)}</strong></td><td class="num">${item.vcpus}</td><td class="num">${escapeText(formatMiB(item.ram_mb))}</td><td class="num">${escapeText(formatGiB(item.disk_gb))}</td><td class="num"><strong>${item.fits}개</strong></td><td>${escapeText(limitLabels[item.limited_by] || '-')}</td></tr>`).join('')}</tbody></table></section>` : '';
+  const zones = (capacity.zones || []).filter(zone => zone.name && zone.name !== '-');
+  const zoneBlock = zones.length > 1 ? `<section class="capacity-sub"><h3>가용 영역별 용량<span>${zones.length}개 AZ</span></h3>
+    <table class="inventory-table"><thead><tr><th>가용 영역</th><th class="num">하이퍼바이저</th><th class="num">인스턴스</th><th>vCPU</th><th class="num">메모리</th><th class="num">로컬 디스크</th></tr></thead><tbody>${zones.map(zone => `<tr><td><strong>${escapeText(zone.name)}</strong></td><td class="num">${zone.hypervisors_up}/${zone.hypervisors} up</td><td class="num">${zone.instances}</td><td>${useOvercommit && zone.vcpu_capacity ? `${usageBar(zone.vcpu_overcommit_percent)}<small>${zone.vcpu_allocated} / ${zone.vcpu_capacity}</small>` : `${usageBar(zone.vcpu_percent)}<small>${zone.vcpus_used} / ${zone.vcpus}</small>`}</td><td class="num">${escapeText(formatMiB(zone.memory_mb_used))} / ${escapeText(formatMiB(zone.memory_mb))}</td><td class="num">${escapeText(formatGiB(zone.local_gb_used))} / ${escapeText(formatGiB(zone.local_gb))}</td></tr>`).join('')}</tbody></table></section>` : '';
+  const note = known
+    ? `오버커밋 반영 용량은 (물리 용량 − 예약분) × 할당 비율이며 ${sourceLabel}에서 읽은 값입니다. 물리 기준으로 보면 nova가 보고한 원시 사용량이라 100%를 넘을 수 있습니다.`
+    : 'Placement API와 노드의 nova.conf 어느 쪽에서도 오버커밋 비율을 읽지 못해 물리 기준만 표시합니다. 표시된 사용률은 nova 원시 값이라 실제 배치 여유와 다를 수 있습니다.';
+  box.innerHTML = `<div class="capacity-totals">${totalCards}</div>
+    <table class="inventory-table"><thead><tr><th>하이퍼바이저</th><th>상태</th><th>AZ</th><th class="num">VM</th><th>vCPU</th><th>메모리</th><th>로컬 디스크</th><th>할당 비율</th></tr></thead><tbody>${rows}</tbody></table>
+    ${headroomBlock}${zoneBlock}<p class="capacity-note">${escapeText(note)}</p>`;
 }
 
 function renderProjectUsage(payload) {
   const box = document.querySelector('#projectUsage');
   const capacity = payload.capacity || {};
-  const projects = capacity.projects || [];
+  const allProjects = capacity.projects || [];
   const instances = capacity.instances || {total:0, by_status:{}};
+  const quotaAvailable = !!capacity.quota_available;
   const statusText = Object.entries(instances.by_status || {}).sort((a, b) => b[1] - a[1]).map(([status, count]) => `${status} ${count}`).join(' · ');
-  document.querySelector('#projectUsageMeta').textContent = instances.total ? `인스턴스 ${instances.total}개 · ${statusText}` : '인스턴스 정보가 없습니다';
-  if (!projects.length) { box.innerHTML = `<div class="empty-provider">${escapeText(payload.openstack?.errors?.servers || '인스턴스 목록을 수집하지 못했거나 인스턴스가 없습니다.')}</div>`; return; }
-  const totalVcpus = projects.reduce((sum, item) => sum + (item.vcpus || 0), 0) || 1;
-  box.innerHTML = `<table class="inventory-table"><thead><tr><th>프로젝트</th><th class="num">인스턴스</th><th class="num">ACTIVE</th><th class="num">vCPU</th><th class="num">메모리</th><th class="num">디스크</th><th>vCPU 비중</th></tr></thead><tbody>${projects.map(item => `<tr><td><strong>${escapeText(item.name)}</strong><small>${escapeText(item.id || '-')}</small></td><td class="num">${item.instances}</td><td class="num">${item.active}</td><td class="num">${item.vcpus}</td><td class="num">${escapeText(formatMiB(item.ram_mb))}</td><td class="num">${escapeText(formatGiB(item.disk_gb))}</td><td>${usageBar(item.vcpus / totalVcpus * 100)}</td></tr>`).join('')}</tbody></table>`;
+  const exceeded = allProjects.filter(item => item.quota?.exceeded?.length).length;
+  const near = allProjects.filter(item => item.quota?.near_limit?.length && !item.quota?.exceeded?.length).length;
+  document.querySelector('#projectUsageMeta').textContent = instances.total || allProjects.length
+    ? `프로젝트 ${allProjects.length}개 · 인스턴스 ${instances.total}개${statusText ? ` · ${statusText}` : ''}${quotaAvailable ? ` · 쿼터 초과 ${exceeded} · 임박 ${near}` : ' · 쿼터 미수집'}`
+    : '인스턴스 정보가 없습니다';
+  document.querySelector('#projectUsageQuotaFilter').hidden = !quotaAvailable;
+  if (!allProjects.length) { box.innerHTML = `<div class="empty-provider">${escapeText(payload.openstack?.errors?.servers || '인스턴스 목록을 수집하지 못했거나 인스턴스가 없습니다.')}</div>`; return; }
+  const onlyQuota = quotaAvailable && document.querySelector('#projectUsageOnlyQuota').checked;
+  const projects = allProjects.filter(item => !onlyQuota || (item.quota?.worst_percent ?? -1) >= 80);
+  const sort = document.querySelector('#projectUsageSort').value;
+  const sorters = {
+    vcpus: (a, b) => (b.vcpus || 0) - (a.vcpus || 0) || a.name.localeCompare(b.name),
+    quota: (a, b) => (b.quota?.worst_percent ?? -1) - (a.quota?.worst_percent ?? -1) || a.name.localeCompare(b.name),
+    instances: (a, b) => (b.instances || 0) - (a.instances || 0) || a.name.localeCompare(b.name),
+    name: (a, b) => a.name.localeCompare(b.name),
+  };
+  const sorted = [...projects].sort(sorters[sort] || sorters.vcpus);
+  const totalVcpus = allProjects.reduce((sum, item) => sum + (item.vcpus || 0), 0) || 1;
+  const quotaCell = (item, key, format) => {
+    const resource = item.quota?.resources?.[key];
+    if (!resource) return '<small>-</small>';
+    if (resource.unlimited) return `<small>${escapeText(format(resource.used))} / 무제한${resource.estimated ? ' (추정)' : ''}</small>`;
+    return `${usageBar(resource.percent)}<small>${escapeText(format(resource.used))} / ${escapeText(format(resource.limit))}</small>`;
+  };
+  const count = value => `${Number(value) || 0}`;
+  const quotaColumns = quotaAvailable
+    ? '<th>인스턴스 쿼터</th><th>vCPU 쿼터</th><th>메모리 쿼터</th><th>볼륨 용량 쿼터</th><th class="num">Floating IP</th>'
+    : '<th class="num">메모리</th><th class="num">디스크</th><th>vCPU 비중</th>';
+  const rows = sorted.map(item => {
+    const quota = item.quota || {};
+    const tone = quota.exceeded?.length ? 'crit' : (quota.near_limit?.length ? 'warn' : '');
+    const badge = quota.exceeded?.length ? `<span class="state-pill bad">쿼터 초과</span>` : (quota.near_limit?.length ? `<span class="state-pill warn">쿼터 임박</span>` : '');
+    const head = `<td><strong>${escapeText(item.name)}</strong><small>${escapeText(item.id || '-')}</small></td><td class="num">${item.instances}</td><td class="num">${item.active}</td><td class="num">${item.vcpus}</td>`;
+    const tail = quotaAvailable
+      ? `<td>${quotaCell(item, 'instances', count)}</td><td>${quotaCell(item, 'vcpus', count)}</td><td>${quotaCell(item, 'ram_mb', formatMiB)}</td><td>${quotaCell(item, 'disk_gb', formatGiB)}</td><td class="num">${escapeText(quotaText(item, 'floating_ips'))}</td>`
+      : `<td class="num">${escapeText(formatMiB(item.ram_mb))}</td><td class="num">${escapeText(formatGiB(item.disk_gb))}</td><td>${usageBar(item.vcpus / totalVcpus * 100)}</td>`;
+    return `<tr class="${tone}">${head}${tail}<td>${badge}</td></tr>`;
+  }).join('');
+  const note = quotaAvailable
+    ? '쿼터 사용량은 Nova·Cinder·Neutron이 보고한 값이며 예약분을 포함합니다. 한도 −1은 무제한입니다. 인스턴스가 없어도 쿼터가 있는 프로젝트는 함께 표시합니다.'
+    : '쿼터를 수집하지 못해 인스턴스 목록과 Flavor로 계산한 값만 표시합니다. 활성 Controller에서 토큰 발급과 API 호출이 가능한지 연결 진단으로 확인하세요.';
+  box.innerHTML = `<table class="inventory-table"><thead><tr><th>프로젝트</th><th class="num">인스턴스</th><th class="num">ACTIVE</th><th class="num">vCPU</th>${quotaColumns}<th></th></tr></thead><tbody>${rows || `<tr><td colspan="${quotaAvailable ? 10 : 8}">조건에 맞는 프로젝트가 없습니다.</td></tr>`}</tbody></table><p class="capacity-note">${escapeText(note)}</p>`;
+}
+
+function quotaText(item, key) {
+  const resource = item.quota?.resources?.[key];
+  if (!resource) return '-';
+  return resource.unlimited ? `${resource.used} / 무제한` : `${resource.used} / ${resource.limit}`;
 }
 
 function renderStorageBackend(payload) {
@@ -390,5 +477,14 @@ document.querySelector('#closeNodeDetail').addEventListener('click', closeNodeDe
 document.querySelector('#collectInventory').addEventListener('click', collectInventory);
 document.querySelector('#inventoryHistoryButton').addEventListener('click', toggleInventoryHistory);
 document.querySelector('#inventoryHistory').addEventListener('click', event => { const button = event.target.closest('[data-inventory-id]'); if (button) viewInventory(button.dataset.inventoryId); });
+document.querySelector('#capacityBasis').addEventListener('click', event => {
+  const button = event.target.closest('[data-basis]');
+  if (!button || button.dataset.basis === capacityBasis) return;
+  capacityBasis = button.dataset.basis;
+  try { localStorage.setItem('okestro-capacity-basis', capacityBasis); } catch (_) { /* private mode */ }
+  if (currentInventory) renderHypervisorCapacity(currentInventory.payload || {});
+});
+document.querySelector('#projectUsageSort').addEventListener('change', () => { if (currentInventory) renderProjectUsage(currentInventory.payload || {}); });
+document.querySelector('#projectUsageOnlyQuota').addEventListener('change', () => { if (currentInventory) renderProjectUsage(currentInventory.payload || {}); });
 document.querySelector('#refreshInfrastructure').addEventListener('click', () => { currentInventory = null; loadInventory(infrastructureProviderSelect.value); });
 infrastructureProviderSelect.addEventListener('change', () => { closeNodeDetail(); currentInventory = null; loadInventory(infrastructureProviderSelect.value); });

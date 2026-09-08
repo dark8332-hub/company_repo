@@ -28,25 +28,38 @@ docker compose restart dashboard
 docker compose down
 ```
 
-## 이미지 파일로 전달
+## 폐쇄망 배포 번들
 
-인터넷에 연결된 빌드 환경에서 이미지를 생성합니다.
-
-```bash
-docker build -t okestro/openstack-ops-platform:latest .
-docker save okestro/openstack-ops-platform:latest | gzip > openstack-ops-platform.tar.gz
-```
-
-대상 서버로 파일을 전달한 뒤 실행합니다.
+인터넷이 없는 사이트에는 이미지와 설치 스크립트를 한 묶음으로 반입합니다. 인터넷에 연결된
+빌드 환경에서 번들을 만듭니다.
 
 ```bash
-docker load -i openstack-ops-platform.tar.gz
-docker run -d \
-  --name openstack-ops-platform \
-  --restart unless-stopped \
-  -p 8090:8090 \
-  okestro/openstack-ops-platform:latest
+./build-offline-bundle.sh 1.0.0
+# → dist/openstack-ops-platform-1.0.0-offline.tar.gz
 ```
+
+번들에는 컨테이너 이미지(docker-archive, `docker`·`podman`·`nerdctl` 모두 `load` 가능),
+설치 스크립트, 운영 스크립트, 설정 예시, 한글 설치 안내서가 들어 있습니다. 설치 과정에서
+외부에서 내려받는 것이 없습니다.
+
+대상 서버에 파일을 올린 뒤 실행합니다.
+
+```bash
+tar -xzf openstack-ops-platform-1.0.0-offline.tar.gz
+cd openstack-ops-platform-1.0.0
+./install.sh
+```
+
+`install.sh`는 런타임 감지 → 이미지 무결성 확인 → 적재 → 기동 → 응답 확인을 수행하고
+접속 주소와 초기 계정을 출력합니다. 번들 디렉터리 밖에는 아무것도 쓰지 않으며, 남기는 것은
+컨테이너 하나와 이미지 하나, 그리고 번들 아래 `data/` 뿐입니다.
+
+이후 운영은 `./opsctl.sh {status|logs|restart|stop|backup|restore|remove}`로 합니다.
+자세한 절차·설정·문제 해결은 번들 안의 `README-DEPLOY.md`(원본은 `deploy/README-DEPLOY.md`)를 보세요.
+
+> 공급자·점검 이력·알림은 이미지가 아니라 `data/`의 SQLite DB에 있습니다. 새 사이트에서는
+> 공급자를 새로 등록하는 것이 정상이며, 이는 사이트별 SSH·MySQL 자격증명이 다른 사이트로
+> 넘어가지 않게 하려는 의도입니다.
 
 ## 구성 파일
 
@@ -56,14 +69,14 @@ docker run -d \
 - `login.html`, `login.js`: 관리자 로그인 및 첫 로그인 비밀번호 변경 화면
 - `server.py`: API와 정적 화면 제공, SSH 점검·탐색 실행
 - `provider_store.py`: 공급자 인증정보 암호화 저장, 점검 이력·요약·예약 설정, 알림·작업 이력·정비 시간 창, 관리자 계정·로그인 세션, 운영 설정과 감사 로그 관리
-- `inventory_collector.py`: 노드 인벤토리 수집 스크립트와 파서(네트워크 비의존)
+- `inventory_collector.py`: 노드 인벤토리 수집 스크립트와 파서, 오버커밋·쿼터 계산(네트워크 비의존)
 - `inspection_report.py`: 점검 내용·이상 항목 보고서 PDF 생성(fpdf2)
 - `inspection_excel.py`: 운영자 점검표 양식 Excel(xlsx) 생성(openpyxl)
 - `runbooks.py`: 점검 항목별 조치 가이드(런북) 기본 문서
 - `tests/`, `pytest.ini`: API 회귀 테스트와 JS 스모크 테스트
-- `fonts/`: PDF 한글 출력용 NanumGothic 글꼴(OFL 라이선스)
-- `nginx.conf`: 배포용 웹 서버 설정
+- `fonts/`: PDF 한글 출력용 NanumGothic 글꼴과 화면용 Inter·Noto Sans KR(`fonts/web/`). 폐쇄망에서 Google Fonts를 받을 수 없어 서버가 직접 제공합니다(OFL 라이선스)
 - `Dockerfile`: 컨테이너 이미지 정의
+- `deploy/`, `build-offline-bundle.sh`: 폐쇄망 반입용 배포 번들 스크립트와 안내서
 - `compose.yaml`: 운영 실행 구성
 - `PROGRESS.md`: 프로젝트 진행 기록
 
@@ -110,6 +123,25 @@ curl -b cookie.txt http://<서버 주소>:8090/api/providers
 - OpenStack 계층: 플랫폼에서 OpenStack API 응답을 직접 확인하고, Prometheus에 지표가 있으면 HAProxy 백엔드 상태, RabbitMQ 큐 적체, Galera 상태를 함께 표시합니다.
 - Alertmanager가 등록되어 있으면 발화 중인 알림을, 필요하면 자유 PromQL 조회 결과를 표시합니다.
 
+## 인프라 현황: 하이퍼바이저 용량과 프로젝트별 사용량
+
+`인벤토리 수집`을 실행하면 노드 하드웨어와 함께 배치 계획에 필요한 용량 정보를 모읍니다.
+
+**오버커밋 반영 용량**은 물리 용량이 아니라 nova가 실제로 스케줄링에 쓰는 `(물리 용량 − 예약분) × 할당 비율`을 기준으로 합니다. 할당 비율은 다음 순서로 읽습니다.
+
+1. Placement API의 자원 공급자별 `allocation_ratio`와 `reserved`. 활성 Controller에서 토큰을 발급해 내부 엔드포인트로 조회하며, 운영자가 nova.conf를 고치지 않고 Placement에서 직접 바꾼 값까지 반영되므로 이 값을 우선합니다.
+2. Placement가 다루지 않은 하이퍼바이저는 해당 노드의 `nova.conf`에서 읽은 `cpu/ram/disk_allocation_ratio`와 `reserved_host_*` 값을 사용합니다. 비율이 `0.0`이면 nova와 같은 규칙으로 `initial_*_allocation_ratio`를 적용합니다.
+
+양쪽 모두 실패하면 물리 기준만 표시하고 그 사실을 화면에 알립니다. 패널 오른쪽 위의 `오버커밋 반영 / 물리 기준` 버튼으로 두 관점을 전환하며 선택은 브라우저에 남습니다.
+
+- **Flavor별 배치 여유**: up·enabled 하이퍼바이저의 남은 용량으로 각 Flavor를 몇 개 더 배치할 수 있는지와 먼저 소진되는 자원(vCPU·메모리·디스크)을 함께 보여줍니다. 사용 중인 Flavor를 많이 쓰는 순서로 최대 8개까지 계산합니다.
+- **가용 영역별 용량**: `openstack aggregate list`의 호스트-AZ 대응으로 AZ가 2개 이상일 때 AZ별 하이퍼바이저·인스턴스·자원 합계를 표시합니다.
+- **프로젝트별 자원 사용량**: 인스턴스와 Flavor로 계산한 사용량에 더해 Nova·Cinder·Neutron이 보고한 쿼터 대비 사용률(인스턴스, vCPU, 메모리, 볼륨 용량, Floating IP 등)을 표시합니다. 한도 `-1`은 무제한이며, 쿼터를 80% 이상 쓴 프로젝트는 `쿼터 임박`, 한도에 도달한 프로젝트는 `쿼터 초과`로 표시합니다. 인스턴스가 없어도 쿼터가 등록된 프로젝트는 함께 나열합니다. 정렬 기준을 바꾸거나 쿼터 80% 이상만 걸러 볼 수 있습니다.
+
+Placement·쿼터 조회는 `openstack` CLI 대신 활성 Controller에서 `curl`로 REST API를 직접 호출합니다. CLI 한 번의 기동 비용이 수 초라 자원 공급자와 프로젝트마다 호출하면 수집이 지나치게 길어지기 때문입니다. 발급한 토큰은 환경 변수로만 전달하며 수집 결과에 저장하거나 화면에 반환하지 않습니다. 내부 엔드포인트의 자체 서명 인증서를 허용하기 위해 `curl -k`를 사용합니다. 자원 공급자는 최대 60개, 쿼터 조회 대상 프로젝트는 인스턴스가 많은 순서로 최대 40개까지입니다.
+
+토큰 발급이나 `curl`이 불가능한 환경에서는 이 항목만 비고, 나머지 인벤토리 수집은 그대로 동작합니다. 실패 사유는 화면 안내와 수집 결과의 `api_access`에 남습니다.
+
 ## 보고서 저장(PDF·Excel)
 
 일일점검 화면 상단의 `PDF 저장`을 누르면 주의·확인 불가 항목의 판정 근거와 원본 결과를 담은 이상 항목 보고서가 `일일점검_이상항목_<공급자>_<날짜-시각>.pdf`로, `점검 내용 보기`의 `PDF 저장`을 누르면 전체 점검 내용이 `일일점검_<공급자>_<날짜-시각>.pdf`로 서버에서 생성되어 바로 내려받아집니다. 브라우저 인쇄 대화상자는 사용하지 않습니다. 한글 글꼴은 이미지에 포함된 `fonts/` 디렉터리의 NanumGothic을 사용합니다.
@@ -146,6 +178,7 @@ root SSH 접속이 차단된 환경에서는 sudo 권한이 있는 운영 계정
 
 ## 알림과 정비 시간 창
 
+- 상단 요약 카드(`활성 알림`·`위험`·`주의`·`억제 중`·`해소`)를 누르면 그 카드가 세고 있는 알림만 아래 목록에 표시됩니다. 선택된 카드는 테두리로 표시되고, 같은 카드를 다시 누르면 전체로 돌아옵니다. 카드가 적용하는 필터는 상태·심각도 선택 상자에 그대로 반영되므로 카드의 숫자와 목록 건수가 어긋나지 않습니다.
 - 알림은 원인별로 묶여 표시됩니다. Controller SSH 실패 하나로 확인 불가가 수십 건 발생해도 1건으로 보이고 하위 항목을 펼쳐 봅니다.
 - 각 알림에는 상태·담당자 변경과 코멘트가 시간순 타임라인으로 남고, 여러 건을 골라 한 번에 확인·해소할 수 있습니다. 반복 발생 건수와 평균 확인·해소 시간은 통계에서 봅니다.
 - `정비 시간 창`에 기간과 대상 공급자를 등록하면 그 시간 동안 알림이 억제되고 작업 이력과 연결됩니다. 계획된 작업 때문에 알림이 쌓이는 것을 막습니다.

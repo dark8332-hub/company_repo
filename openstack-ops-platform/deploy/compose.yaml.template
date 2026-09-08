@@ -1,0 +1,35 @@
+# 선택 사항. docker compose 나 podman-compose 를 쓰는 사이트를 위한 구성입니다.
+# install.sh 는 컴포즈 없이 동작하므로 이 파일이 없어도 됩니다.
+#
+#   ./install.sh 대신 컴포즈로 올리려면:
+#     docker load -i image/openstack-ops-platform-__IMAGE_TAG__.tar
+#     docker compose up -d
+#
+# 주의: install.sh 와 이 파일을 섞어 쓰지 마세요. 컨테이너 이름이 같아 서로 지웁니다.
+
+services:
+  dashboard:
+    image: okestro/openstack-ops-platform:__IMAGE_TAG__
+    container_name: openstack-ops-platform
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      # 예약 점검 시각과 로그 시각의 기준
+      TZ: Asia/Seoul
+      INSPECTION_TIMEZONE: Asia/Seoul
+      # 비우면 기본 초기 비밀번호 Okestro2018@ 로 계정을 만들고 첫 로그인에서 변경을 요구합니다.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: ""
+      # 비밀번호를 잊었을 때만 "1" 로 두고 ADMIN_PASSWORD 를 채워 재시작합니다. 이후 반드시 비웁니다.
+      ADMIN_PASSWORD_RESET: ""
+      SESSION_TTL_HOURS: "8"
+    volumes:
+      # 공급자 DB 와 마스터 키. 이 디렉터리가 사라지면 등록한 공급자도 사라집니다.
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8090/api/health')"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3

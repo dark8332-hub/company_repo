@@ -30,6 +30,7 @@ from runbooks import effective_runbook
 from provider_store import (
     database_credentials_status, delete_check_exception, delete_database_credentials, delete_provider, delete_provider_host_key, get_provider, latest_check, list_check_exceptions,
     is_provider_host_key_trusted, list_host_key_events, list_provider_host_keys, list_provider_nodes,
+    provider_host_key_material,
     list_providers, mark_provider_host_key_seen, save_check, save_check_exception, save_provider,
     delete_provider_node, update_provider, update_provider_node, upsert_provider_node,
     save_database_credentials, save_provider_nodes, sudo_password_configured, sudo_status, trust_provider_host_key, update_provider_sudo,
@@ -143,7 +144,7 @@ async def require_login(request: Request, call_next):
     session = get_session(request.cookies.get(SESSION_COOKIE, ""))
     if session:
         request.state.user = session
-    if path in PUBLIC_PATHS or session:
+    if path in PUBLIC_PATHS or path.startswith("/fonts/") or session:
         context_token = CURRENT_REQUEST.set(request)
         try:
             return await call_next(request)
@@ -1223,7 +1224,50 @@ async def scan_ssh_host_key(host: str, port: int):
 
 def trusted_known_hosts(host_key):
     """Build AsyncSSH's in-memory known_hosts tuple with one trusted host key."""
-    return ([host_key], [], [], [], [], [], [])
+    return known_hosts_of(host_key)
+
+
+def known_hosts_of(*host_keys):
+    """AsyncSSH's in-memory known_hosts tuple trusting exactly these keys.
+
+    With no keys this rejects every host, which is the point: an empty tuple `()` or `None` means
+    "skip host key checking" to asyncssh, so the natural-looking empty value is the unsafe one.
+    """
+    return (list(host_keys), [], [], [], [], [], [])
+
+
+LEGACY_KNOWN_HOSTS = Path("/root/.ssh/known_hosts")
+
+
+def provider_known_hosts(provider_id: str):
+    """Host key verification for node connections.
+
+    The keys are collected from the active controller during cluster discovery and stored per
+    provider, so verification does not depend on a `known_hosts` file on the machine running this
+    platform. That file does not exist in a container, and on a freshly built deploy server it is
+    empty until somebody runs `ssh-keyscan` against every node by hand.
+
+    Providers discovered before this change have no stored keys yet. For them we fall back to the
+    deploy server's file if it happens to exist, so an existing installation keeps working until
+    the next discovery fills the table in. Where neither is available the connection fails and
+    `node_failure_reason` tells the operator to run discovery again - it never falls back to
+    connecting without verification. That last part needs care: asyncssh reads `None` and an empty
+    tuple alike as "no host key checking", so the rejecting value is an empty *seven-element*
+    tuple, which `known_hosts_of()` builds.
+    """
+    material = provider_host_key_material(provider_id)
+    if material:
+        keys = []
+        for text in material:
+            try:
+                keys.append(asyncssh.import_public_key(text))
+            except (asyncssh.KeyImportError, ValueError):
+                continue
+        if keys:
+            return known_hosts_of(*keys)
+    if LEGACY_KNOWN_HOSTS.is_file():
+        return str(LEGACY_KNOWN_HOSTS)
+    return known_hosts_of()
 
 
 @app.post("/api/providers/connect")
@@ -1296,6 +1340,9 @@ async def connect_provider(request: DiscoveryRequest):
                     "username": request.username, "auth_method": request.auth_method,
                     "fingerprint": fingerprint, "controller_hostname": probe.get("hostname", "unknown"),
                     "sudo_mode": sudo_mode, "available_tools": tools,
+                    # Keep the key itself, not just its fingerprint: node connections pin against
+                    # stored key material, and the VIP is reachable before discovery has run.
+                    "host_public_key": host_key.export_public_key().decode().strip(),
                 }, {"private_key": request.private_key, "passphrase": request.passphrase, "password": request.password, "sudo_password": sudo_password}),
             }
             audit("provider.create", "provider", registered["provider_id"], request.provider_name,
@@ -1525,7 +1572,8 @@ def node_failure_reason(exc: Exception) -> str:
     if isinstance(exc, PrivilegeError):
         return f"root 권한 획득 실패 — {exc}"
     if isinstance(exc, asyncssh.HostKeyNotVerifiable):
-        return "SSH 호스트 키 미등록 — 배포 서버의 /root/.ssh/known_hosts에 노드 호스트 키를 등록하세요 (예: ssh-keyscan)"
+        return ("SSH 호스트 키 미등록 — 클러스터 탐색을 다시 실행하면 활성 Controller에서 노드 호스트 키를 "
+                "수집해 등록합니다. 노드를 수동으로 추가했거나 노드 SSH 키가 교체된 경우에도 탐색을 다시 실행하세요.")
     if isinstance(exc, socket.gaierror):
         return "접속 주소를 IP로 해석하지 못했습니다"
     return type(exc).__name__
@@ -1774,12 +1822,20 @@ async def tcp_reachable(host: str, port: int, timeout: float = 5) -> tuple[bool,
         return False, type(exc).__name__ if not str(exc) else str(exc)[:120]
 
 
-def known_hosts_mentions(*names: str) -> bool:
+def host_key_registered(provider_id: str, *names: str) -> bool:
+    """Whether a node's host key is trusted for this provider.
+
+    Prefers the keys collected during discovery. The deploy server's `known_hosts` is consulted
+    only for providers discovered before keys were stored, and it does not exist in a container.
+    """
+    wanted = {name for name in names if name}
+    if any(entry["hostname"] in wanted and entry["public_key"] for entry in list_provider_host_keys(provider_id)):
+        return True
     try:
-        text = Path("/root/.ssh/known_hosts").read_text(encoding="utf-8", errors="ignore")
+        text = LEGACY_KNOWN_HOSTS.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return False
-    return any(name and re.search(rf"(^|[ ,\[]){re.escape(name)}([ ,\]:]|$)", text, re.MULTILINE) for name in names)
+    return any(re.search(rf"(^|[ ,\[]){re.escape(name)}([ ,\]:]|$)", text, re.MULTILINE) for name in wanted)
 
 
 @app.post("/api/providers/{provider_id}/diagnose")
@@ -1870,16 +1926,16 @@ async def diagnose_provider(provider_id: str):
             except Exception as exc:  # noqa: BLE001
                 return {"hostname": node["hostname"], "status": "fail", "detail": f"주소 해석 실패: {type(exc).__name__}"}
             ok, reason = await tcp_reachable(address, 22)
-            known = known_hosts_mentions(node["hostname"], node["hostname"].split(".")[0], address)
+            known = host_key_registered(provider_id, node["hostname"], node["hostname"].split(".")[0], address)
             if not ok:
                 return {"hostname": node["hostname"], "status": "fail", "detail": f"{address}:22 연결 실패: {reason}"}
-            return {"hostname": node["hostname"], "status": "ok" if known else "warn", "detail": f"{address}:22 연결 가능" + ("" if known else " · known_hosts에 호스트 키 없음 (ssh-keyscan 필요)")}
+            return {"hostname": node["hostname"], "status": "ok" if known else "warn", "detail": f"{address}:22 연결 가능" + ("" if known else " · 호스트 키 미등록 (클러스터 탐색을 다시 실행하세요)")}
         results = await asyncio.gather(*(probe_node(node) for node in nodes))
         failed = [item for item in results if item["status"] == "fail"]
         warned = [item for item in results if item["status"] == "warn"]
         maintenance = sum(1 for node in nodes if node.get("maintenance"))
         status = "fail" if failed else ("warn" if warned else "ok")
-        detail = f"{len(nodes)}대 중 접속 가능 {len(nodes) - len(failed)}대" + (f" · known_hosts 누락 {len(warned)}대" if warned else "") + (f" · 정비 중 {maintenance}대" if maintenance else "")
+        detail = f"{len(nodes)}대 중 접속 가능 {len(nodes) - len(failed)}대" + (f" · 호스트 키 미등록 {len(warned)}대" if warned else "") + (f" · 정비 중 {maintenance}대" if maintenance else "")
         steps.append({"key": "nodes", "label": "클러스터 노드 SSH 포트", "status": status, "detail": detail, "seconds": round((datetime.now(timezone.utc) - t).total_seconds(), 2), "nodes": results})
     t = datetime.now(timezone.utc)
     try:
@@ -1911,6 +1967,26 @@ async def provider_status(provider_id: str):
     checks = list_checks(provider_id, 1)
     return {"provider_id": provider_id, **record, "last_check_at": checks[0]["checked_at"] if checks else None, "last_check_status": checks[0]["status"] if checks else None,
             "profile": provider_setting(provider_id, "profile"), "updated_at": provider.get("updated_at")}
+
+
+def store_discovered_host_keys(provider_id: str, collected: list[tuple[str, str, str]], discovered: dict) -> int:
+    """Trust the node host keys the active controller reported, so node connections can be pinned.
+
+    The controller is already an authenticated peer - we reached it with a key the operator
+    approved by fingerprint - so keys arriving over that channel are a better trust anchor than
+    scanning each node from here and accepting whatever answers.
+    """
+    stored = 0
+    for hostname, address, key_text in collected:
+        try:
+            key = asyncssh.import_public_key(key_text)
+        except (asyncssh.KeyImportError, ValueError):
+            continue
+        node = discovered.get(hostname) or discovered.get(hostname.split(".")[0]) or {}
+        trust_provider_host_key(provider_id, key.get_fingerprint("sha256"), hostname, address,
+                                public_key=key_text, role=node.get("role", ""))
+        stored += 1
+    return stored
 
 
 @app.post("/api/providers/{provider_id}/discover")
@@ -1945,12 +2021,22 @@ if command -v openstack >/dev/null 2>&1; then
 else
   printf 'warning=openstack CLI를 찾을 수 없습니다.\n'
 fi
+seen_addrs=""
 for name in $node_names; do
   addr=$(getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}')
   [ -z "$addr" ] && addr=$(getent hosts "$name" 2>/dev/null | awk 'NR==1{print $1}')
   case "$addr" in 127.*|::1|"") continue;; esac
   printf 'addr=%s|%s\n' "$name" "$addr"
+  # 노드 호스트 키를 Controller 에서 모아 둔다. 이 플랫폼이 컨테이너로 돌 때는 배포 서버의
+  # known_hosts 를 쓸 수 없고, 새로 만든 배포 서버에서도 그 파일은 비어 있기 때문이다.
+  case " $seen_addrs " in *" $addr "*) continue;; esac
+  seen_addrs="$seen_addrs $addr"
+  if command -v ssh-keyscan >/dev/null 2>&1; then
+    ssh-keyscan -T 5 -t rsa,ecdsa,ed25519 "$addr" 2>/dev/null \
+      | awk -v n="$name" -v a="$addr" '$2!="" && $3!="" {printf "hostkey=%s|%s|%s %s\n", n, a, $2, $3}'
+  fi
 done
+command -v ssh-keyscan >/dev/null 2>&1 || printf 'warning=Controller에 ssh-keyscan이 없어 노드 호스트 키를 수집하지 못했습니다.\n'
 exit 0
 '''
     try:
@@ -1969,12 +2055,19 @@ exit 0
     warnings = []
     sources = set()
     addresses = {}
+    node_host_keys: list[tuple[str, str, str]] = []
     for line in response.stdout.splitlines():
         if line.startswith("warning="):
             warnings.append(line.split("=", 1)[1])
             continue
         if line.startswith("meta=openrc|"):
             sources.add(f"OpenRC: {line.split('|', 1)[1]}")
+            continue
+        if line.startswith("hostkey="):
+            key_match = re.fullmatch(r"hostkey=([a-zA-Z0-9][a-zA-Z0-9._-]{0,252})\|([0-9a-fA-F:.]+)\|(\S+ \S+)", line)
+            if key_match:
+                name, address, key_text = key_match.groups()
+                node_host_keys.append((name, address, key_text))
             continue
         address_match = re.fullmatch(r"addr=([a-zA-Z0-9][a-zA-Z0-9._-]{0,252})\|([0-9a-fA-F:.]+)", line)
         if address_match:
@@ -2013,10 +2106,19 @@ exit 0
         )
     nodes = list(discovered.values())
     save_provider_nodes(provider_id, nodes)
+    stored_keys = store_discovered_host_keys(provider_id, node_host_keys, discovered)
     audit("provider.discover", "provider", provider_id, provider["name"], f"노드 {len(nodes)}대 · " + ", ".join(sorted(node["hostname"] for node in nodes)[:12]))
     if not any(node["role"] == "compute" for node in nodes):
         warnings.append("Compute 노드를 찾지 못했습니다. Controller의 OpenStack 인증 환경을 확인하세요.")
-    return {"provider_id": provider_id, "nodes": nodes, "count": len(nodes), "sources": sorted(sources), "warnings": warnings}
+    if stored_keys:
+        audit("provider.host_keys", "provider", provider_id, provider["name"], f"노드 호스트 키 {stored_keys}개 등록")
+    else:
+        warnings.append(
+            "노드 호스트 키를 수집하지 못했습니다. 이 플랫폼을 컨테이너로 운영한다면 노드 점검이 "
+            "호스트 키 미등록으로 실패합니다. Controller에 ssh-keyscan이 있는지 확인하세요."
+        )
+    return {"provider_id": provider_id, "nodes": nodes, "count": len(nodes), "sources": sorted(sources),
+            "warnings": warnings, "host_keys": stored_keys}
 
 
 @app.delete("/api/providers/{provider_id}")
@@ -2080,7 +2182,7 @@ async def execute_custom_check(provider: dict, nodes: list[dict], definition: di
 
     async def execute(node: dict) -> dict:
         options = provider_ssh_options(provider)
-        options["known_hosts"] = "/root/.ssh/known_hosts"
+        options["known_hosts"] = provider_known_hosts(provider["id"])
         try:
             address = await resolve_node_address(node)
             async with asyncssh.connect(address, **options) as connection:
@@ -2659,7 +2761,7 @@ printf 'script_ms=%s\n' "$(( $(now_ms) - script_started ))"
 
     async def check_node(node: dict) -> dict:
         options = provider_ssh_options(provider)
-        options["known_hosts"] = "/root/.ssh/known_hosts"
+        options["known_hosts"] = provider_known_hosts(provider_id)
         node_started = datetime.now(timezone.utc)
         def mark_node(state: str) -> None:
             entry = node_states.get(node["hostname"])
@@ -2798,7 +2900,7 @@ exit 0
     controller_seconds = None
     controller_script_timeout = INSPECTION_TIMEOUTS["controller_script"]
     options = provider_ssh_options(provider)
-    options["known_hosts"] = "/root/.ssh/known_hosts"
+    options["known_hosts"] = provider_known_hosts(provider_id)
     # Prefer the active controller's inventory IP (resolved on the controller during
     # discovery); a bare hostname only works when the deploy server can resolve it,
     # and the VIP is the last resort because it can move between controllers.
@@ -3612,7 +3714,7 @@ async def start_check_scheduler():
 # A read-only collection run (hardware, filesystems, NICs/bonds, services, VMs per node; hypervisors,
 # instances, volumes, networks, projects, flavors and the storage backend from the active controller)
 # stored as one JSON payload per run in provider_inventory. It reuses the inspection's SSH path.
-from inventory_collector import controller_script as inventory_controller_script, node_script as inventory_node_script, parse_controller_output, parse_node_output  # noqa: E402
+from inventory_collector import apply_node_allocation_ratios, controller_script as inventory_controller_script, node_script as inventory_node_script, parse_controller_output, parse_node_output  # noqa: E402
 from provider_store import get_inventory, latest_inventory, list_inventories, save_inventory  # noqa: E402
 
 INVENTORY_PROGRESS: dict[str, dict] = {}
@@ -3657,7 +3759,7 @@ async def execute_inventory_collection(provider_id: str) -> dict:
 
     async def collect_node(node: dict) -> dict:
         options = provider_ssh_options(provider)
-        options["known_hosts"] = "/root/.ssh/known_hosts"
+        options["known_hosts"] = provider_known_hosts(provider_id)
         node_started = datetime.now(timezone.utc)
         base = {"hostname": node["hostname"], "role": node["role"], "address": node.get("address", ""), "source": node.get("source", "")}
         try:
@@ -3676,14 +3778,19 @@ async def execute_inventory_collection(provider_id: str) -> dict:
     controller_target = controller_connect_target(provider, nodes)
     controller = {"hostname": provider.get("controller_hostname"), "target": controller_target, "error": ""}
     controller_sections = {"openstack": {"available": False, "errors": {"connection": ""}, "hypervisors": [], "servers": [], "volumes": [], "networks": [], "projects": [], "flavors": []},
-                           "capacity": {"hypervisors": [], "totals": {}, "projects": [], "instances": {"total": 0, "by_status": {}}},
-                           "storage": {"backend": "none", "ceph": None, "nfs": {"mounts": [], "glance_on_nfs": False, "cinder_on_nfs": False, "cinder_mount_dirs": []}}}
+                           "capacity": {"hypervisors": [], "totals": {}, "projects": [], "instances": {"total": 0, "by_status": {}},
+                                        "zones": [], "quota_available": False, "headroom": {"flavors": [], "results": []}},
+                           "storage": {"backend": "none", "ceph": None, "nfs": {"mounts": [], "glance_on_nfs": False, "cinder_on_nfs": False, "cinder_mount_dirs": []}},
+                           "api_access": {"ok": False, "message": "", "placement": False, "quota_projects": 0}}
     options = provider_ssh_options(provider)
-    options["known_hosts"] = "/root/.ssh/known_hosts"
+    options["known_hosts"] = provider_known_hosts(provider_id)
     try:
         async with asyncssh.connect(controller_target, **options) as connection:
             response = await run_as_root(connection, provider, inventory_controller_script(INVENTORY_TIMEOUTS["command"]), INVENTORY_TIMEOUTS["controller_script"])
         controller_sections = parse_controller_output(response.stdout)
+        # Placement covers most clouds, but a hypervisor it did not report can still be sized from
+        # the allocation ratios in that node's own nova.conf, collected by the per-node script.
+        apply_node_allocation_ratios(controller_sections["capacity"], node_results)
     except (asyncssh.Error, OSError, RuntimeError) as exc:
         controller["error"] = f"수집 명령이 {INVENTORY_TIMEOUTS['controller_script']}초 안에 완료되지 않음" if isinstance(exc, TimeoutError) else f"활성 Controller SSH 연결 실패: {node_failure_reason(exc)}"
         controller_sections["openstack"]["errors"]["connection"] = controller["error"]
@@ -4695,6 +4802,19 @@ async def static_script(asset_name: str):
     if "/" in asset_name or not asset_name.endswith(".js") or not path.is_file():
         raise HTTPException(404)
     return FileResponse(path, media_type="text/javascript", headers={"Cache-Control": "no-store, max-age=0"})
+
+FONT_MEDIA_TYPES = {".woff2": "font/woff2", ".css": "text/css"}
+
+
+@app.get("/fonts/{asset_name}")
+async def static_font(asset_name: str):
+    # Inter/Noto Sans KR 는 폐쇄망에서 Google Fonts 를 받을 수 없으므로 이미지에 넣어 직접 제공한다.
+    suffix = Path(asset_name).suffix
+    path = BASE_DIR / "fonts" / "web" / asset_name
+    if "/" in asset_name or suffix not in FONT_MEDIA_TYPES or not path.is_file():
+        raise HTTPException(404)
+    return FileResponse(path, media_type=FONT_MEDIA_TYPES[suffix], headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
 
 @app.get("/{asset_name}")
 async def static_asset(asset_name: str):

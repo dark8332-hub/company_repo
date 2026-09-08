@@ -72,10 +72,50 @@ function groupCard(group) {
   const kindLabel = {controller:'Controller 연결', node:'노드', service:'서비스 계열', single:'단일'}[group.kind] || group.kind;
   return `<section class="alert-group ${group.severity}${open ? '' : ' closed'}" data-group-key="${escapeText(group.key)}"><header class="alert-group-head" role="button" tabindex="0" data-group-toggle="${escapeText(group.key)}"><span class="alert-group-count ${group.severity}">${group.count}</span><div><h3>${escapeText(group.title)}</h3><small>${escapeText(kindLabel)} · 미확인 ${group.open} · 확인 ${group.acknowledged}${group.suppressed ? ` · 억제 ${group.suppressed}` : ''}${group.resolved ? ` · 해소 ${group.resolved}` : ''} · 최근 감지 ${escapeText(alertShortDate(group.last_detected_at))}</small>${cause}</div>${actions}<b class="alert-group-chevron">›</b></header><div class="alert-group-body" hidden>${group.alerts.map(alertCard).join('')}</div></section>`;
 }
+// Each summary card is a shortcut to the filter that produces exactly the alerts it counts, so the
+// number and the list below can never disagree.
+const alertScopes = {
+  active: {status:'active', severity:'', label:'활성 알림'},
+  critical: {status:'active', severity:'critical', label:'위험'},
+  warning: {status:'active', severity:'warning', label:'주의'},
+  suppressed: {status:'suppressed', severity:'', label:'억제 중'},
+  resolved: {status:'resolved', severity:'', label:'해소'},
+};
+
+function currentAlertScope() {
+  const status = document.querySelector('#alertStatusFilter').value;
+  const severity = document.querySelector('#alertSeverityFilter').value;
+  return Object.keys(alertScopes).find(key => alertScopes[key].status === status && alertScopes[key].severity === severity) || '';
+}
+
+function markAlertScope() {
+  const active = currentAlertScope();
+  document.querySelectorAll('#alertSummaryGrid [data-alert-scope]').forEach(card => {
+    const selected = card.dataset.alertScope === active;
+    card.classList.toggle('selected', selected);
+    card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+}
+
+function applyAlertScope(scope) {
+  const target = alertScopes[scope];
+  if (!target) return;
+  // Clicking the card that is already applied clears the filter, so one card toggles both ways.
+  const clear = currentAlertScope() === scope;
+  document.querySelector('#alertStatusFilter').value = clear ? '' : target.status;
+  document.querySelector('#alertSeverityFilter').value = clear ? '' : target.severity;
+  loadAlerts();
+}
+
 async function loadAlerts() {
   const params = alertFilterParams();
   const grouped = document.querySelector('#alertGroupToggle').checked;
   const list = document.querySelector('#alertManagementList'); list.innerHTML = '<div class="empty-provider">알림을 불러오는 중입니다.</div>';
+  const refreshButton = document.querySelector('#refreshAlerts');
+  // Without a busy state a refresh that returns the same alerts looks like nothing happened.
+  refreshButton.disabled = true;
+  refreshButton.classList.add('busy');
+  markAlertScope();
   loadAlertStats();
   loadMaintenanceWindows();
   try {
@@ -83,18 +123,30 @@ async function loadAlerts() {
     if (!response.ok) throw new Error(data.detail || '알림을 불러오지 못했습니다.'); renderAlertSummary(data.summary, data.alerts || []);
     if (grouped) {
       currentAlertGroups = data.groups || [];
-      document.querySelector('#alertListMeta').textContent = `${data.total}건을 ${currentAlertGroups.length}개 원인으로 묶었습니다`;
-      if (!currentAlertGroups.length) { list.innerHTML = '<div class="empty-provider">조건에 맞는 알림이 없습니다.</div>'; return; }
+      document.querySelector('#alertListMeta').textContent = `${data.total}건을 ${currentAlertGroups.length}개 원인으로 묶었습니다${alertMetaSuffix()}`;
+      if (!currentAlertGroups.length) { list.innerHTML = `<div class="empty-provider">${escapeText(emptyAlertMessage())}</div>`; return; }
       list.innerHTML = currentAlertGroups.map(groupCard).join('');
       const single = currentAlertGroups.filter(group => group.kind === 'single' || group.count === 1);
       list.querySelectorAll('.alert-group').forEach((section, index) => { if (single.includes(currentAlertGroups[index]) || index === 0) section.querySelector('.alert-group-body').hidden = false; });
       return;
     }
     currentAlertGroups = [];
-    document.querySelector('#alertListMeta').textContent = `${data.alerts.length}건`;
-    if (!data.alerts.length) { list.innerHTML = '<div class="empty-provider">조건에 맞는 알림이 없습니다.</div>'; return; }
+    document.querySelector('#alertListMeta').textContent = `${data.alerts.length}건${alertMetaSuffix()}`;
+    if (!data.alerts.length) { list.innerHTML = `<div class="empty-provider">${escapeText(emptyAlertMessage())}</div>`; return; }
     list.innerHTML = data.alerts.map(alertCard).join('');
   } catch (error) { list.innerHTML = `<div class="empty-provider error">${escapeText(error.message)}</div>`; }
+  finally { refreshButton.disabled = false; refreshButton.classList.remove('busy'); }
+}
+
+function alertMetaSuffix() {
+  const scope = currentAlertScope();
+  const time = new Intl.DateTimeFormat('ko-KR', {timeStyle:'medium'}).format(new Date());
+  return `${scope ? ` · ${alertScopes[scope].label}만 표시` : ''} · ${time} 갱신`;
+}
+
+function emptyAlertMessage() {
+  const scope = currentAlertScope();
+  return scope ? `${alertScopes[scope].label}에 해당하는 알림이 없습니다. 카드를 다시 누르면 전체를 표시합니다.` : '조건에 맞는 알림이 없습니다.';
 }
 
 function formatSeconds(seconds) {
@@ -330,6 +382,12 @@ document.querySelector('#maintenanceList').addEventListener('click', async event
 document.querySelector('#alertGroupToggle').checked = localStorage.getItem(alertGroupKey) !== '0';
 document.querySelector('#alertGroupToggle').addEventListener('change', event => { localStorage.setItem(alertGroupKey, event.target.checked ? '1' : '0'); loadAlerts(); });
 document.querySelector('#refreshAlerts').addEventListener('click', loadAlerts);
+document.querySelector('#alertSummaryGrid').addEventListener('click', event => {
+  const card = event.target.closest('[data-alert-scope]');
+  if (card) applyAlertScope(card.dataset.alertScope);
+});
+[['#alertStatusFilter'], ['#alertSeverityFilter'], ['#alertProviderFilter']].forEach(([selector]) =>
+  document.querySelector(selector).addEventListener('change', loadAlerts));
 document.querySelector('#searchAlerts').addEventListener('click', loadAlerts);
 document.querySelector('#alertSearch').addEventListener('keydown', event => { if (event.key === 'Enter') loadAlerts(); });
 document.querySelector('#closeAlertAction').addEventListener('click', () => { document.querySelector('#alertActionEditor').hidden = true; });

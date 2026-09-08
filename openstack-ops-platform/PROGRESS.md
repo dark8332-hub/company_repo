@@ -6,9 +6,9 @@
 
 - 프로젝트명: OpenStack 운영 지원 플랫폼 (가칭)
 - 시작일: 2026-08-21
-- 현재 단계: 전체 화면 고도화 1차 완료(구조 정리·회귀 테스트·설정 서버 저장·감사 로그·통합 뷰·화면별 기능). 다음 단계는 신규 기능의 실제 환경 검증과 알림 발송 채널·다중 사용자 역할
+- 현재 단계: 전체 화면 고도화와 인프라 현황 용량 계획에 이어 폐쇄망 배포 패키징 완료(이미지 반입형 오프라인 번들, 설치·운영 스크립트, 글꼴 내장). 다음 단계는 신규 기능의 실제 환경 검증과 알림 발송 채널·다중 사용자 역할
 - 대상 사용자: OpenStack 운영 엔지니어 및 관리자
-- 문서 상태: 2026-09-04 갱신
+- 문서 상태: 2026-09-07 갱신
 
 ## 추진 목표
 
@@ -90,20 +90,22 @@
 | 데이터베이스 | SQLite, Fernet 암호화 저장 | 적용 |
 | OpenStack 연동 방식 | Controller의 `/root/contrabass-openrc` 및 OpenStack CLI | 적용 |
 | 메트릭 수집 | Prometheus 계열 연동 검토 | 검토 필요 |
+| 용량 계획 | Placement API 우선, 노드 nova.conf 대체. 쿼터는 Nova·Cinder·Neutron REST | 적용 |
 | 대시보드 | 자체 UI 또는 Grafana 연동 검토 | 검토 필요 |
 | 알림 채널 | 이메일, 메신저 등 검토 | 검토 필요 |
-| 배포 방식 | Docker Compose 지원, 현재 systemd/Uvicorn 운영 | 적용 |
+| 배포 방식 | 개발은 systemd/Uvicorn, 사이트 반입은 오프라인 번들(이미지 tar + `install.sh`, docker·podman·nerdctl) | 적용 |
 | 기본 서비스 포트 | 8090 (2026-09-03, 이전 9080) | 확정 |
-| 초기 패키징 | Nginx 기반 Docker 이미지 및 Compose | 완료 |
+| 폐쇄망 패키징 | `build-offline-bundle.sh`로 docker-archive 이미지와 설치·운영 스크립트를 한 묶음으로 생성 | 적용 |
 | 공급자 연결 방식 | VIP를 통한 SSH 접속 후 활성 Controller 확인 | 확정 |
 | OpenStack API 인증 | 환경 내부의 기존 OpenRC 또는 clouds.yaml 활용 우선 검토 | 검토 필요 |
 | SSH 인증 방식 | 개인키 또는 비밀번호 선택 인증 | 확정 |
 | 플랫폼 로그인 | 관리자 단일 계정, scrypt 해시, 서버 세션 + HttpOnly 쿠키 | 적용 |
 | 프론트엔드 구조 | 단일 SPA(`index.html`) + 화면별 11개 JS 모듈, 인라인 스크립트 없음 | 적용 |
-| 테스트 | pytest 회귀 테스트 160개, quickjs 기반 JS 스모크 | 적용 |
+| 테스트 | pytest 회귀 테스트 276개, quickjs 기반 JS 스모크 | 적용 |
 | 운영 설정 저장 | 환경 변수 기본값 + DB(`app_settings`) 우선, 화면에서 수정 | 적용 |
 | 감사 로그 | `audit_logs` 테이블, 52종 동작 기록, 보관 기간 자동 정리 | 적용 |
 | 보고서 형식 | PDF(fpdf2) + Excel(openpyxl, 운영자 점검표 양식) | 적용 |
+| 화면 글꼴 | Inter·Noto Sans KR을 이미지에 내장해 서버가 제공(외부 CDN 미사용) | 적용 |
 | 알림 채널 | 이메일·웹훅 발송 미구현(화면 내 알림만) | 검토 필요 |
 
 ## 진행 현황
@@ -273,6 +275,16 @@
 | 2026-09-04 | UI/UX | 왼쪽 메뉴 순서를 대시보드 → 공급자 연결 → 인프라 현황 → 일일점검으로 변경(화면·설정 목록·`MENU_KEYS` 동일 적용) | 완료 |
 
 | 2026-09-04 | UI/UX | 왼쪽 메뉴의 `OVERVIEW`·`OPERATIONS` 그룹 라벨 제거하고 8개 항목을 한 목록으로 정리 | 완료 |
+
+| 2026-09-07 | 폐쇄망 배포 | `Dockerfile`이 `runbooks.py`·`inventory_collector.py`를 복사하지 않아 컨테이너가 기동 즉시 ImportError로 죽던 문제 수정 | 완료 |
+
+| 2026-09-07 | 폐쇄망 배포 | 화면 글꼴 Inter·Noto Sans KR을 Google Fonts CDN에서 받지 않고 이미지에 넣어 서버가 직접 제공(`fonts/web/`, `GET /fonts/{asset}`) | 완료 |
+
+| 2026-09-07 | 폐쇄망 배포 | 오프라인 배포 번들 구축(`build-offline-bundle.sh`, `deploy/`): 이미지 tar + 설치·운영 스크립트 + 한글 안내서. docker·podman·nerdctl 자동 감지 | 완료 |
+
+| 2026-09-07 | 폐쇄망 배포 | 실제 설치 절차 end-to-end 검증(반입→적재→기동→로그인→백업→복원→재기동→완전 제거) | 완료 |
+
+| 2026-09-07 | 정리 | 쓰이지 않는 `nginx.conf` 삭제(정적 전용 설정으로 API 프록시가 없어 실제 배포에 쓸 수 없었음)와 README 배포 절차 갱신 | 완료 |
 
 ## 2026-08-25 실제 환경 검증 결과
 
@@ -1005,6 +1017,277 @@
 
 - `index.html`, `styles.css`, `js/core.js`
 
+## 2026-09-04 인프라 현황 고도화: 하이퍼바이저 오버커밋과 프로젝트별 쿼터
+
+### 배경
+
+- `하이퍼바이저 용량` 패널은 nova가 보고한 원시 값(`vcpus_used / vcpus`)만 표시했고, 패널 아래 안내문 자체가 "nova.conf의 오버커밋 비율은 수집하지 않으므로 100%를 넘을 수 있으며, 실제 여유는 오버커밋 비율을 곱해 판단하세요"라고 적혀 있었다. 즉 배치 여유 판단을 사람에게 떠넘기고 있었다.
+- `프로젝트별 사용량` 패널은 인스턴스 목록과 Flavor로 합산한 값만 있어, 프로젝트가 쿼터를 얼마나 썼는지는 알 수 없었다. 운영에서 실제로 막히는 지점은 물리 용량보다 쿼터인 경우가 많다.
+
+### 1. 오버커밋 비율 수집(2단 경로)
+
+- **Placement API 우선**: 활성 Controller에서 자원 공급자별 `inventories`(`total`·`reserved`·`allocation_ratio`)와 `usages`를 읽는다. 운영자가 nova.conf를 고치지 않고 Placement에서 직접 비율을 바꾼 경우까지 반영되므로 이 값을 권위 있는 값으로 본다. `parent_provider_uuid`가 있는 중첩 공급자(NUMA·PGPU)는 제외하고 루트 공급자만 하이퍼바이저 이름으로 대응시킨다.
+- **nova.conf 대체**: Placement가 다루지 않은 하이퍼바이저는 노드 스크립트가 읽은 `cpu/ram/disk_allocation_ratio`와 `reserved_host_*`로 채운다. 비율이 `0.0`이면 nova와 같은 규칙으로 `initial_*_allocation_ratio`를 쓰고, `nova.conf.d` 드롭인이 기본 파일을 덮어쓰는 순서도 그대로 따른다. 노드 점검 경로에 grep 한 줄을 더한 것이라 비용이 사실상 없다.
+- 두 경로 모두 실패하면 물리 기준만 표시하고 그 사실을 화면에 명시한다. 임의의 기본값 1.0을 채워 넣지 않는다.
+- 계산식은 `(total − reserved) × ratio`이며 `free = capacity − used`를 함께 저장한다. 공급자별 소스는 `allocation.source`(`placement`·`nova.conf`·빈 값)로 남기고, 사이트에 두 소스가 섞이면 `mixed`로 표시한다.
+
+### 2. Flavor별 배치 여유와 AZ 집계
+
+- `up`이고 `enabled`인 하이퍼바이저만 대상으로, 남은 vCPU·메모리·디스크를 Flavor 요구량으로 나눈 최솟값을 호스트별로 구해 합산한다. 어떤 자원이 먼저 소진되는지(`limited_by`)를 함께 돌려주므로 무엇을 증설해야 하는지가 바로 보인다. 대상 Flavor는 실제 사용 중인 것을 많이 쓰는 순서로 최대 8개.
+- `openstack aggregate list --long`의 호스트-AZ 대응으로 AZ별 하이퍼바이저·인스턴스·자원 합계를 만든다. AZ 정보가 전혀 없으면 이름 없는 버킷 하나가 생기는 것이 무의미하므로 섹션 자체를 비운다.
+
+### 3. 프로젝트별 쿼터 대비 사용량
+
+- Nova `os-quota-sets/{project}/detail`, Cinder `os-quota-sets/{project}?usage=True`, Neutron `quotas/{project}/details.json`을 합쳐 인스턴스·vCPU·메모리·볼륨·볼륨 용량·스냅샷·Floating IP·네트워크·포트·라우터·보안 그룹의 사용량과 한도를 만든다. 한도 `-1`은 무제한으로 처리해 백분율을 만들지 않는다.
+- 80% 이상은 `near_limit`, 한도 도달은 `exceeded`로 표시한다. 인스턴스가 없어도 쿼터가 있는 프로젝트는 목록에 포함한다. 쿼터를 못 읽은 프로젝트는 인스턴스 합산값을 `estimated`로 표시해 사실과 추정을 구분한다.
+
+### 4. 수집 방식: CLI 대신 REST
+
+- `openstack` CLI는 한 번 기동에 수 초가 들어, 자원 공급자 60개와 프로젝트 40개에 대해 호출하면 수집 시간이 수 분 단위로 늘어난다. 그래서 토큰을 한 번 발급한 뒤 `curl`로 REST API를 직접 호출한다(자원 공급자당 2회, 프로젝트당 3회).
+- 발급한 토큰은 환경 변수로만 전달하고 `section=` 출력에 넣지 않는다. 수집 결과는 DB에 저장되고 브라우저로 전달되므로 토큰이 섞이면 그대로 노출된다.
+- 내부 엔드포인트의 자체 서명 인증서를 허용하기 위해 `curl -k`를 쓴다. 엔드포인트는 `openstack endpoint list` 한 번으로 받아 `internal → public → admin` 순으로 고르고, 레거시 Cinder URL의 `%(tenant_id)s`는 토큰의 프로젝트 ID로 치환한다.
+- 토큰 발급 실패, `curl` 부재, 엔드포인트 없음은 각각 사유와 함께 `api_access` 섹션에 남고 나머지 인벤토리 수집은 그대로 진행된다.
+
+### 5. 화면
+
+- `인벤토리 그리드`를 2열에서 전체 폭 1열로 바꿔 두 패널에 공간을 줬다(`.infrastructure-inventory-grid.wide`).
+- 하이퍼바이저 패널에 `오버커밋 반영 / 물리 기준` 전환 버튼을 두고 선택을 `localStorage`(`okestro-capacity-basis`)에 남긴다. 오버커밋 정보가 하나도 없으면 버튼을 감추고 물리 기준으로 고정한다. 표에 AZ 열과 할당 비율 열(`CPU ×16 · RAM ×1.5 · DISK ×1`)을 추가했다.
+- 프로젝트 패널에 정렬 선택(vCPU·쿼터 사용률·인스턴스 수·이름)과 `쿼터 80% 이상만` 필터를 추가하고, 쿼터가 없으면 기존 열 구성으로 자동 복귀한다.
+
+### 검증 (2026-09-04)
+
+- `pytest` 173개 중 172 통과·1 건너뜀(53.6초). 신규 테스트 14개: 파서·계산 8개(`tests/test_inventory.py`), 화면 렌더링 6개(`tests/test_js_capacity.py`).
+- `tests/test_js_capacity.py`는 QuickJS에서 실제 페이로드로 `renderInventory()`를 호출해 마크업을 검사한다. 스텁 DOM이 셀렉터마다 새 요소를 돌려주던 문제는 셀렉터별 메모이즈로, `escapeText`가 DOM 왕복에 의존해 빈 문자열을 돌려주던 문제는 순수 JS 구현 주입으로 해결했다.
+- 생성되는 두 스크립트를 `bash -n`으로 검사하고, OpenStack이 없는 이 호스트에서 실제로 실행해 0.4초 만에 사유를 남기고 정상 degrade하는 것을 확인했다.
+- 서비스 재기동 후 `/api/health` 200, 기동 로그에 예외 없음. 정적 자산 버전 `20260904-8`.
+- 실제 환경(hnti·rocky)에서 Placement·쿼터 수집이 성공하는지는 미검증이다. 이 호스트에는 OpenStack이 없어 실패 경로만 확인했다.
+
+### 변경 파일
+
+- 신규: `tests/test_js_capacity.py`
+- 수정: `inventory_collector.py`, `server.py`, `js/infrastructure.js`, `index.html`, `styles.css`, `tests/test_inventory.py`, `README.md`
+
+## 2026-09-04 인벤토리 수집 버튼 복구와 알림 요약 카드 필터
+
+### 1. `인벤토리 수집` 버튼이 버튼처럼 보이지 않던 문제
+
+- 이 버튼은 `primary-button` 클래스를 달고 있지만 `.panel-heading` 안에 있어서, `.panel-heading button`(우선순위 0,1,1)이 `.primary-button`(0,1,0)을 이긴다. 그 결과 배경(`background:none`)과 글자색(`#67768b`)만 벗겨지고, `.primary-button`이 단독으로 지정한 `height:40px`와 남색 그림자는 그대로 남아 **버튼면 없이 회색 글씨 아래 그림자만 깔린** 모양이 됐다.
+- 같은 충돌을 다른 패널들은 이미 각자 해결해 두었다(`.inspection-settings-panel`·`.retention-panel`·`.account-panel`·`.schedule-settings-panel`·`.dashboard-fleet`·`.maintenance-panel`·`.monitoring-settings-panel`). 인벤토리 패널만 `margin-left:8px` 한 줄만 있고 외형 재정의가 빠져 있었다. 바로 옆 `수집 이력` 버튼은 `.inventory-panel .panel-heading .secondary` 규칙이 있어 정상으로 보였기 때문에 두 버튼이 나란히 다르게 보였다.
+- `.inventory-panel .panel-heading .primary-button`(0,3,0)으로 배경·테두리·글자색·높이와 `:hover`, `:disabled`(비활성 시 흐리게)를 지정하고, 아이콘 `span`은 같은 우선순위로 `margin`을 오른쪽으로 되돌렸다. 기존에는 `.panel-heading button span{margin-left:5px}`가 적용돼 아이콘 왼쪽에 여백이 붙어 있었다.
+
+### 2. 알림 요약 카드를 눌러 목록을 보는 기능
+
+- `활성 알림`·`위험`·`주의`·`억제 중`·`해소`는 `<article>`이라 클릭할 수 없었다. 다섯 개를 `<button type="button" data-alert-scope=...>`로 바꾸고 `aria-pressed`로 선택 상태를 노출했다. 키보드 접근과 포커스 표시는 버튼으로 바꾸면서 함께 얻었다.
+- 각 카드는 **자기가 세고 있는 알림을 정확히 그대로** 선택한다. 카드 숫자와 목록 건수가 어긋나면 안 되기 때문이다. `활성 알림`은 미해소이면서 억제 중이 아닌 알림인데 서버에 그런 필터가 없어 `list_alerts`에 `status=active`를 추가했다. 매핑은 `활성=active`, `위험=active+critical`, `주의=active+warning`, `억제 중=suppressed`, `해소=resolved`.
+- 카드가 적용한 필터는 상태·심각도 선택 상자에 그대로 반영되고(`활성(미해소)` 옵션 추가), 선택된 카드를 다시 누르면 필터가 해제된다. 선택 상자를 직접 바꿔도 즉시 목록이 갱신되도록 `change` 처리를 붙였다. 이전에는 선택 상자를 바꿔도 `검색` 버튼을 눌러야 반영됐다.
+- 실제 운영 DB 사본으로 확인: 요약이 활성 86·위험 43·주의 43·억제 0·해소 50일 때 각 카드의 필터가 정확히 86·43·43·0·50건을 돌려준다.
+
+### 3. 새로고침이 동작하지 않는 것처럼 보이던 문제
+
+- API와 클릭 처리는 정상이었다. 운영 DB 사본을 붙인 별도 인스턴스에서 `/api/alerts/groups`가 135건을 44개 그룹으로 정상 반환했고, QuickJS에서 실제 응답으로 `loadAlerts()`를 끝까지 돌려 목록이 채워지는 것까지 확인했다.
+- 원인은 **결과가 같으면 화면에 아무 변화가 없어 눌린 것인지 알 수 없다**는 점이었다. 새로고침 중에는 버튼을 비활성으로 두고(`busy`), 목록 메타에 적용된 카드 필터와 갱신 시각(`… · 05:12:33 갱신`)을 남기도록 했다. 실패해도 `finally`로 버튼이 반드시 풀린다.
+- 결과가 없을 때는 어떤 카드 필터 때문인지와 해제 방법을 문구로 안내한다.
+
+### 검증
+
+- `pytest` 187개 중 186 통과·1 건너뜀(66.2초). 신규 20개: 화면 12개(`tests/test_js_alerts.py`), 서버 2개(`tests/test_alerts_features.py`), 기존 6개는 공용 하네스로 이전.
+- QuickJS 하네스를 `tests/js_harness.py`로 분리했다(셀렉터 메모이즈, 순수 JS `escapeText`, 프로미스 큐 배출, `fetch` 스텁). 스텁 DOM은 `querySelectorAll`을 지원하지 않아 선택 표시를 직접 확인할 수 없으므로, 카드 개수·스코프·`aria-pressed`는 `index.html` 마크업과 `alertScopes` 키가 일치하는지로 검증한다.
+- 서비스 재기동 후 `/api/health` 200, 기동 로그에 예외 없음. 정적 자산 버전 `20260904-9`.
+- 진단에 쓴 임시 인스턴스와 DB 사본은 삭제했고 운영 DB와 마스터 키가 그대로임을 확인했다.
+
+### 변경 파일
+
+- 신규: `tests/js_harness.py`, `tests/test_js_alerts.py`
+- 수정: `index.html`, `styles.css`, `js/alerts.js`, `provider_store.py`, `tests/test_alerts_features.py`, `tests/test_js_capacity.py`, `README.md`
+
+## 2026-09-04 표가 패널 밖으로 넘치던 문제
+
+### 원인
+
+표가 패널 경계를 넘어 그려지는 경우가 있다는 보고를 받아 표를 담는 컨테이너를 전수 조사했다. 원인은 두 가지였다.
+
+- **스크롤 컨테이너 없음**: 표의 최소 너비는 줄바꿈되지 않는 가장 넓은 행이라 컨테이너보다 넓어질 수 있는데, `overflow-x`가 없으면 패널 테두리를 뚫고 그대로 그려진다. `.inventory-history`(수집 이력), `.retention-storage`(보관 현황), `.promql-result`(PromQL 결과), `.node-detail-grid section`(노드 상세 6개 표)이 해당했다. 이미 처리된 곳(`.hypervisor-capacity`·`.project-usage`·`.storage-backend`·`.openstack-inventory`·`.audit-table`·`.monitoring-nodes`·`.monitoring-targets`·`.node-manager-list`·`.inspection-table-wrap`·`.inspection-history-table`·`.inspection-report-body`)과 달리 이 넷만 빠져 있었다.
+- **그리드 블로아웃**: 그리드·플렉스 항목의 기본 `min-width:auto`는 내용의 최소 너비 아래로 줄어들지 않는다. 표를 품은 항목이 줄어들기를 거부하면 트랙 전체가 표 너비만큼 늘어나 레이아웃이 옆으로 밀린다. `.timing-grid`(소요 시간 통계, 3열에 표 4개)가 여기 해당했다. `.node-detail-grid section`은 `min-width:0`이 있어 줄어들기는 했지만 스크롤이 없어 첫 번째 문제를 겪고 있었다.
+
+"가끔씩"인 이유는 두 조건 모두 내용 길이에 좌우되기 때문이다. 호스트명·마운트 경로·인스턴스 이름이 길 때만 드러난다.
+
+### 조치
+
+- `.inventory-history`, `.retention-storage`, `.promql-result`, `.node-detail-grid section`에 `overflow-x:auto`를 넣었다.
+- `.timing-grid>*`에 `min-width:0`과 `overflow-x:auto`를 함께 넣었다. 둘 중 하나만으로는 부족하다. `min-width:0`만 넣으면 표가 항목 밖으로 넘치고, `overflow-x`만 넣으면 항목이 줄어들지 않아 그리드가 늘어난다.
+- `.infrastructure-inventory-grid>*`, `.alert-summary-grid>*`에 `min-width:0`을 예방 차원에서 넣었다.
+- 일일점검 체크리스트는 이미 `.inspection-table-wrap`(`overflow-x:auto`, 표에 `min-width:900px`)으로 감싸져 있어 정상이었다. `.inspection-group`이 둥근 모서리 유지를 위해 `overflow:hidden`이라 래퍼가 없었다면 표가 잘려 나갔을 자리다.
+
+### 회귀 방지
+
+- `tests/test_css_table_overflow.py`(25개). 표를 받는 컨테이너 목록을 명시하고 각각의 스크롤 여부를 스타일시트에서 검사한다. 그리드 항목은 `min-width:0`과 스크롤을 모두 요구하고, 체크리스트 표가 스크롤 래퍼 안에 있는지도 확인한다.
+- `js/`를 훑어 `<table`을 넣는 컨테이너를 자동으로 찾아 목록에 없는 것이 있으면 실패시킨다. 새 표를 추가하면서 스크롤 처리를 빠뜨리면 테스트가 잡는다. 같은 변수명(`box`·`list`)을 재사용하는 뒤쪽 함수가 잘못 잡히지 않도록 탐색 범위를 함수 경계에서 끊는다.
+- 이 테스트를 쓰면서 매핑 오류 하나(수집 이력 표의 스크롤 담당은 컨테이너가 아니라 스크립트가 만드는 래퍼)와 오탐 하나를 스스로 잡아냈다.
+
+### 검증
+
+- `pytest` 212개 중 211 통과·1 건너뜀(66.3초). 서비스 재기동 후 `/api/health` 200, 기동 로그에 예외 없음. 정적 자산 버전 `20260904-10`.
+- 브라우저 확인은 이 서버에 브라우저가 없어 미실시. 검사는 스타일시트와 생성 마크업 기준이다.
+
+### 변경 파일
+
+- 신규: `tests/test_css_table_overflow.py`
+- 수정: `styles.css`, `index.html`
+
+## 2026-09-04 `.primary-button`이 절반만 적용되던 버튼들
+
+### 원인
+
+조치 가이드를 편집하면 `취소`·`저장` 버튼이 깨진다는 보고를 받아 `.primary-button` 전체를 정적 분석했다. 원인이 두 겹이었다.
+
+- **우선순위 역전**: `.primary-button`은 (0,1,0)이라 `.어떤컨테이너 button`(0,1,1) 형태의 규칙에 진다. 그러면 배경과 글자색만 컨테이너 규칙에 넘어가고, `.primary-button`만 지정하는 높이와 남색 그림자는 남는다. 결과는 **버튼면 없이 글씨만 뜬 채 아래에 그림자만 깔린** 모양이다. 앞서 고친 `인벤토리 수집`과 정확히 같은 구조였다.
+- **좁은 열에서 눌림**: `.runbook-form-actions`가 `flex-wrap` 없는 한 줄이라, 긴 안내 문구(`Markdown(제목 ##, …)을 지원합니다…`)와 버튼 두 개가 알림 편집 화면의 절반 폭 열에 함께 들어가면서 버튼이 짜부라졌다. 버튼에 `flex-shrink` 방지도 없었다.
+
+정적 분석 결과 깨진 곳은 두 군데였다. `.runbook-form-actions`의 `저장`(알림 화면 폼과 런북 모달이 같은 마크업을 쓰므로 두 곳 모두)과 공급자 연결의 `연결 진단`이다. `연결 진단`은 `.diagnosis-run`이 높이만 지정하고 면은 지정하지 않아 같은 증상이었다.
+
+### 조치
+
+- `.runbook-form-actions .primary-button`(0,2,0)에 배경·테두리·글자색·높이·그림자 제거를 명시했다. `.runbook-form-actions button`(0,1,1)을 이긴다.
+- `.runbook-form-actions`에 `flex-wrap:wrap`, 안내 문구에 `flex:1 1 220px;min-width:0`, 버튼에 `flex:0 0 auto;white-space:nowrap`을 줬다. 좁아지면 버튼이 다음 줄로 내려가고 글자가 눌리지 않는다.
+- `.provider-diagnosis .panel-heading .diagnosis-run`(0,3,0)에 같은 방식으로 면을 지정했다.
+- 세 곳 모두 `:disabled`에 흐림 처리를 넣었다. 이전에는 비활성 상태가 활성과 구분되지 않았다.
+
+### 회귀 방지
+
+- `tests/test_css_primary_buttons.py`(28개). `index.html`·`login.html`의 모든 `.primary-button`을 파싱해 조상 클래스 집합을 만들고, 스타일시트에서 그 버튼의 면을 덮는 `.컨테이너 button` 규칙과 면을 되돌리는 규칙을 각각 찾아 **우선순위와 소스 순서로 승자를 계산**한다. 되돌리는 쪽이 이기지 못하면 실패한다.
+- 되돌리는 규칙은 `.primary-button`뿐 아니라 버튼이 함께 가진 클래스(`.diagnosis-run`)로 지정한 것도 인정한다. 둘 다 컨테이너가 아니라 요소 자신을 가리키므로 똑같이 유효하다. 이 판정을 처음에 빠뜨려 테스트가 이미 고친 `연결 진단`을 실패로 잡았고, 그걸 보고 규칙을 바로잡았다.
+- 새 화면에서 `.primary-button`을 `X button` 규칙이 있는 컨테이너에 넣으면 그 자리에서 실패한다.
+
+### 검증
+
+- `pytest` 240개 중 239 통과·1 건너뜀(66.3초). 서비스 재기동 후 `/api/health` 200. 정적 자산 버전 `20260904-11`.
+- 판정은 스타일시트와 마크업의 정적 계산 기준이다. 브라우저 확인은 이 서버에 브라우저가 없어 미실시.
+
+### 변경 파일
+
+- 신규: `tests/test_css_primary_buttons.py`
+- 수정: `styles.css`, `index.html`
+
+## 2026-09-04 대시보드 행이 옆으로 밀리던 문제
+
+### 원인
+
+대시보드에서 `주의 · 확인 불가 항목`의 내용이 길면 옆의 `활성 알림` 패널이 밀려 나온다는 보고를 받았다. 두 패널은 `.dashboard-grid`(`1.2fr 1fr`)의 항목이다.
+
+행 하나는 `<span 상태><div><strong 제목><small 사유></div><em 상태>` 구조이고 `.dashboard-issues>button`은 `auto 1fr auto` 그리드다. 여기서 `<small>`에 `text-overflow:ellipsis`와 `white-space:nowrap`이 이미 지정돼 있었지만 **말줄임이 한 번도 작동하지 않았다**. 그리드·플렉스 항목의 기본 `min-width:auto`는 내용의 최소 너비 아래로 줄어들지 않는데, 가운데 `1fr` 항목인 `<div>`에는 자기 `overflow`가 없어 최소 너비가 `<small>`의 줄바꿈 없는 전체 텍스트 폭으로 계산되기 때문이다. 요소가 텍스트보다 좁아지는 일이 없으니 말줄임이 걸릴 일도 없었다.
+
+그래서 `1fr` 트랙이 사유 문구 길이만큼 벌어지고, 패널이 넓어지고, `.dashboard-grid`의 두 번째 트랙이 컨테이너 밖으로 밀렸다.
+
+`<small>` 자신이 그리드 항목이었다면 `overflow:hidden` 덕분에 최소 크기가 0이 되어 문제가 없었을 것이다. 실제로 `.kpi-card span`·`.setup-card span`·`.host-key-current code`는 말줄임 요소가 곧 그리드 항목이라 정상이며, 조사 과정에서 후보로 걸렀다가 이 이유로 제외했다.
+
+### 조치
+
+- `.dashboard-grid>*`에 `min-width:0`. 패널 자체가 줄어들 수 있어야 행이 밀리지 않는다.
+- `.dashboard-issues>button>div`, `.dashboard-alerts>button>div`에 `min-width:0`. 이제 말줄임이 실제로 작동한다.
+- `.dashboard-issues strong`, `.dashboard-alerts strong`에도 말줄임을 줘서 제목이 길어도 행 높이가 들쭉날쭉해지지 않는다. 기존에는 `small`에만 있었다.
+- **같은 구조를 클러스터 노드 목록에서도 발견**했다. `.cluster-node-list article`의 행 마크업이 대시보드와 동일한데, 좁은 화면 규칙은 이미 `minmax(0,1fr)`로 고쳐져 있고 넓은 화면 규칙만 `1fr`로 남아 있었다. `.cluster-node-list article>div`에 `min-width:0`을 넣었다. 긴 호스트명에서 4열 그리드 전체가 벌어지던 자리다.
+
+### 회귀 방지
+
+- `tests/test_css_table_overflow.py`에 항목 축소 검사(6개)와 말줄임 검사(5개)를 추가했다. 말줄임을 지정한 자리는 그 요소가 실제로 줄어들 수 있어야 함께 통과한다.
+- 조사에는 스타일시트에서 `text-overflow:ellipsis`를 쓰는 모든 셀렉터를 뽑아 가장 가까운 grid·flex 컨테이너를 찾고 항목이 줄어들 수 있는지 계산하는 방식을 썼다. 처음 판정은 `overflow:hidden`인 요소가 그리드 항목이면 최소 크기가 0이 된다는 규칙을 빠뜨려 네 곳을 오탐했고, 구조를 직접 확인해 걸러냈다.
+
+### 검증
+
+- `pytest` 251개 중 250 통과·1 건너뜀(65.6초). 서비스 재기동 후 `/api/health` 200. 정적 자산 버전 `20260904-12`.
+- 판정은 스타일시트와 생성 마크업의 정적 계산 기준이다. 브라우저 확인은 이 서버에 브라우저가 없어 미실시.
+
+### 변경 파일
+
+- 수정: `styles.css`, `index.html`, `tests/test_css_table_overflow.py`
+
+## 2026-09-04 포트폴리오 캡처로 드러난 화면 결함 세 건
+
+포트폴리오용 화면 캡처(`/root/portfolio/capture_v2.py`, Playwright)를 검토하다 발견해 고쳤다.
+
+- **오버커밋 전환 버튼의 글자 소실**: `.capacity-basis button.active{background:var(--navy)}`에서 `--navy`가 정의돼 있지 않았다(정의된 것은 `--navy-700/800/900/950`). 정의되지 않은 `var()`는 선언 전체를 무효로 만들어 배경이 사라지고 흰 글자만 남아 빈 상자로 보였다. `--navy-800`으로 고치고, 스타일시트에서 쓰는 모든 변수가 정의돼 있는지 검사하는 테스트를 추가했다. 이 검사가 어디에도 쓰이지 않는 `.meter` 규칙(역시 미정의 `--value` 사용)을 함께 잡아내 삭제했다.
+- **대시보드 `일일점검 실행` 버튼의 아이콘이 글자 위로 올라감**: `.dashboard-heading span{display:block}`이 제목 아래 설명문을 위한 규칙인데 같은 헤더 안 버튼의 아이콘 `<span>`까지 잡았다. `.page-heading span`도 같은 구조였고 `.primary-button span`보다 앞에 있다는 소스 순서 덕에만 버티고 있었다. 둘 다 `>div>span`으로 좁히고, 헤더의 `span{display:block}` 규칙은 설명문으로 한정되어야 한다는 테스트를 추가했다.
+- 캡처 스크립트 자체의 문제도 고쳤다. SPA가 이전 페이지의 스크롤 위치를 유지해 절반이 중간부터 찍혔고, 데이터 로드가 끝나기 전에 치환을 돌려 늦게 렌더링되는 IP가 그대로 노출됐다. 맨 위로 스크롤한 뒤 네트워크가 잠잠해지고 나서 치환하도록 바꿨다.
+
+검증: `pytest` 254개 중 253 통과·1 건너뜀. 정적 자산 버전 `20260904-14`.
+
+### 변경 파일
+
+- `styles.css`, `index.html`, `tests/test_css_primary_buttons.py`
+
+## 2026-09-07 폐쇄망 배포 패키징
+
+배포 대상 사이트에 인터넷이 없다. 이미지를 파일로 반입해 풀어 쓰는 방식으로 정리하면서,
+지금 형태로는 폐쇄망에서 동작하지 않는 것 세 가지를 고쳤다.
+
+### 1. `Dockerfile`이 모듈 두 개를 빠뜨렸다
+
+`server.py`가 `runbooks.py`와 `inventory_collector.py`를 import 하는데 `COPY` 목록에 없었다.
+이미지는 정상적으로 빌드되고 기동하는 순간 `ModuleNotFoundError`로 죽는다. systemd로만 운영해
+와서 드러나지 않았고, 이 호스트에 docker가 없어 빌드 검증도 못 하던 항목이다(다음 작업 12번).
+
+목록을 손으로 관리하는 한 같은 일이 다시 생긴다. `tests/test_offline_packaging.py`가
+`server.py`에서 시작해 import 그래프를 따라가며 실제로 필요한 모듈을 구하고, 그것이 전부
+`COPY`에 들어 있는지 확인한다. 목록이 아니라 코드를 기준으로 삼는다.
+
+### 2. 화면 글꼴을 Google Fonts에서 받고 있었다
+
+`index.html`과 `login.html`이 `fonts.googleapis.com`을 렌더링 차단 `<link>`로 걸고 있었다.
+폐쇄망에서 이 요청은 빨리 실패하지 않는다. DNS나 연결 타임아웃을 다 기다린 뒤에야 화면이
+그려지므로, 글꼴이 아니라 첫 화면 지연이 실제 문제다.
+
+Inter와 Noto Sans KR의 woff2 131개(3.9MB)를 `fonts/web/`에 넣고 `GET /fonts/{asset}`으로
+직접 제공한다. 로그인 화면도 글꼴을 받아야 하므로 이 경로는 인증 없이 연다. `@font-face`의
+`unicode-range`를 그대로 두었기 때문에 브라우저는 실제로 쓰는 부분집합만 내려받는다.
+
+### 3. 반입 후 절차가 문서에만 있었다
+
+README의 `docker save`/`docker run` 안내에는 데이터 볼륨이 빠져 있었다. 그대로 따르면
+컨테이너를 다시 만드는 순간 등록한 공급자가 사라진다.
+
+`build-offline-bundle.sh`가 이미지 tar와 스크립트·문서를 한 묶음으로 만든다. 폐쇄망에서는
+풀고 `./install.sh` 하나면 끝난다.
+
+- 런타임을 `docker`→`podman`→`nerdctl` 순으로 찾는다. 대상 서버에 무엇이 있을지 모르기 때문이다.
+  `OPS_RUNTIME`으로 직접 지정할 수도 있다.
+- 이미지는 docker-archive 형식이라 세 런타임 모두 `load` 된다.
+- SELinux가 enforcing이면 바인드 마운트에 `:Z`를 자동으로 붙인다. RHEL·Rocky 계열의 흔한 함정이다.
+- 데이터는 번들 아래 `data/`에 둔다. 번들 디렉터리 밖에는 아무것도 쓰지 않으므로,
+  되돌리려면 `./opsctl.sh remove --all` 후 디렉터리를 지우면 된다.
+- 운영은 `opsctl.sh`로 한다(`status`·`logs`·`restart`·`backup`·`restore`·`remove`).
+  `backup`은 SQLite 일관성을 위해 컨테이너를 잠시 멈췄다가 다시 띄운다.
+- 재부팅 자동 기동은 docker면 `--restart unless-stopped`로 되지만 podman·nerdctl은 그렇지 않다.
+  선택 사항으로 systemd 유닛 템플릿을 함께 넣었다.
+
+### nerdctl의 이름 출력
+
+`nerdctl ps --format '{{.Names}}'`는 이름을 `[name]`으로 감싸 찍는다. docker·podman과 달라서
+`grep -qx`로 하던 컨테이너 존재 확인이 항상 실패했고, `restart`가 기존 컨테이너를 지우지 못한 채
+이름 충돌로 죽었다. 검증 중에 잡아 대괄호를 떼고 비교하도록 고쳤다.
+
+### 검증 (2026-09-07)
+
+폐쇄망 서버를 흉내 내어 번들만 가지고 전 과정을 실행했다.
+
+- 체크섬 확인 → 압축 해제 → `install.sh`: 런타임 감지, 이미지 적재, 기동, `/api/health` 응답까지 성공
+- 로그인, `/fonts/fonts.css`와 woff2 제공, 주요 API 8종 200 응답
+- 공급자 목록이 빈 상태로 시작하는 것 확인(의도된 동작)
+- `backup` → DB 삭제 → `restore`로 작업 이력 1건 복원 확인
+- `config.env`의 포트를 바꾸고 `restart`하여 반영 확인, `install.sh` 재실행 시 기존 데이터 보존 확인
+- `remove --all`로 컨테이너·이미지·데이터 제거, 이 호스트의 k8s 네임스페이스와 8090 운영 서비스는 영향 없음
+- 컨테이너 안에서 한글 PDF 생성과 `inspection_excel`·`runbooks`·`inventory_collector` import 확인
+
+`pytest` 276개 통과·1 건너뜀.
+
+### 변경 파일
+
+- `Dockerfile`, `requirements.txt`(`cryptography` 명시적 고정), `.dockerignore`
+- `server.py`(`/fonts/{asset}` 라우트), `index.html`, `login.html`
+- `fonts/web/`(woff2 131개 + `fonts.css`)
+- `build-offline-bundle.sh`, `deploy/`(`install.sh`·`opsctl.sh`·`lib.sh`·`config.env.example`·`compose.yaml.template`·`README-DEPLOY.md`·`systemd/`)
+- `tests/test_offline_packaging.py`
+- `README.md`, `nginx.conf` 삭제
+
 ## 결정사항
 
 - 진행사항은 이 문서에 지속적으로 누적한다.
@@ -1022,6 +1305,19 @@
 - 감사 기록은 원래 작업을 절대 방해하지 않는다. 기록 실패는 로그만 남기고 작업은 계속 진행한다.
 - 인벤토리 수집은 스크립트·파서(`inventory_collector.py`)와 SSH 구동부(`server.py`)를 분리해, 파서는 캡처한 출력만으로 테스트한다.
 - 기능을 추가할 때는 해당 API의 회귀 테스트를 함께 추가한다.
+- `.primary-button`을 쓰는 자리에 `X button` 형태의 컨테이너 규칙이 있으면, 컨테이너 규칙을 이기는 선택자로 배경·글자색을 다시 지정한다. 절반만 적용된 버튼은 그림자만 남아 고장으로 보인다.
+- `text-overflow:ellipsis`는 요소가 실제로 좁아질 수 있을 때만 작동한다. 말줄임을 지정하면 그 요소가 grid·flex 항목인지 확인하고, 아니면 감싸는 항목에 `min-width:0`을 함께 준다.
+- 표는 반드시 가로 스크롤되는 컨테이너 안에 둔다. 그 컨테이너가 그리드·플렉스 항목이면 `min-width:0`을 함께 준다. 둘 중 하나만으로는 넘침이나 그리드 늘어남 중 하나가 남는다.
+- 숫자를 보여주는 요약 카드는 그 숫자가 세는 대상을 그대로 여는 필터를 갖는다. 카드가 세는 조건에 맞는 서버 필터가 없으면 서버에 추가한다. 카드 숫자와 목록 건수가 어긋나는 것이 가장 나쁘다.
+- 눌러도 화면이 변하지 않는 조작은 고장으로 읽힌다. 재조회 버튼은 진행 중 상태와 갱신 시각을 남긴다.
+- 패널 제목줄에 버튼을 둘 때는 `.panel-heading button`이 `.primary-button`을 우선순위로 이긴다는 점을 감안해 패널별 외형 규칙을 함께 넣는다.
+- 용량은 물리 값이 아니라 nova가 스케줄링에 쓰는 `(물리 − 예약) × 할당 비율`을 기준으로 본다. 비율은 Placement를 우선하고 노드 nova.conf를 대체 경로로 쓰며, 둘 다 없으면 임의의 기본값을 채우지 않고 물리 기준만 표시한다.
+- 수집이 자원·프로젝트 수에 비례해 늘어나는 호출은 `openstack` CLI 대신 토큰 + `curl` REST로 처리한다. CLI 기동 비용이 호출당 수 초이기 때문이다.
+- 수집 스크립트의 `section=` 출력은 DB에 저장되고 화면에 노출되므로 인증 토큰 같은 비밀값을 절대 넣지 않는다.
+- 배포 번들은 대상 서버에 번들 디렉터리 밖의 흔적을 남기지 않는다. 패키지를 설치하지 않고 시스템 설정을 고치지 않으며, 데이터도 번들 아래 `data/`에 둔다. systemd 유닛만 선택 사항으로 안내한다.
+- 화면이 외부에서 받아 오는 자원은 두지 않는다. 폐쇄망에서 실패가 아니라 지연으로 나타나 원인을 찾기 어렵다.
+- 이미지에 들어갈 파일 목록은 손으로 관리하지 않는다. 테스트가 import 그래프에서 구해 `Dockerfile`과 대조한다.
+- 공급자 DB와 마스터 키는 이미지에 넣지 않는다. 사이트마다 새로 등록하는 것이 정상이며, 한 사이트의 SSH·MySQL 자격증명이 다른 사이트로 넘어가서는 안 된다.
 
 ## 확인이 필요한 사항
 
@@ -1052,8 +1348,13 @@
 7. katech 사이트의 Compute 역할 노드 미탐색(`nova-compute` 서비스 없음) 근본 원인 확인. 현재는 노드 수동 추가로 우회 가능
 8. 로그 제외 패턴의 사이트 공통 기본 목록(벤더 확인된 무해한 메시지) 정리
 9. 설정 화면의 백업·복원(DB와 마스터 키를 암호화 묶음으로 내려받기·복원)
-10. 인프라 현황의 하이퍼바이저 용량·오버커밋 비율과 프로젝트별 자원 사용 화면
+10. ~~인프라 현황의 하이퍼바이저 용량·오버커밋 비율과 프로젝트별 자원 사용 화면~~ → 2026-09-04 구현. 실제 환경에서 Placement·쿼터 수집 성공 여부 검증이 남았다
 11. 사이트 배포 시 앞단 TLS 적용 여부 결정
+12. ~~`Dockerfile`이 `runbooks.py`와 `inventory_collector.py`를 복사하지 않아 컨테이너 이미지가 기동 즉시 ImportError로 죽는다~~ → 2026-09-07 수정. import 그래프 기반 회귀 테스트 추가
+13. ~~쓰이지 않는 `nginx.conf` 정리 또는 README 설명 수정~~ → 2026-09-07 삭제하고 README를 배포 번들 절차로 교체
+14. 2026-09-03 이후 고도화분이 GitHub에 미발행 상태다
+15. 배포 번들을 실제 폐쇄망 사이트에서 설치 검증. 여기서는 nerdctl로만 확인했고 docker·podman 경로는 스크립트 분기까지만 맞췄다
+16. 앞단 TLS. 현재 HTTP로 서비스하므로 로그인 비밀번호가 평문으로 오간다. 폐쇄망이라도 사내망 도청은 남는 위험이다
 
 ## 변경 기록
 
@@ -1128,3 +1429,10 @@
 | 2026-09-04 | 항목별 최근 결과 미니 추이를 항목 이름 아래 고정 줄로 이동해 모든 항목에서 같은 위치에 표시 |
 | 2026-09-04 | 왼쪽 메뉴 순서를 대시보드 → 공급자 연결 → 인프라 현황 → 일일점검으로 변경 |
 | 2026-09-04 | 왼쪽 메뉴의 그룹 라벨(OVERVIEW·OPERATIONS) 제거 |
+| 2026-09-04 | 인프라 현황 고도화: Placement·nova.conf 기반 오버커밋 반영 용량, Flavor별 배치 여유, 가용 영역별 집계, 프로젝트별 쿼터 대비 사용률과 정렬·필터 추가 |
+| 2026-09-04 | 인벤토리 수집 버튼의 CSS 우선순위 충돌 수정, 알림 요약 카드 5종을 클릭 필터로 전환(`status=active` 추가), 알림 새로고침에 진행 상태와 갱신 시각 표시 |
+| 2026-09-04 | 표가 패널 밖으로 넘치던 문제 수정(스크롤 컨테이너 4곳, 그리드 블로아웃 1곳)과 회귀 방지 테스트 추가 |
+| 2026-09-04 | 조치 가이드 저장·공급자 연결 진단 버튼의 우선순위 역전 수정, 런북 조작 줄 줄바꿈 허용, 회귀 방지 테스트 추가 |
+| 2026-09-04 | 대시보드·클러스터 노드 목록 행이 긴 내용에 밀리던 문제 수정(`min-width:0`으로 말줄임 활성화)과 회귀 방지 검사 추가 |
+| 2026-09-04 | 포트폴리오 캡처 검토로 발견한 미정의 CSS 변수·헤더 span 규칙 범위 문제 수정, 죽은 `.meter` 규칙 삭제, CSS 변수 정의 검사 추가 |
+| 2026-09-07 | 폐쇄망 배포 패키징: `Dockerfile` 모듈 누락 수정, 화면 글꼴 이미지 내장(Google Fonts CDN 제거), 오프라인 배포 번들과 설치·운영 스크립트 구축, 설치 절차 end-to-end 검증, `nginx.conf` 삭제 |

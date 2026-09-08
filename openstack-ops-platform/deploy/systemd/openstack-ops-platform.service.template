@@ -1,0 +1,27 @@
+[Unit]
+# 서버 재기동 후 자동으로 올라오게 하려면 이 유닛을 설치합니다.
+#
+#   sed 's#__BUNDLE_DIR__#'"$(pwd)"'#' systemd/openstack-ops-platform.service.template \
+#     | sudo tee /etc/systemd/system/openstack-ops-platform.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now openstack-ops-platform
+#
+# 이 유닛을 쓰지 않아도 docker 는 --restart unless-stopped 로 재부팅 후 자동 기동합니다.
+# podman 과 nerdctl 은 그렇지 않으므로, 두 런타임을 쓴다면 이 유닛을 설치하세요.
+#
+# 제거: sudo systemctl disable --now openstack-ops-platform && sudo rm /etc/systemd/system/openstack-ops-platform.service
+Description=OpenStack 운영 지원 플랫폼
+Documentation=file://__BUNDLE_DIR__/README-DEPLOY.md
+After=network-online.target docker.service containerd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__BUNDLE_DIR__
+ExecStart=__BUNDLE_DIR__/opsctl.sh start
+ExecStop=__BUNDLE_DIR__/opsctl.sh stop
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

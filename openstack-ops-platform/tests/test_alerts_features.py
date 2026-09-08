@@ -115,3 +115,39 @@ def test_runbooks_builtin_and_override(auth_client, provider_id):
     site = auth_client.get(f"/api/runbooks/inspection:pcs?provider_id={provider_id}").json()
     assert site["source"] == "provider" and "사이트 절차" in site["text"] and site["editable"] is True
     assert auth_client.get(f"/api/runbooks/vip?provider_id={provider_id}").json()["source"] == "builtin"
+
+
+def test_active_status_filter_matches_the_summary_card(auth_client, provider_id):
+    """The 활성 알림 card sends status=active; it must return exactly what the card counts."""
+    _sync(provider_id, _items("pcs", "vip", "rabbitmq"))
+    alerts = auth_client.get("/api/alerts").json()["alerts"]
+    auth_client.put(f"/api/alerts/{alerts[0]['id']}", json={"status": "acknowledged", "assignee": "ops", "resolution_note": ""})
+    auth_client.put(f"/api/alerts/{alerts[1]['id']}", json={"status": "resolved", "assignee": "", "resolution_note": "복구"})
+
+    summary = auth_client.get("/api/alerts/summary").json()
+    active = auth_client.get("/api/alerts?status=active").json()["alerts"]
+    # acknowledged still counts as active; resolved does not.
+    assert len(active) == summary["active"] == 2
+    assert {alert["status"] for alert in active} == {"open", "acknowledged"}
+
+    critical = auth_client.get("/api/alerts?status=active&severity=critical").json()["alerts"]
+    assert len(critical) == summary["critical"]
+    resolved = auth_client.get("/api/alerts?status=resolved").json()["alerts"]
+    assert len(resolved) == 1 and resolved[0]["status"] == "resolved"
+
+
+def test_active_filter_excludes_suppressed_alerts(auth_client, provider_id):
+    """Suppressed alerts have their own card, so they must not also appear under 활성 알림."""
+    _sync(provider_id, _items("pcs", "vip"))
+    start = datetime.now(timezone.utc) - timedelta(minutes=5)
+    window = auth_client.post("/api/maintenance-windows", json={
+        "title": "정기 점검", "provider_ids": [provider_id], "items": [],
+        "starts_at": start.isoformat(), "ends_at": (start + timedelta(hours=2)).isoformat()})
+    assert window.status_code == 201, window.text
+
+    summary = auth_client.get("/api/alerts/summary").json()
+    active = auth_client.get("/api/alerts?status=active").json()["alerts"]
+    suppressed = auth_client.get("/api/alerts?status=suppressed").json()["alerts"]
+    assert len(active) == summary["active"]
+    assert len(suppressed) == summary["suppressed"] > 0
+    assert not [alert for alert in active if alert["suppressed"]]

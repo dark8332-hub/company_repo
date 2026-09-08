@@ -107,6 +107,14 @@ def _connect() -> sqlite3.Connection:
             SELECT lower(hex(randomblob(16))),id,fingerprint,controller_hostname,vip,created_at,?
             FROM providers WHERE fingerprint != ''""", (now,))
         connection.execute("INSERT INTO schema_migrations VALUES (?,?)", (migration, now))
+    # 노드 호스트 키는 지문만으로는 접속을 고정할 수 없다. 탐색 때 Controller 에서 받아 온
+    # 공개키 원문을 함께 보관해, 배포 서버의 ~/.ssh/known_hosts 없이도 검증할 수 있게 한다.
+    host_key_columns = {row[1] for row in connection.execute("PRAGMA table_info(provider_host_keys)")}
+    if "public_key" not in host_key_columns:
+        connection.execute("ALTER TABLE provider_host_keys ADD COLUMN public_key TEXT NOT NULL DEFAULT ''")
+    if "role" not in host_key_columns:
+        connection.execute("ALTER TABLE provider_host_keys ADD COLUMN role TEXT NOT NULL DEFAULT ''")
+
     exception_columns = {row[1] for row in connection.execute("PRAGMA table_info(check_exceptions)")}
     if "node_hostname" not in exception_columns:
         connection.execute("ALTER TABLE check_exceptions RENAME TO check_exceptions_legacy")
@@ -341,10 +349,15 @@ def save_provider(data: dict, credentials: dict) -> str:
             data["auth_method"], encrypted, data["fingerprint"], data["controller_hostname"],
             data["sudo_mode"], json.dumps(data["available_tools"]), created_at,
         ))
-        connection.execute("INSERT INTO provider_host_keys VALUES (?,?,?,?,?,?,?)", (
-            str(uuid.uuid4()), provider_id, data["fingerprint"], data["controller_hostname"], data["vip"], created_at, created_at,
+        # Columns are named because this table grows: a positional INSERT breaks silently on the
+        # next ALTER, and the controller's key is the one thing a provider cannot be saved without.
+        connection.execute("""INSERT INTO provider_host_keys
+            (id,provider_id,fingerprint,hostname,address,role,public_key,approved_at,last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?)""", (
+            str(uuid.uuid4()), provider_id, data["fingerprint"], data["controller_hostname"], data["vip"],
+            "controller", data.get("host_public_key", ""), created_at, created_at,
         ))
-        connection.execute("INSERT INTO host_key_events VALUES (?,?,?,?,?,?,?)", (
+        connection.execute("INSERT INTO host_key_events (id,provider_id,fingerprint,action,hostname,address,created_at) VALUES (?,?,?,?,?,?,?)", (
             str(uuid.uuid4()), provider_id, data["fingerprint"], "approved", data["controller_hostname"], data["vip"], created_at,
         ))
     return provider_id
@@ -440,7 +453,7 @@ def delete_database_credentials(provider_id: str) -> bool:
 def list_provider_host_keys(provider_id: str) -> list[dict]:
     with _connect() as connection:
         rows = connection.execute(
-            "SELECT id,fingerprint,hostname,address,approved_at,last_seen_at FROM provider_host_keys WHERE provider_id=? ORDER BY approved_at DESC",
+            "SELECT id,fingerprint,hostname,address,role,public_key,approved_at,last_seen_at FROM provider_host_keys WHERE provider_id=? ORDER BY approved_at DESC",
             (provider_id,),
         ).fetchall()
     return [dict(row) for row in rows]
@@ -454,22 +467,34 @@ def is_provider_host_key_trusted(provider_id: str, fingerprint: str) -> bool:
     return row is not None
 
 
-def trust_provider_host_key(provider_id: str, fingerprint: str, hostname: str = "", address: str = "") -> dict:
+def trust_provider_host_key(provider_id: str, fingerprint: str, hostname: str = "", address: str = "",
+                            public_key: str = "", role: str = "") -> dict:
     now = datetime.now(timezone.utc).isoformat()
     with _connect() as connection:
         connection.execute("""INSERT INTO provider_host_keys
-            (id,provider_id,fingerprint,hostname,address,approved_at,last_seen_at) VALUES (?,?,?,?,?,?,?)
+            (id,provider_id,fingerprint,hostname,address,role,public_key,approved_at,last_seen_at) VALUES (?,?,?,?,?,?,?,?,?)
             ON CONFLICT(provider_id,fingerprint) DO UPDATE SET
             hostname=CASE WHEN excluded.hostname!='' THEN excluded.hostname ELSE provider_host_keys.hostname END,
             address=CASE WHEN excluded.address!='' THEN excluded.address ELSE provider_host_keys.address END,
+            role=CASE WHEN excluded.role!='' THEN excluded.role ELSE provider_host_keys.role END,
+            public_key=CASE WHEN excluded.public_key!='' THEN excluded.public_key ELSE provider_host_keys.public_key END,
             last_seen_at=excluded.last_seen_at""",
-            (str(uuid.uuid4()), provider_id, fingerprint, hostname, address, now, now),
+            (str(uuid.uuid4()), provider_id, fingerprint, hostname, address, role, public_key, now, now),
         )
         connection.execute(
-            "INSERT INTO host_key_events VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO host_key_events (id,provider_id,fingerprint,action,hostname,address,created_at) VALUES (?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), provider_id, fingerprint, "approved", hostname, address, now),
         )
     return next(item for item in list_provider_host_keys(provider_id) if item["fingerprint"] == fingerprint)
+
+
+def provider_host_key_material(provider_id: str) -> list[str]:
+    """Stored public keys for this provider, for pinning node connections without a known_hosts file."""
+    with _connect() as connection:
+        rows = connection.execute(
+            "SELECT public_key FROM provider_host_keys WHERE provider_id=? AND public_key!=''", (provider_id,),
+        ).fetchall()
+    return [row["public_key"] for row in rows]
 
 
 def mark_provider_host_key_seen(provider_id: str, fingerprint: str) -> None:
@@ -503,7 +528,7 @@ def delete_provider_host_key(provider_id: str, key_id: str) -> bool:
             raise ValueError("마지막 신뢰 지문은 삭제할 수 없습니다.")
         connection.execute("DELETE FROM provider_host_keys WHERE provider_id=? AND id=?", (provider_id, key_id))
         connection.execute(
-            "INSERT INTO host_key_events VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO host_key_events (id,provider_id,fingerprint,action,hostname,address,created_at) VALUES (?,?,?,?,?,?,?)",
             (str(uuid.uuid4()), provider_id, row["fingerprint"], "removed", row["hostname"], row["address"], now),
         )
     return True
@@ -981,7 +1006,10 @@ def list_alerts(provider_id: str = "", status: str = "", severity: str = "", que
     clauses, values = [], []
     now = datetime.now(timezone.utc).isoformat()
     if provider_id: clauses.append("a.provider_id=?"); values.append(provider_id)
-    if status == "suppressed":
+    if status == "active":
+        # What the "활성 알림" summary card counts: everything not resolved and not currently suppressed.
+        clauses.append("a.status!='resolved' AND (a.suppressed_until IS NULL OR a.suppressed_until<=?)"); values.append(now)
+    elif status == "suppressed":
         clauses.append("a.status!='resolved' AND a.suppressed_until IS NOT NULL AND a.suppressed_until>?"); values.append(now)
     elif status in {"open", "acknowledged"}:
         # Suppressed alerts are hidden from the working queues; they are listed under their own filter.
