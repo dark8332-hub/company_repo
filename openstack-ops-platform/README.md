@@ -55,7 +55,38 @@ cd openstack-ops-platform-1.0.0
 컨테이너 하나와 이미지 하나, 그리고 번들 아래 `data/` 뿐입니다.
 
 이후 운영은 `./opsctl.sh {status|logs|restart|stop|backup|restore|remove}`로 합니다.
+컨테이너에서 점검 대상 노드로 SSH가 나가지 못할 때는 `./opsctl.sh netcheck <노드IP>`가
+이름 해석·경로·TCP 22·SSH 배너를 컨테이너 안과 호스트 양쪽에서 확인해 어느 층이 막혔는지 알려 줍니다.
 자세한 절차·설정·문제 해결은 번들 안의 `README-DEPLOY.md`(원본은 `deploy/README-DEPLOY.md`)를 보세요.
+
+### 컨테이너 런타임이 없는 서버
+
+`docker`·`podman`·`nerdctl` 이 하나도 없는 서버에는 런타임을 먼저 반입해야 합니다. 별도 번들로
+만듭니다.
+
+```bash
+./build-runtime-bundle.sh 2.3.5
+# → dist/openstack-ops-runtime-2.3.5-offline.tar.gz
+```
+
+상위 배포처(containerd/nerdctl)의 `nerdctl-full` 압축 파일을 그대로 넣고 릴리스의 `SHA256SUMS`
+한 줄을 함께 넣습니다. 다시 묶지 않으므로 사이트에서 상위 배포처 체크섬으로 검증할 수 있습니다.
+내용물은 containerd + runc + CNI 플러그인 + nerdctl 정적 바이너리라 배포판을 가리지 않습니다.
+
+```bash
+tar -xzf openstack-ops-runtime-2.3.5-offline.tar.gz
+cd openstack-ops-runtime-2.3.5
+sudo ./install-runtime.sh          # 이후 플랫폼 번들의 ./install.sh
+```
+
+플랫폼 번들과 달리 이 번들은 서버를 고칩니다. 그래서 설치한 파일·유닛·바꾼 커널 파라미터를
+`installed-manifest.txt` 에 한 줄씩 남기고 `./uninstall-runtime.sh` 가 그 목록만 되돌립니다.
+기존 런타임이 있으면 중단하고, 컨테이너 브리지 대역(기본 `10.4.0.0/24`)이 서버의 기존 경로와
+겹쳐도 중단합니다(`--cni-subnet` 으로 변경, 또는 `--no-bridge` + `USE_HOST_NETWORK=yes`).
+브리지를 쓰는데 `iptables` 가 없으면 포트 매핑과 NAT 이 동작하지 않으므로 역시 중단합니다.
+`overlay`·`br_netfilter` 모듈과 `ip_forward`·`bridge-nf-call-iptables` 는 재부팅 뒤에도 유지되도록
+`/etc/modules-load.d`·`/etc/sysctl.d` 에 넣습니다(`--no-persist` 로 끄고, 제거 시 함께 사라집니다).
+자세한 절차는 번들 안의 `README-RUNTIME.md`(원본은 `deploy/runtime/README-RUNTIME.md`)를 보세요.
 
 > 공급자·점검 이력·알림은 이미지가 아니라 `data/`의 SQLite DB에 있습니다. 새 사이트에서는
 > 공급자를 새로 등록하는 것이 정상이며, 이는 사이트별 SSH·MySQL 자격증명이 다른 사이트로
@@ -63,9 +94,9 @@ cd openstack-ops-platform-1.0.0
 
 ## 구성 파일
 
-- `index.html`: 전체 화면(대시보드·일일점검·공급자 연결·인프라 현황·모니터링·알림·작업 이력·설정)을 담은 단일 페이지
+- `index.html`: 전체 화면(대시보드·일일점검·공급자 연결·인프라 현황·모니터링·알림·작업 이력·이슈 노트·설정)을 담은 단일 페이지
 - `styles.css`: OKESTRO 남색 테마 및 반응형 스타일
-- `js/`: 화면별 모듈. `core.js`(공통 상태·페이지 전환), `dashboard.js`, `inspection.js`, `providers.js`, `infrastructure.js`, `monitoring.js`, `alerts.js`, `history.js`, `settings.js`, `runbooks.js`, `main.js`(초기화)
+- `js/`: 화면별 모듈. `core.js`(공통 상태·페이지 전환), `dashboard.js`, `inspection.js`, `providers.js`, `infrastructure.js`, `monitoring.js`, `alerts.js`, `history.js`, `issues.js`(이슈 노트·코드 하이라이트), `settings.js`, `runbooks.js`, `main.js`(초기화)
 - `login.html`, `login.js`: 관리자 로그인 및 첫 로그인 비밀번호 변경 화면
 - `server.py`: API와 정적 화면 제공, SSH 점검·탐색 실행
 - `provider_store.py`: 공급자 인증정보 암호화 저장, 점검 이력·요약·예약 설정, 알림·작업 이력·정비 시간 창, 관리자 계정·로그인 세션, 운영 설정과 감사 로그 관리
@@ -77,6 +108,7 @@ cd openstack-ops-platform-1.0.0
 - `fonts/`: PDF 한글 출력용 NanumGothic 글꼴과 화면용 Inter·Noto Sans KR(`fonts/web/`). 폐쇄망에서 Google Fonts를 받을 수 없어 서버가 직접 제공합니다(OFL 라이선스)
 - `Dockerfile`: 컨테이너 이미지 정의
 - `deploy/`, `build-offline-bundle.sh`: 폐쇄망 반입용 배포 번들 스크립트와 안내서
+- `deploy/runtime/`, `build-runtime-bundle.sh`: 컨테이너 런타임이 없는 서버용 런타임 번들(설치·제거 스크립트와 안내서)
 - `compose.yaml`: 운영 실행 구성
 - `PROGRESS.md`: 프로젝트 진행 기록
 
@@ -187,10 +219,21 @@ root SSH 접속이 차단된 환경에서는 sudo 권한이 있는 운영 계정
 
 작업은 `예정 → 진행 → 완료 → 승인` 순으로 상태를 옮기며 기록합니다. 작업자는 로그인 계정으로 채워집니다. 작업 시작·완료 시점에 점검을 실행해 작업에 연결하면 변경 전후 결과 차이를 그대로 확인할 수 있고, 관련 파일을 첨부하거나 월간 보고서를 CSV로 내려받을 수 있습니다.
 
+## 이슈 노트
+
+운영 중 발견한 문제를 Confluence 페이지처럼 한 곳에 정리합니다. 이슈마다 `ISS-번호`가 붙고 상태(열림 → 진행 중 → 보류/해결), 심각도, 분류, 태그, 담당자, 대상을 갖습니다.
+
+- 본문은 Markdown으로 쓰며 ```` ```bash ```` 처럼 언어를 붙인 코드 블록은 구문 강조로 표시됩니다.
+- **코드 스니펫**은 본문과 별도로 여러 개를 붙입니다. 파일 경로(예: `hcom01:/etc/nova/nova.conf`)와 언어(bash·python·yaml·json·ini·log·sql·diff 등)를 적으면 줄 번호·구문 강조·복사 버튼이 붙습니다. 검색은 제목·본문뿐 아니라 스니펫의 코드와 경로도 대상입니다.
+- 타임라인에 등록·수정·상태 변경·코드 추가·코멘트가 시간순으로 남습니다.
+- `알림 및 장애`의 알림 처리 화면과 `작업 이력` 카드에서 `이슈 만들기`를 누르면 그 알림·작업이 연결된 이슈가 본문 뼈대와 함께 열립니다. 점검 결과 ID도 연결할 수 있으며, 연결된 항목은 이슈 상세에서 바로 이동합니다.
+- `Markdown` 버튼으로 이슈 한 건을 `.md` 파일로 내려받습니다. Confluence·GitLab 위키에 그대로 붙일 수 있는 형식입니다.
+- 구문 강조는 외부 라이브러리 없이 플랫폼 안에서 처리하므로 폐쇄망에서도 동작합니다.
+
 ## 설정과 감사 로그
 
 - 점검 실행 제한 시간, 점검 이력 보관 정책, 예약 실행 기준 시간대, 감사 로그 보관 기간은 설정 화면에서 수정하고 서버(SQLite)에 저장합니다. 값을 지우면 환경 변수 기본값으로 돌아갑니다.
-- 왼쪽 메뉴 표시 항목과 대시보드 구성은 계정별로 서버에 저장되므로 다른 PC에서 로그인해도 유지됩니다.
+- 왼쪽 메뉴 표시 항목과 대시보드 구성은 계정별로 서버에 저장되므로 다른 PC에서 로그인해도 유지됩니다. 메뉴 설정은 "숨긴 메뉴"를 저장하므로 새 버전에서 추가된 메뉴는 설정을 바꾸지 않아도 바로 보입니다.
 - 감사 로그는 로그인, 공급자 등록·수정·삭제, 인증정보 변경, 점검 실행, 알림 처리, 작업 이력, 설정 변경 등을 누가 언제 어떤 결과로 했는지 기록합니다. 설정 화면에서 행위자·동작·대상·기간으로 조회하며, 보관 기간(기본 365일)이 지난 기록은 자동으로 정리됩니다.
 
 ## 테스트

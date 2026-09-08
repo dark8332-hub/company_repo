@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+from collections import Counter
 import os
 import secrets
 import shutil
@@ -202,6 +203,28 @@ def _connect() -> sqlite3.Connection:
         token_hash TEXT PRIMARY KEY, username TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL, remote_addr TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT ''
     )""")
+    # Issue notes: a Confluence-style page per issue with Markdown body, code snippets and a timeline.
+    connection.execute("""CREATE TABLE IF NOT EXISTS issues (
+        id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, provider_id TEXT, title TEXT NOT NULL,
+        status TEXT NOT NULL, severity TEXT NOT NULL, category TEXT NOT NULL, tags TEXT NOT NULL DEFAULT '[]',
+        body TEXT NOT NULL DEFAULT '', assignee TEXT NOT NULL DEFAULT '', reporter TEXT NOT NULL DEFAULT '',
+        target TEXT NOT NULL DEFAULT '', resolution TEXT NOT NULL DEFAULT '',
+        alert_id TEXT, work_history_id TEXT, check_id TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, resolved_at TEXT
+    )""")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_issues_status_updated ON issues(status, updated_at DESC)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS issue_snippets (
+        id TEXT PRIMARY KEY, issue_id TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0, title TEXT NOT NULL DEFAULT '',
+        path TEXT NOT NULL DEFAULT '', language TEXT NOT NULL DEFAULT 'text', code TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        FOREIGN KEY(issue_id) REFERENCES issues(id)
+    )""")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_issue_snippets_issue ON issue_snippets(issue_id, position)")
+    connection.execute("""CREATE TABLE IF NOT EXISTS issue_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, issue_id TEXT NOT NULL, created_at TEXT NOT NULL, actor TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL, text TEXT NOT NULL DEFAULT ''
+    )""")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_issue_events_issue ON issue_events(issue_id, id)")
     return connection
 
 
@@ -946,6 +969,7 @@ def delete_work_history(history_id: str) -> bool:
     with _connect() as connection:
         connection.execute("UPDATE alerts SET work_history_id=NULL WHERE work_history_id=?", (history_id,))
         connection.execute("DELETE FROM work_history_attachments WHERE history_id=?", (history_id,))
+        connection.execute("UPDATE issues SET work_history_id=NULL WHERE work_history_id=?", (history_id,))
         cursor = connection.execute("DELETE FROM work_histories WHERE id=?", (history_id,))
     if cursor.rowcount:
         shutil.rmtree(attachment_dir(history_id), ignore_errors=True)
@@ -1096,6 +1120,7 @@ def delete_provider(provider_id: str) -> bool:
         connection.execute("DELETE FROM provider_inventory WHERE provider_id=?", (provider_id,))
         connection.execute("UPDATE work_histories SET provider_id=NULL WHERE provider_id=?", (provider_id,))
         connection.execute("UPDATE alerts SET provider_id=NULL WHERE provider_id=?", (provider_id,))
+        connection.execute("UPDATE issues SET provider_id=NULL WHERE provider_id=?", (provider_id,))
         connection.execute("DELETE FROM app_settings WHERE key LIKE ?", (f"provider:{provider_id}:%",))
         connection.execute("DELETE FROM providers WHERE id=?", (provider_id,))
     return True
@@ -1650,3 +1675,243 @@ def list_open_monitoring_alert_keys(provider_id: str) -> set[str]:
         rows = connection.execute("SELECT DISTINCT source_key FROM alerts WHERE provider_id=? AND category='monitoring' AND status!='resolved'", (provider_id,)).fetchall()
     return {row["source_key"] for row in rows}
 
+
+
+# --- Issue notes ------------------------------------------------------------------------------
+# An issue is a durable page: Markdown body, any number of code snippets, and a timeline of
+# comments and status changes. Alerts, work histories and check results can be linked to it.
+
+ISSUE_STATUSES = ("open", "in_progress", "on_hold", "resolved")
+ISSUE_SEVERITIES = ("critical", "high", "medium", "low")
+ISSUE_CATEGORIES = ("incident", "bug", "config", "performance", "capacity", "question", "improvement", "other")
+ISSUE_TRANSITIONS = {
+    "open": {"in_progress", "on_hold", "resolved"},
+    "in_progress": {"on_hold", "resolved", "open"},
+    "on_hold": {"in_progress", "open", "resolved"},
+    "resolved": {"open", "in_progress"},
+}
+ISSUE_LANGUAGES = ("text", "bash", "python", "yaml", "json", "ini", "log", "sql", "diff", "javascript", "html", "css", "dockerfile")
+
+
+def _issue_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _record_issue_event(connection: sqlite3.Connection, issue_id: str, kind: str, text: str = "", actor: str = "") -> None:
+    connection.execute("INSERT INTO issue_events (issue_id, created_at, actor, kind, text) VALUES (?, ?, ?, ?, ?)",
+                       (issue_id, _issue_now(), (actor or "")[:100], kind[:30], (text or "")[:4000]))
+
+
+def _issue_row(row: sqlite3.Row | None) -> dict | None:
+    if not row:
+        return None
+    issue = dict(row)
+    try:
+        issue["tags"] = [str(tag) for tag in json.loads(issue.get("tags") or "[]")]
+    except (TypeError, ValueError):
+        issue["tags"] = []
+    issue["key"] = f"ISS-{issue['number']}"
+    return issue
+
+
+def _normalize_tags(tags) -> list[str]:
+    seen, result = set(), []
+    for tag in tags or []:
+        value = str(tag).strip().lstrip("#")[:40]
+        if value and value.lower() not in seen:
+            seen.add(value.lower())
+            result.append(value)
+    return result[:20]
+
+
+def save_issue(data: dict, actor: str) -> dict:
+    issue_id = str(uuid.uuid4())
+    now = _issue_now()
+    with _connect() as connection:
+        number = (connection.execute("SELECT COALESCE(MAX(number), 0) FROM issues").fetchone()[0] or 0) + 1
+        connection.execute("""INSERT INTO issues
+            (id,number,provider_id,title,status,severity,category,tags,body,assignee,reporter,target,resolution,
+             alert_id,work_history_id,check_id,created_at,updated_at,resolved_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (
+            issue_id, number, data.get("provider_id") or None, data["title"], data.get("status", "open"), data.get("severity", "medium"),
+            data.get("category", "other"), json.dumps(_normalize_tags(data.get("tags")), ensure_ascii=False), data.get("body", ""),
+            data.get("assignee", ""), data.get("reporter") or actor, data.get("target", ""), data.get("resolution", ""),
+            data.get("alert_id") or None, data.get("work_history_id") or None, data.get("check_id") or None,
+            now, now, now if data.get("status") == "resolved" else None,
+        ))
+        _record_issue_event(connection, issue_id, "created", f"{data['title']}", actor)
+    return get_issue(issue_id)
+
+
+def get_issue(issue_id: str) -> dict | None:
+    with _connect() as connection:
+        row = connection.execute("""SELECT i.*, p.name AS provider_name,
+                (SELECT COUNT(*) FROM issue_snippets s WHERE s.issue_id=i.id) AS snippet_count,
+                (SELECT COUNT(*) FROM issue_events e WHERE e.issue_id=i.id AND e.kind='comment') AS comment_count,
+                a.title AS alert_title, w.title AS work_history_title
+            FROM issues i LEFT JOIN providers p ON p.id=i.provider_id
+            LEFT JOIN alerts a ON a.id=i.alert_id LEFT JOIN work_histories w ON w.id=i.work_history_id
+            WHERE i.id=? OR i.number=?""", (issue_id, issue_id if str(issue_id).isdigit() else -1)).fetchone()
+    return _issue_row(row)
+
+
+def list_issues(provider_id: str = "", status: str = "", severity: str = "", category: str = "", tag: str = "", query: str = "",
+                alert_id: str = "", work_history_id: str = "", check_id: str = "", limit: int = 200) -> list[dict]:
+    clauses, values = [], []
+    for column, value in (("i.provider_id", provider_id), ("i.status", status), ("i.severity", severity), ("i.category", category),
+                          ("i.alert_id", alert_id), ("i.work_history_id", work_history_id), ("i.check_id", check_id)):
+        if value:
+            clauses.append(f"{column}=?"); values.append(value)
+    if tag:
+        clauses.append("i.tags LIKE ?"); values.append(f'%"{tag}"%')
+    if query:
+        clauses.append("(i.title LIKE ? OR i.body LIKE ? OR i.target LIKE ? OR i.assignee LIKE ? OR i.tags LIKE ? OR i.resolution LIKE ? OR ('ISS-' || i.number) LIKE ?"
+                       " OR EXISTS (SELECT 1 FROM issue_snippets s WHERE s.issue_id=i.id AND (s.code LIKE ? OR s.path LIKE ? OR s.title LIKE ?)))")
+        values.extend([f"%{query}%"] * 10)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    values.append(max(1, min(limit, 500)))
+    with _connect() as connection:
+        rows = connection.execute(f"""SELECT i.*, p.name AS provider_name,
+                (SELECT COUNT(*) FROM issue_snippets s WHERE s.issue_id=i.id) AS snippet_count,
+                (SELECT COUNT(*) FROM issue_events e WHERE e.issue_id=i.id AND e.kind='comment') AS comment_count
+            FROM issues i LEFT JOIN providers p ON p.id=i.provider_id
+            {where} ORDER BY CASE i.status WHEN 'resolved' THEN 1 ELSE 0 END, i.updated_at DESC LIMIT ?""", values).fetchall()
+    return [_issue_row(row) for row in rows]
+
+
+def issue_summary() -> dict:
+    with _connect() as connection:
+        by_status = {row["status"]: row["n"] for row in connection.execute("SELECT status, COUNT(*) AS n FROM issues GROUP BY status")}
+        by_severity = {row["severity"]: row["n"] for row in connection.execute("SELECT severity, COUNT(*) AS n FROM issues WHERE status!='resolved' GROUP BY severity")}
+        tags = Counter()
+        for row in connection.execute("SELECT tags FROM issues"):
+            try:
+                tags.update(json.loads(row["tags"] or "[]"))
+            except (TypeError, ValueError):
+                continue
+    return {"by_status": {status: by_status.get(status, 0) for status in ISSUE_STATUSES},
+            "by_severity": {severity: by_severity.get(severity, 0) for severity in ISSUE_SEVERITIES},
+            "total": sum(by_status.values()), "active": sum(n for status, n in by_status.items() if status != "resolved"),
+            "tags": [{"tag": tag, "count": count} for tag, count in tags.most_common(30)]}
+
+
+def update_issue(issue_id: str, data: dict, actor: str) -> dict | None:
+    current = get_issue(issue_id)
+    if not current:
+        return None
+    now = _issue_now()
+    status = data.get("status", current["status"])
+    resolved_at = current.get("resolved_at")
+    if status == "resolved" and current["status"] != "resolved":
+        resolved_at = now
+    elif status != "resolved":
+        resolved_at = None
+    with _connect() as connection:
+        connection.execute("""UPDATE issues SET provider_id=?,title=?,status=?,severity=?,category=?,tags=?,body=?,assignee=?,
+            target=?,resolution=?,alert_id=?,work_history_id=?,check_id=?,updated_at=?,resolved_at=? WHERE id=?""", (
+            data.get("provider_id") or None, data["title"], status, data.get("severity", current["severity"]), data.get("category", current["category"]),
+            json.dumps(_normalize_tags(data.get("tags")), ensure_ascii=False), data.get("body", ""), data.get("assignee", ""),
+            data.get("target", ""), data.get("resolution", ""), data.get("alert_id") or None, data.get("work_history_id") or None,
+            data.get("check_id") or None, now, resolved_at, current["id"],
+        ))
+        changes = []
+        if status != current["status"]:
+            changes.append(f"상태 {current['status']} → {status}")
+        if data.get("severity", current["severity"]) != current["severity"]:
+            changes.append(f"심각도 {current['severity']} → {data.get('severity')}")
+        if (data.get("assignee", "") or "") != (current.get("assignee") or ""):
+            changes.append(f"담당 {current.get('assignee') or '-'} → {data.get('assignee') or '-'}")
+        _record_issue_event(connection, current["id"], "status" if status != current["status"] else "edited", " · ".join(changes) or "내용 수정", actor)
+    return get_issue(current["id"])
+
+
+def delete_issue(issue_id: str) -> bool:
+    current = get_issue(issue_id)
+    if not current:
+        return False
+    with _connect() as connection:
+        connection.execute("DELETE FROM issue_snippets WHERE issue_id=?", (current["id"],))
+        connection.execute("DELETE FROM issue_events WHERE issue_id=?", (current["id"],))
+        cursor = connection.execute("DELETE FROM issues WHERE id=?", (current["id"],))
+    return cursor.rowcount > 0
+
+
+def transition_issue(issue_id: str, status: str, actor: str, note: str = "") -> dict | None:
+    current = get_issue(issue_id)
+    if not current:
+        return None
+    if status not in ISSUE_TRANSITIONS.get(current["status"], set()):
+        raise ValueError(f"{current['status']} 상태에서는 {status} 상태로 바꿀 수 없습니다.")
+    now = _issue_now()
+    resolved_at = now if status == "resolved" else None
+    with _connect() as connection:
+        if status == "resolved" and note:
+            connection.execute("UPDATE issues SET status=?, resolution=?, updated_at=?, resolved_at=? WHERE id=?", (status, note, now, resolved_at, current["id"]))
+        else:
+            connection.execute("UPDATE issues SET status=?, updated_at=?, resolved_at=? WHERE id=?", (status, now, resolved_at, current["id"]))
+        _record_issue_event(connection, current["id"], "status", f"{current['status']} → {status}" + (f" · {note}" if note else ""), actor)
+    return get_issue(current["id"])
+
+
+def list_issue_snippets(issue_id: str) -> list[dict]:
+    with _connect() as connection:
+        rows = connection.execute("SELECT * FROM issue_snippets WHERE issue_id=? ORDER BY position, created_at", (issue_id,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_issue_snippet(issue_id: str, snippet_id: str) -> dict | None:
+    with _connect() as connection:
+        row = connection.execute("SELECT * FROM issue_snippets WHERE issue_id=? AND id=?", (issue_id, snippet_id)).fetchone()
+    return dict(row) if row else None
+
+
+def add_issue_snippet(issue_id: str, data: dict, actor: str) -> dict | None:
+    if not get_issue(issue_id):
+        return None
+    snippet_id = str(uuid.uuid4())
+    now = _issue_now()
+    with _connect() as connection:
+        position = (connection.execute("SELECT COALESCE(MAX(position), 0) FROM issue_snippets WHERE issue_id=?", (issue_id,)).fetchone()[0] or 0) + 1
+        connection.execute("""INSERT INTO issue_snippets (id, issue_id, position, title, path, language, code, created_by, created_at, updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""", (snippet_id, issue_id, position, data.get("title", ""), data.get("path", ""), data.get("language", "text"), data["code"], actor, now, now))
+        connection.execute("UPDATE issues SET updated_at=? WHERE id=?", (now, issue_id))
+        _record_issue_event(connection, issue_id, "snippet", f"코드 추가: {data.get('title') or data.get('path') or data.get('language', 'text')}", actor)
+    return get_issue_snippet(issue_id, snippet_id)
+
+
+def update_issue_snippet(issue_id: str, snippet_id: str, data: dict, actor: str) -> dict | None:
+    now = _issue_now()
+    with _connect() as connection:
+        cursor = connection.execute("UPDATE issue_snippets SET title=?, path=?, language=?, code=?, updated_at=? WHERE issue_id=? AND id=?",
+                                    (data.get("title", ""), data.get("path", ""), data.get("language", "text"), data["code"], now, issue_id, snippet_id))
+        if cursor.rowcount:
+            connection.execute("UPDATE issues SET updated_at=? WHERE id=?", (now, issue_id))
+            _record_issue_event(connection, issue_id, "snippet", f"코드 수정: {data.get('title') or data.get('path') or data.get('language', 'text')}", actor)
+    return get_issue_snippet(issue_id, snippet_id) if cursor.rowcount else None
+
+
+def delete_issue_snippet(issue_id: str, snippet_id: str, actor: str) -> dict | None:
+    existing = get_issue_snippet(issue_id, snippet_id)
+    if not existing:
+        return None
+    with _connect() as connection:
+        connection.execute("DELETE FROM issue_snippets WHERE issue_id=? AND id=?", (issue_id, snippet_id))
+        connection.execute("UPDATE issues SET updated_at=? WHERE id=?", (_issue_now(), issue_id))
+        _record_issue_event(connection, issue_id, "snippet", f"코드 삭제: {existing.get('title') or existing.get('path') or existing.get('language')}", actor)
+    return existing
+
+
+def list_issue_events(issue_id: str, limit: int = 300) -> list[dict]:
+    with _connect() as connection:
+        rows = connection.execute("SELECT id, issue_id, created_at, actor, kind, text FROM issue_events WHERE issue_id=? ORDER BY id DESC LIMIT ?", (issue_id, limit)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def add_issue_comment(issue_id: str, text: str, actor: str) -> dict | None:
+    with _connect() as connection:
+        if not connection.execute("SELECT 1 FROM issues WHERE id=?", (issue_id,)).fetchone():
+            return None
+        _record_issue_event(connection, issue_id, "comment", text, actor)
+        connection.execute("UPDATE issues SET updated_at=? WHERE id=?", (_issue_now(), issue_id))
+        row = connection.execute("SELECT id, issue_id, created_at, actor, kind, text FROM issue_events WHERE issue_id=? ORDER BY id DESC LIMIT 1", (issue_id,)).fetchone()
+    return dict(row)

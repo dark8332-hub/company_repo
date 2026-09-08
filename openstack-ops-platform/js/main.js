@@ -8,6 +8,7 @@ renderInspectionSelection();
 const initialPage = pageRegistry[location.hash.slice(1)] ? location.hash.slice(1) : 'dashboard';
 showPage(initialPage);
 if (initialPage === 'history') loadWorkHistories();
+loadIssueMenuCount();
 if (initialPage === 'alerts') loadAlerts(); else loadAlertSummary();
 if (initialPage === 'settings') loadInspectionSettings();
 renderDashboard(null);

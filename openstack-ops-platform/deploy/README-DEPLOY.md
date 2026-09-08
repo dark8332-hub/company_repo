@@ -13,10 +13,39 @@
 | 컨테이너 이미지 1개 | 런타임 이미지 저장소 (약 273MB) |
 | 데이터 | 이 디렉터리 아래 `data/` |
 
-**그 외에는 아무것도 건드리지 않습니다.** 패키지를 설치하지 않고, 시스템 설정을 고치지 않으며,
-번들 디렉터리 밖에 파일을 쓰지 않습니다. `systemd` 유닛만 선택 사항으로 따로 안내합니다.
+**그 외에는 아무것도 건드리지 않습니다.** 패키지를 설치하지 않고, 시스템 설정(`/etc`, 방화벽,
+`sysctl`, SELinux)을 고치지 않으며, 번들 디렉터리 밖에 파일을 쓰지 않습니다. `systemd` 유닛만
+선택 사항으로 따로 안내합니다.
+
+### 서버에 실제로 생기는 변화
+
+| 변화 | 설명 | 되돌리기 |
+|---|---|---|
+| 컨테이너 1개 | `--restart unless-stopped`. `docker`는 재부팅 후 자동 기동합니다 | `./opsctl.sh remove` |
+| 이미지 1개 | 런타임 이미지 저장소 (약 273MB) | `./opsctl.sh remove` |
+| 포트 1개 | `HOST_PORT`(기본 8090) LISTEN. docker는 이때 NAT 규칙을 자동으로 넣습니다 | 컨테이너 제거 시 함께 사라짐 |
+| `data/` | 번들 안. 컨테이너가 root로 쓰므로 파일 소유자는 root입니다 | `./opsctl.sh remove --all` |
+
+`nerdctl`을 쓰는 서버에서는 전용 namespace(`openstack-ops`)를 쓰므로 k8s 노드의 기존
+이미지·컨테이너와 섞이지 않습니다. `docker`·`podman`은 namespace 개념이 없어 이미지가
+호스트의 공용 저장소에 들어갑니다(이름 `okestro/openstack-ops-platform`).
+
+### 이미 돌고 있는 서비스를 건드리지 않기 위한 확인
+
+- **포트**: 설치 전과 컨테이너 기동 직전 두 번 확인합니다. 호스트 프로세스(`ss`)와 **다른
+  컨테이너가 게시한 포트**(런타임에 조회) 양쪽을 봅니다. `nerdctl`·CNI는 포트를 iptables DNAT로
+  매핑해 LISTEN 소켓이 없으므로 `ss`만으로는 보이지 않기 때문입니다. 이미 쓰이고 있으면
+  **설치를 중단합니다**(상대 서비스는 건드리지 않습니다). `USE_HOST_NETWORK=yes`에서는
+  `HOST_PORT`가 무시되고 8090을 쓰므로 8090을 기준으로 확인합니다.
+- **컨테이너 이름**: 같은 이름의 컨테이너가 있으면 이미지를 확인해 **이 플랫폼의 것이 아니면
+  지우지 않고 중단합니다**. 재설치 시에만 기존 컨테이너를 교체합니다.
+- **기동 확인**: 컨테이너 *안에서* 확인합니다. 호스트 포트로만 확인하면 같은 포트를 쓰는 다른
+  서비스가 대신 응답해 기동 실패를 성공으로 오판합니다.
+- **실패 시**: 컨테이너를 정지시킵니다. `--restart unless-stopped` 때문에 재시작 루프가
+  서버에 남지 않도록 합니다.
 
 되돌리기: `./opsctl.sh remove --all` 후 이 디렉터리를 삭제하면 흔적이 남지 않습니다.
+`data/`는 컨테이너가 root로 쓰므로, 설치를 root가 아닌 계정으로 했다면 삭제에 `sudo`가 필요합니다.
 
 ---
 
@@ -25,12 +54,21 @@
 | 항목 | 조건 |
 |---|---|
 | 아키텍처 | x86_64 |
-| 컨테이너 런타임 | `docker`, `podman`, `nerdctl` 중 하나 |
+| 컨테이너 런타임 | `docker`, `podman`, `nerdctl` 중 하나 (없으면 런타임 번들 먼저, 아래 참고) |
 | 여유 디스크 | 1GB 이상 (이미지 273MB + 점검 이력) |
 | 포트 | 8090 (`config.env`에서 변경 가능) |
 | 네트워크 | 이 서버에서 점검 대상 OpenStack 노드로 **SSH 접속이 되어야** 합니다 |
 
 런타임 실행 권한이 필요합니다. `root`가 아니면 `sudo`로 실행하거나 계정을 `docker` 그룹에 넣으세요.
+
+런타임이 하나도 없다면 함께 반입한 런타임 번들(`openstack-ops-runtime-<버전>-offline.tar.gz`)을
+먼저 설치합니다. containerd + runc + CNI + nerdctl 정적 바이너리를 넣고, 무엇을 바꿨는지
+기록해 되돌릴 수 있게 합니다. 절차는 그 번들 안의 `README-RUNTIME.md` 에 있습니다.
+
+```sh
+tar -xzf openstack-ops-runtime-<버전>-offline.tar.gz
+cd openstack-ops-runtime-<버전> && sudo ./install-runtime.sh
+```
 
 ---
 
@@ -83,6 +121,8 @@ cd openstack-ops-platform-<버전>
 ./opsctl.sh restore <파일>  # 백업으로 되돌리기
 ./opsctl.sh remove          # 컨테이너·이미지 제거 (data 는 남김)
 ./opsctl.sh remove --all    # data 까지 삭제
+
+./opsctl.sh netcheck <노드IP> [포트]   # 컨테이너에서 노드까지 닿는지 단계별 확인
 ```
 
 ### 백업
@@ -130,6 +170,9 @@ sudo systemctl enable --now openstack-ops-platform
 
 **`docker, podman, nerdctl 중 어느 것도 없습니다`**
 런타임이 다른 이름이거나 `PATH`에 없습니다. `OPS_RUNTIME=/usr/bin/podman ./install.sh` 처럼 지정하세요.
+정말로 하나도 없다면 런타임 번들을 먼저 설치합니다(위 「사전 확인」). 런타임 번들로 설치한 뒤에는
+`/usr/local/bin` 이 `PATH` 에 있어야 하며, `sudo` 로 실행할 때는 `sudo env "PATH=$PATH" ./install.sh`
+또는 `sudo OPS_RUNTIME=/usr/local/bin/nerdctl ./install.sh` 를 씁니다.
 
 **`... 이(가) 응답하지 않습니다`**
 데몬이 죽었거나 소켓 권한이 없습니다. `systemctl status docker` 확인 후 `sudo`로 실행하세요.
@@ -138,9 +181,26 @@ sudo systemctl enable --now openstack-ops-platform
 `config.env`의 `HOST_PORT`를 바꾸고 다시 실행하세요.
 
 **공급자 등록은 되는데 노드 점검이 실패**
-컨테이너에서 점검 대상 노드로 SSH가 나가지 못하는 경우입니다.
-`./opsctl.sh shell` 로 들어가 `nc -z <노드IP> 22` 로 확인하고, 막혀 있으면
-`config.env`의 `USE_HOST_NETWORK=yes` 로 바꾼 뒤 `./opsctl.sh restart` 하세요.
+어느 층에서 막혔는지부터 봅니다. 이미지는 `python:3.12-slim` 이라 `nc`·`ping`·`ssh`·`curl` 이
+들어 있지 않습니다. 컨테이너에 들어가 확인하려 하지 말고 다음 명령을 쓰세요.
+
+```sh
+./opsctl.sh netcheck <노드IP>
+```
+
+컨테이너 안과 이 서버 양쪽에서 이름 해석 → 경로 → TCP 22 → SSH 배너를 차례로 확인하고,
+결과에 따라 다음 중 하나를 알려 줍니다.
+
+| 결과 | 뜻 | 조치 |
+|---|---|---|
+| 둘 다 성공 | 네트워크는 정상 | 계정·키·호스트 키 승인·sudo 권한 문제입니다. **[공급자 연결] → 연결 진단** |
+| 컨테이너만 실패 | 브리지가 사설망에 닿지 못함 | `config.env` 에 `USE_HOST_NETWORK=yes` 후 `./opsctl.sh restart` |
+| 이름 해석 실패 | 컨테이너는 호스트 `/etc/hosts` 를 물려받지 않음 | **[공급자 연결] → 노드 인벤토리**에 노드 IP 직접 입력, 또는 노드 탐색 재실행 |
+| 둘 다 실패 | 이 서버에서 노드로 가는 경로가 없음 | 라우팅·방화벽·노드 `sshd` 를 확인합니다. 컨테이너 문제가 아닙니다 |
+| 열렸는데 SSH 아님 | 다른 서비스이거나 포트가 다름 | 노드의 SSH 포트를 확인합니다 |
+
+`USE_HOST_NETWORK=yes` 로 바꾸면 `HOST_PORT` 가 무시되고 8090 이 쓰입니다. 8090 을 다른
+서비스가 쓰고 있다면 그 서비스를 옮기거나 브리지 경로를 고쳐야 합니다.
 
 **호스트명 해석 실패 (`gaierror`)**
 탐색 단계에서 Controller가 알려준 IP를 저장해 쓰므로 보통 자동 해결됩니다.

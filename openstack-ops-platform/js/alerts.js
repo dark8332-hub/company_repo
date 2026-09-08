@@ -238,11 +238,18 @@ document.querySelector('#alertCommentForm').addEventListener('submit', async eve
   finally { button.disabled = false; }
 });
 
+let currentAlertActionItem = null;
+document.querySelector('#alertCreateIssue')?.addEventListener('click', () => {
+  const item = currentAlertActionItem; if (!item) return;
+  openIssueEditorFrom({alert_id:item.id, provider_id:item.provider_id || '', title:item.title, target:item.target || '', severity:item.severity === 'critical' ? 'critical' : 'high', category:'incident',
+    body:`## 알림\n- ${item.title}\n- 최초 감지: ${alertShortDate(item.first_detected_at)} · 최근 감지: ${alertShortDate(item.last_detected_at)}\n\n## 증상\n${item.description ? `- ${item.description}` : '- '}\n\n## 원인 분석\n- \n\n## 조치\n- `});
+});
 async function openAlertAction(id) {
   const [alertResponse, historiesResponse] = await Promise.all([fetch(`/api/alerts/${id}`), fetch('/api/work-histories')]);
   const item = await alertResponse.json(); if (!alertResponse.ok) return showToast('알림을 불러오지 못했습니다.', item.detail || '다시 시도하세요.');
   const histories = historiesResponse.ok ? (await historiesResponse.json()).histories : [];
   const select = document.querySelector('#alertWorkHistory'); select.innerHTML = '<option value="">연결하지 않음</option>' + histories.map(history => `<option value="${history.id}">${escapeText(history.title)} · ${escapeText(history.operator)}</option>`).join('');
+  currentAlertActionItem = item;
   document.querySelector('#alertActionId').value = item.id; document.querySelector('#alertActionStatus').value = item.status; document.querySelector('#alertAssignee').value = item.assignee || ''; select.value = item.work_history_id || ''; document.querySelector('#alertResolutionNote').value = item.resolution_note || ''; document.querySelector('#alertActionTitle').textContent = item.title;
   document.querySelector('#alertActionMeta').textContent = `${item.provider_name || '공통'} · ${item.target || '대상 미지정'} · ${alertSeverityLabels[item.severity] || item.severity} · ${alertStatusLabels[item.status] || item.status}${item.suppressed ? ` · 정비 시간 창으로 ${alertShortDate(item.suppressed_until)}까지 억제 중` : ''}`;
   document.querySelector('#alertActionHint').textContent = item.suppressed ? '억제 중인 알림도 상태와 담당자를 기록할 수 있습니다. 억제는 정비 시간 창이 끝나거나 삭제되면 풀립니다.' : '상태 변경 시 처리 시각이 자동 기록됩니다.';

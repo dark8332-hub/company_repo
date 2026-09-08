@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OKESTRO Cloud Operations</title>
   <link rel="stylesheet" href="/fonts/fonts.css">
-  <link rel="stylesheet" href="styles.css?v=20260904-14">
+  <link rel="stylesheet" href="styles.css?v=20260908-2">
 </head>
 <body>
   <div class="app-shell">
@@ -23,6 +23,7 @@
         <a href="#monitoring" data-page="monitoring" data-menu-key="monitoring"><span class="nav-icon">◉</span>모니터링</a>
         <a href="#alerts" data-page="alerts" data-menu-key="alerts"><span class="nav-icon">△</span>알림 및 장애 <em class="alert-count">0</em></a>
         <a href="#history" data-page="history" data-menu-key="history"><span class="nav-icon">≡</span>작업 이력</a>
+        <a href="#issues" data-page="issues" data-menu-key="issues"><span class="nav-icon">✎</span>이슈 노트 <em id="issueMenuCount" hidden>0</em></a>
         <a href="#settings" data-page="settings"><span class="nav-icon">⚙</span>설정</a>
       </nav>
 
@@ -298,7 +299,7 @@
         <section class="page-heading"><div><p>ALERTS &amp; INCIDENTS</p><h1>알림 및 장애</h1><span>일일점검에서 감지된 이상을 확인하고 담당자 지정부터 해소까지 관리합니다.</span></div><button class="primary-button" id="refreshAlerts" type="button"><span>↻</span> 새로고침</button></section>
         <section class="alert-summary-grid" id="alertSummaryGrid"><button type="button" data-alert-scope="active" aria-pressed="false"><span>활성 알림</span><strong id="activeAlertCount">0</strong><small>미해소 전체 · 클릭하면 목록</small></button><button type="button" class="critical" data-alert-scope="critical" aria-pressed="false"><span>위험</span><strong id="criticalAlertCount">0</strong><small>즉시 확인 필요 · 클릭하면 목록</small></button><button type="button" class="warning" data-alert-scope="warning" aria-pressed="false"><span>주의</span><strong id="warningAlertCount">0</strong><small>상태 확인 필요 · 클릭하면 목록</small></button><button type="button" class="suppressed" data-alert-scope="suppressed" aria-pressed="false"><span>억제 중</span><strong id="suppressedAlertCount">0</strong><small>정비 시간 창 · 클릭하면 목록</small></button><button type="button" class="resolved" data-alert-scope="resolved" aria-pressed="false"><span>해소</span><strong id="resolvedAlertCount">0</strong><small>조치 완료 · 클릭하면 목록</small></button></section>
         <section class="alert-stats-strip" id="alertStatsStrip" aria-label="알림 처리 통계"><div class="empty-provider">통계를 불러오는 중입니다.</div></section>
-        <section class="panel alert-action-editor" id="alertActionEditor" hidden><div class="panel-heading"><div><h2 id="alertActionTitle">알림 처리</h2><p id="alertActionMeta">담당자, 처리 상태와 관련 작업 이력을 기록합니다.</p></div><button class="history-close" id="closeAlertAction" type="button">닫기</button></div><form id="alertActionForm"><input id="alertActionId" type="hidden"><div class="alert-action-grid"><label>처리 상태<select id="alertActionStatus"><option value="open">미확인</option><option value="acknowledged">확인</option><option value="resolved">해소</option></select></label><label>담당자<input id="alertAssignee" maxlength="100" placeholder="이름 또는 계정"></label><label>관련 작업 이력<select id="alertWorkHistory"><option value="">연결하지 않음</option></select></label><label class="wide">조치 및 해소 내용<textarea id="alertResolutionNote" maxlength="2000" placeholder="해소 처리 시 조치 내용을 반드시 입력하세요."></textarea></label></div><div class="history-form-actions"><span id="alertActionHint">상태 변경 시 처리 시각이 자동 기록됩니다.</span><button class="primary-button" type="submit">처리 내용 저장</button></div></form>
+        <section class="panel alert-action-editor" id="alertActionEditor" hidden><div class="panel-heading"><div><h2 id="alertActionTitle">알림 처리</h2><p id="alertActionMeta">담당자, 처리 상태와 관련 작업 이력을 기록합니다.</p></div><button class="history-close" id="closeAlertAction" type="button">닫기</button></div><form id="alertActionForm"><input id="alertActionId" type="hidden"><div class="alert-action-grid"><label>처리 상태<select id="alertActionStatus"><option value="open">미확인</option><option value="acknowledged">확인</option><option value="resolved">해소</option></select></label><label>담당자<input id="alertAssignee" maxlength="100" placeholder="이름 또는 계정"></label><label>관련 작업 이력<select id="alertWorkHistory"><option value="">연결하지 않음</option></select></label><label class="wide">조치 및 해소 내용<textarea id="alertResolutionNote" maxlength="2000" placeholder="해소 처리 시 조치 내용을 반드시 입력하세요."></textarea></label></div><div class="history-form-actions"><span id="alertActionHint">상태 변경 시 처리 시각이 자동 기록됩니다.</span><span class="alert-action-buttons"><button type="button" id="alertCreateIssue" title="이 알림을 연결한 이슈 노트를 작성합니다">✎ 이슈 만들기</button><button class="primary-button" type="submit">처리 내용 저장</button></span></div></form>
           <div class="alert-editor-columns">
             <div class="alert-timeline-panel"><div class="alert-subheading"><h3>타임라인</h3><small id="alertTimelineMeta">감지·처리·코멘트 기록</small></div><div id="alertTimeline" class="alert-timeline"><div class="empty-provider">기록이 없습니다.</div></div><form id="alertCommentForm" class="alert-comment-form"><input id="alertCommentText" maxlength="2000" placeholder="코멘트를 남기세요 (조치 진행 상황, 확인 결과 등)" required><button type="submit">코멘트 추가</button></form></div>
             <div class="alert-runbook-panel"><div class="alert-subheading"><h3>조치 가이드</h3><small id="alertRunbookMeta">-</small><button id="editAlertRunbook" type="button" hidden>편집</button></div><div id="alertRunbook" class="runbook-body"><div class="empty-provider">알림을 선택하면 조치 가이드를 표시합니다.</div></div><form id="alertRunbookForm" class="runbook-form" hidden><textarea id="alertRunbookText" maxlength="20000" spellcheck="false"></textarea><div class="runbook-form-actions"><small>Markdown(제목 ##, 번호 목록, **강조**, `명령`)을 지원합니다. 비워 저장하면 기본 가이드로 돌아갑니다.</small><button type="button" id="cancelAlertRunbook">취소</button><button type="submit" class="primary-button">사이트 가이드로 저장</button></div></form></div>
@@ -327,6 +328,40 @@
         <section class="panel work-history-list-panel"><div class="history-toolbar"><select id="historyProviderFilter"><option value="">전체 공급자</option></select><select id="historyTypeFilter"><option value="">전체 유형</option><option value="inspection">점검</option><option value="incident">장애 대응</option><option value="change">설정 변경</option><option value="restart">재시작</option><option value="deployment">배포</option><option value="maintenance">유지보수</option><option value="other">기타</option></select><select id="historyStatusFilter"><option value="">전체 상태</option><option value="planned">예정</option><option value="approved">승인</option><option value="in_progress">진행 중</option><option value="completed">완료</option><option value="failed">실패</option></select><input id="historySearch" maxlength="200" placeholder="제목, 대상, 작업자, 티켓 검색"><button id="searchWorkHistory" type="button">검색</button><div class="history-view-toggle" role="group" aria-label="보기 방식"><button id="historyViewList" type="button" class="active">목록</button><button id="historyViewCalendar" type="button">달력</button></div></div>
           <div id="workHistoryCalendar" class="work-history-calendar" hidden><div class="calendar-header"><button id="calendarPrevMonth" type="button" aria-label="이전 달">‹</button><strong id="calendarMonthLabel">-</strong><button id="calendarNextMonth" type="button" aria-label="다음 달">›</button><span id="calendarDayFilter" class="calendar-day-filter" hidden></span><button id="calendarClearDay" type="button" hidden>날짜 필터 해제</button></div><div class="calendar-grid" id="calendarGrid"></div></div>
           <div id="workHistoryList" class="work-history-list"><div class="empty-provider">등록된 작업 이력이 없습니다.</div></div></section>
+      </div>
+
+      <div class="content issues-content" id="issuesPage" hidden>
+        <section class="page-heading"><div><p>ISSUE NOTES</p><h1>이슈 노트</h1><span>운영 중 발견한 문제를 한 페이지에 정리합니다. Markdown 본문과 코드 스니펫(파일 경로·언어)을 남기고, 알림·작업 이력·점검 결과에 연결해 원인부터 해결까지 추적합니다.</span></div><div class="heading-actions"><button class="primary-button" id="newIssue" type="button"><span>＋</span> 새 이슈</button></div></section>
+        <section class="alert-summary-grid issue-summary-grid" id="issueSummaryGrid"><button type="button" data-issue-scope="active" aria-pressed="false"><span>진행 중인 이슈</span><strong id="issueActiveCount">0</strong><small>해결 전 전체 · 클릭하면 목록</small></button><button type="button" class="critical" data-issue-scope="critical" aria-pressed="false"><span>치명</span><strong id="issueCriticalCount">0</strong><small>해결 전 · 클릭하면 목록</small></button><button type="button" class="warning" data-issue-scope="high" aria-pressed="false"><span>높음</span><strong id="issueHighCount">0</strong><small>해결 전 · 클릭하면 목록</small></button><button type="button" class="suppressed" data-issue-scope="on_hold" aria-pressed="false"><span>보류</span><strong id="issueOnHoldCount">0</strong><small>외부 대기 · 클릭하면 목록</small></button><button type="button" class="resolved" data-issue-scope="resolved" aria-pressed="false"><span>해결</span><strong id="issueResolvedCount">0</strong><small>종료된 이슈 · 클릭하면 목록</small></button></section>
+        <section class="panel work-history-editor issue-editor" id="issueEditor" hidden>
+          <div class="panel-heading"><div><h2 id="issueFormTitle">이슈 등록</h2><p>본문은 Markdown(제목 ##, 목록, **강조**, `명령`, ```언어 코드 블록```)으로 표시됩니다. 긴 코드나 설정 파일은 저장 후 「코드 스니펫」으로 따로 붙이세요.</p></div><button class="history-close" id="closeIssueEditor" type="button">닫기</button></div>
+          <form id="issueForm" class="work-history-form"><input id="issueId" type="hidden"><input id="issueAlertId" type="hidden"><input id="issueWorkHistoryId" type="hidden"><input id="issueCheckId" type="hidden"><div class="history-form-grid">
+            <label class="wide">제목<input id="issueTitle" maxlength="200" required placeholder="예: nova-compute가 5분 주기로 down 상태로 전환"></label>
+            <label>공급자<select id="issueProvider"><option value="">공통 / 공급자 미지정</option></select></label><label>분류<select id="issueCategory"></select></label><label>심각도<select id="issueSeverity"></select></label><label>상태<select id="issueStatus"></select></label>
+            <label>담당자<input id="issueAssignee" maxlength="100" placeholder="이름 또는 계정"></label><label>대상<input id="issueTarget" maxlength="300" placeholder="노드, 서비스 또는 리소스"></label><label class="wide">태그<input id="issueTags" maxlength="400" placeholder="쉼표로 구분 (예: nova, libvirt, ceph)"></label>
+            <label class="wide">내용<textarea id="issueBody" maxlength="60000" spellcheck="false" placeholder="## 증상&#10;- &#10;&#10;## 원인 분석&#10;- &#10;&#10;## 조치&#10;- &#10;&#10;```bash&#10;systemctl status nova-compute&#10;```"></textarea></label>
+            <label class="wide">해결 내용<textarea id="issueResolution" maxlength="5000" placeholder="해결 상태로 바꿀 때 근본 원인과 최종 조치를 남기세요."></textarea></label>
+          </div><div class="issue-link-row" id="issueLinkRow" hidden></div><div class="history-form-actions"><span>비밀번호, 토큰, 개인키 등 민감정보는 본문과 코드에 넣지 마세요.</span><button type="submit" class="primary-button">저장</button></div></form>
+        </section>
+        <section class="panel issue-detail" id="issueDetail" hidden>
+          <div class="panel-heading issue-detail-heading"><div><small id="issueDetailKey">ISS-0</small><h2 id="issueDetailTitle">-</h2><p id="issueDetailMeta">-</p><div class="issue-tags" id="issueDetailTags"></div></div><div class="issue-detail-actions"><span id="issueDetailTransitions"></span><button id="exportIssue" type="button" title="Markdown 파일로 내려받습니다">↓ Markdown</button><button id="editIssue" type="button">수정</button><button id="deleteIssue" class="danger" type="button">삭제</button><button class="history-close" id="closeIssueDetail" type="button">닫기</button></div></div>
+          <div class="issue-links" id="issueDetailLinks" hidden></div>
+          <div class="issue-detail-columns">
+            <div class="issue-main">
+              <section class="issue-section"><div class="alert-subheading"><h3>내용</h3><small id="issueBodyMeta">-</small></div><div class="issue-body" id="issueDetailBody"></div></section>
+              <section class="issue-section" id="issueResolutionSection" hidden><div class="alert-subheading"><h3>해결 내용</h3></div><div class="issue-body" id="issueDetailResolution"></div></section>
+              <section class="issue-section"><div class="alert-subheading"><h3>코드 스니펫</h3><small id="issueSnippetMeta">파일 경로와 언어를 붙여 코드를 보관합니다</small><button id="addIssueSnippet" type="button">＋ 코드 추가</button></div>
+                <form id="issueSnippetForm" class="issue-snippet-form" hidden><input id="issueSnippetId" type="hidden"><div class="issue-snippet-grid"><label>설명<input id="issueSnippetTitle" maxlength="200" placeholder="예: 적용 전 nova.conf"></label><label>파일 경로 / 위치<input id="issueSnippetPath" maxlength="300" placeholder="예: hcom01:/etc/nova/nova.conf"></label><label>언어<select id="issueSnippetLanguage"></select></label></div><label class="wide">코드<textarea id="issueSnippetCode" maxlength="200000" spellcheck="false" required placeholder="코드, 설정, 로그 발췌, diff 등"></textarea></label><div class="runbook-form-actions"><small>탭·공백·줄바꿈이 그대로 보존됩니다.</small><button type="button" id="cancelIssueSnippet">취소</button><button type="submit" class="primary-button">코드 저장</button></div></form>
+                <div class="issue-snippets" id="issueSnippetList"><div class="empty-provider">등록된 코드가 없습니다.</div></div></section>
+            </div>
+            <aside class="issue-side">
+              <section class="issue-section"><div class="alert-subheading"><h3>타임라인</h3><small id="issueTimelineMeta">등록·상태 변경·코멘트 기록</small></div><div id="issueTimeline" class="alert-timeline issue-timeline"><div class="empty-provider">기록이 없습니다.</div></div><form id="issueCommentForm" class="alert-comment-form"><input id="issueCommentText" maxlength="4000" placeholder="코멘트를 남기세요 (확인 결과, 시도한 조치 등)" required><button type="submit">코멘트 추가</button></form></section>
+            </aside>
+          </div>
+        </section>
+        <section class="panel work-history-list-panel issue-list-panel"><div class="history-toolbar"><select id="issueProviderFilter"><option value="">전체 공급자</option></select><select id="issueStatusFilter"><option value="">전체 상태</option></select><select id="issueSeverityFilter"><option value="">전체 심각도</option></select><select id="issueCategoryFilter"><option value="">전체 분류</option></select><input id="issueSearch" maxlength="200" placeholder="제목, 본문, 코드, 태그, ISS-번호 검색"><button id="searchIssues" type="button">검색</button><span class="issue-tag-filter" id="issueTagFilter" hidden></span></div>
+          <div class="issue-tag-cloud" id="issueTagCloud" hidden></div>
+          <div id="issueList" class="issue-list"><div class="empty-provider">등록된 이슈가 없습니다.</div></div></section>
       </div>
 
       <div class="content settings-content" id="settingsPage" hidden>
@@ -370,16 +405,17 @@
   </div>
 
   <div class="toast" id="toast"><span>✓</span><div><strong>일일점검을 시작했습니다.</strong><small>완료되면 알림으로 알려드립니다.</small></div></div>
-  <script src="js/core.js?v=20260904-14"></script>
-  <script src="js/settings.js?v=20260904-14"></script>
-  <script src="js/inspection.js?v=20260904-14"></script>
-  <script src="js/providers.js?v=20260904-14"></script>
-  <script src="js/infrastructure.js?v=20260904-14"></script>
-  <script src="js/monitoring.js?v=20260904-14"></script>
-  <script src="js/dashboard.js?v=20260904-14"></script>
-  <script src="js/runbooks.js?v=20260904-14"></script>
-  <script src="js/alerts.js?v=20260904-14"></script>
-  <script src="js/history.js?v=20260904-14"></script>
-  <script src="js/main.js?v=20260904-14"></script>
+  <script src="js/core.js?v=20260908-2"></script>
+  <script src="js/settings.js?v=20260908-2"></script>
+  <script src="js/inspection.js?v=20260908-2"></script>
+  <script src="js/providers.js?v=20260908-2"></script>
+  <script src="js/infrastructure.js?v=20260908-2"></script>
+  <script src="js/monitoring.js?v=20260908-2"></script>
+  <script src="js/dashboard.js?v=20260908-2"></script>
+  <script src="js/runbooks.js?v=20260908-2"></script>
+  <script src="js/alerts.js?v=20260908-2"></script>
+  <script src="js/history.js?v=20260908-2"></script>
+  <script src="js/issues.js?v=20260908-2"></script>
+  <script src="js/main.js?v=20260908-2"></script>
 </body>
 </html>

@@ -50,15 +50,23 @@ function renderMarkdown(text) {
     .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
   const lines = escapeText(text).replace(/\r\n?/g, '\n').split('\n');
   const html = [];
-  let paragraph = [], list = null, code = null;
+  let paragraph = [], list = null, code = null, codeLanguage = '';
   const flushParagraph = () => { if (paragraph.length) { html.push(`<p>${paragraph.map(inline).join('<br>')}</p>`); paragraph = []; } };
   const flushList = () => { if (list) { html.push(`<${list.type}>${list.items.map(item => `<li>${inline(item)}</li>`).join('')}</${list.type}>`); list = null; } };
+  // Fenced blocks were escaped with the rest of the text; the highlighter (issues.js) works on the raw code, so unescape for it.
+  const unescapeText = value => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const flushCode = () => {
+    const raw = code.join('\n');
+    html.push(codeLanguage && typeof highlightCode === 'function' ? `<pre class="md-code" data-language="${codeLanguage}"><code>${highlightCode(unescapeText(raw), codeLanguage)}</code></pre>` : `<pre class="md-code">${raw}</pre>`);
+    code = null; codeLanguage = '';
+  };
   lines.forEach(line => {
     if (code !== null) {
-      if (/^```/.test(line)) { html.push(`<pre class="md-code">${code.join('\n')}</pre>`); code = null; } else code.push(line);
+      if (/^```/.test(line)) flushCode(); else code.push(line);
       return;
     }
-    if (/^```/.test(line)) { flushParagraph(); flushList(); code = []; return; }
+    const fence = /^```\s*([A-Za-z0-9_+-]*)/.exec(line);
+    if (fence) { flushParagraph(); flushList(); code = []; codeLanguage = fence[1].toLowerCase(); return; }
     const heading = /^(#{1,3})\s+(.*)$/.exec(line);
     if (heading) { flushParagraph(); flushList(); html.push(`<h${heading[1].length + 2}>${inline(heading[2])}</h${heading[1].length + 2}>`); return; }
     const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
@@ -74,7 +82,7 @@ function renderMarkdown(text) {
     flushList();
     paragraph.push(line);
   });
-  if (code !== null) html.push(`<pre class="md-code">${code.join('\n')}</pre>`);
+  if (code !== null) flushCode();
   flushParagraph(); flushList();
   return `<div class="markdown">${html.join('')}</div>`;
 }
@@ -147,7 +155,7 @@ function workHistoryCard(item) {
       ${checkSection}
       <section class="history-attachments" data-attachments><b>첨부 파일</b><div data-attachment-list><div class="empty-provider">상세를 열면 첨부 파일을 불러옵니다.</div></div><label class="history-upload">파일 추가 (최대 10개, 10 MB)<input type="file" data-attachment-input></label></section>
     </div>
-    <footer><button data-history-action="toggle" type="button">상세 보기</button><button data-history-action="edit" type="button">수정</button><button class="danger" data-history-action="delete" type="button">삭제</button></footer>
+    <footer><button data-history-action="toggle" type="button">상세 보기</button><button data-history-action="edit" type="button">수정</button><button data-history-action="issue" type="button" title="이 작업을 연결한 이슈 노트를 작성합니다">✎ 이슈 만들기</button><button class="danger" data-history-action="delete" type="button">삭제</button></footer>
   </article>`;
 }
 
@@ -417,6 +425,7 @@ document.querySelector('#workHistoryList').addEventListener('click', async event
     if (detail.hidden) openCardDetail(card); else { detail.hidden = true; button.textContent = '상세 보기'; }
     return;
   }
+  if (button.dataset.historyAction === 'issue') { const item = currentWorkHistories.find(entry => entry.id === id); if (item) openIssueEditorFrom({work_history_id:id, provider_id:item.provider_id || '', title:`${item.title} 관련 이슈`, target:item.target || '', category:item.work_type === 'incident' ? 'incident' : 'other', body:`## 배경\n- 작업 이력: ${item.title} (${workTypeLabels[item.work_type] || item.work_type})\n\n## 증상\n- \n\n## 조치\n- `}); return; }
   if (button.dataset.historyAction === 'delete') { if (!confirm('이 작업 이력을 삭제하시겠습니까? 첨부 파일도 함께 삭제됩니다.')) return; const response = await fetch(`/api/work-histories/${id}`, {method:'DELETE'}); if (response.ok) { showToast('작업 이력을 삭제했습니다.', '삭제한 기록은 복구할 수 없습니다.'); loadWorkHistories(); } return; }
   const response = await fetch(`/api/work-histories/${id}`); const item = await response.json(); if (!response.ok) return showToast('작업 이력을 불러오지 못했습니다.', item.detail || '다시 시도하세요.');
   const values = {Title:item.title, Provider:item.provider_id || '', Type:item.work_type, Status:item.status, Operator:item.operator, Target:item.target, Ticket:item.ticket, StartedAt:localDateTimeValue(item.started_at), CompletedAt:item.completed_at ? localDateTimeValue(item.completed_at) : '', Description:item.description, Commands:item.commands, BeforeState:item.before_state, AfterState:item.after_state, Result:item.result, FollowUp:item.follow_up};

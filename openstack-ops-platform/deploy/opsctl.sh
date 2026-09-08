@@ -16,6 +16,9 @@ usage() {
   restart           재기동. config.env 를 고친 뒤 이 명령으로 반영합니다
   logs [줄수]       최근 로그 (기본 100줄). `logs -f` 로 실시간 확인
   shell             컨테이너 안 셸
+  netcheck <호스트> [포트]
+                    컨테이너에서 점검 대상 노드까지 닿는지 단계별로 확인합니다
+                    (기본 포트 22). 점검이 SSH 단계에서 실패할 때 씁니다
 
   backup [경로]     data 디렉터리를 tar.gz 로 묶습니다 (공급자 DB + 마스터 키)
   restore <파일>    백업 파일로 되돌립니다
@@ -73,7 +76,7 @@ status)
 start)
     container_running && { info "이미 실행 중입니다."; exit 0; }
     if container_exists; then rt start "$CONTAINER_NAME" >/dev/null; else start_container; fi
-    wait_healthy && ok "기동 완료: $(server_url)" || die "기동했지만 응답이 없습니다. ./opsctl.sh logs 를 확인하세요."
+    wait_healthy && ok "기동 완료: $(server_url)" || { stop_failed_container; die "기동했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
     ;;
 
 stop)
@@ -87,7 +90,7 @@ restart)
     # 환경 변수와 포트는 생성 시점에 고정되기 때문이다.
     container_exists && rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
     start_container
-    wait_healthy && ok "재기동 완료: $(server_url)" || die "재기동했지만 응답이 없습니다. ./opsctl.sh logs 를 확인하세요."
+    wait_healthy && ok "재기동 완료: $(server_url)" || { stop_failed_container; die "재기동했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
     ;;
 
 logs)
@@ -102,6 +105,148 @@ logs)
 shell)
     container_running || die "컨테이너가 실행 중이 아닙니다."
     rt exec -it "$CONTAINER_NAME" /bin/sh
+    ;;
+
+# 점검이 SSH 에서 실패할 때, 어느 층에서 막혔는지 알려 준다. 이미지에는 nc·ping·ssh 가 없고
+# python 만 있으므로 python 으로 확인한다. 컨테이너 안과 호스트에서 각각 보는 것이 핵심이다.
+# 호스트는 되는데 컨테이너만 안 되면 브리지 네트워크 문제이고, 둘 다 안 되면 서버 밖 문제다.
+#
+# 판정은 마지막 줄의 NETCHECK=<코드> 로 주고받는다.  0 정상  2 이름 해석 실패  3 연결 실패  4 SSH 아님
+# 종료 코드를 쓰지 않는 이유: nerdctl exec 는 컨테이너 명령의 종료 코드를 전달하지 않고
+# 자기 자신이 1 로 끝나면서 level=fatal 줄을 찍는다. docker 는 그대로 전달한다. 런타임마다
+# 다른 것에 판정을 걸면 nerdctl 서버에서만 엉뚱한 결론이 나온다.
+netcheck)
+    [ $# -ge 1 ] || die "확인할 노드 주소가 필요합니다.
+  예: ./opsctl.sh netcheck 10.255.191.11
+      ./opsctl.sh netcheck controller01 22"
+    target="$1"
+    target_port="${2:-22}"
+    container_running || die "컨테이너가 실행 중이 아닙니다. ./opsctl.sh start 를 먼저 실행하세요."
+
+    # 컨테이너와 호스트가 같은 검사를 하도록 스크립트를 한 번만 쓴다.
+    probe_script="$BUNDLE_DIR/.netcheck.py"
+    cat > "$probe_script" <<'PYEOF'
+import socket, sys
+
+host, port, where = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+
+
+def done(code):
+    """판정을 마지막 줄로 알리고 끝낸다. 종료 코드는 런타임이 삼키므로 쓰지 않는다."""
+    print("NETCHECK=%d" % code)
+    raise SystemExit(0)
+
+try:
+    infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+    addrs = sorted({i[4][0] for i in infos})
+    print("  [OK] 이름 해석  %s -> %s" % (host, ", ".join(addrs)))
+except OSError as exc:
+    print("  [!] 이름 해석 실패  %s (%s)" % (host, exc))
+    if where == "container":
+        print("      컨테이너는 호스트의 /etc/hosts 를 물려받지 않습니다.")
+    done(2)
+
+addr = addrs[0]
+
+# 어느 인터페이스로 나가는지. 10.4.x 로 나가면 브리지를 거쳐 NAT 된다는 뜻이다.
+probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+try:
+    probe.connect((addr, port))
+    print("  [OK] 출발지 주소  %s" % probe.getsockname()[0])
+except OSError as exc:
+    print("  [!] 경로 없음  %s" % exc)
+finally:
+    probe.close()
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.settimeout(5)
+try:
+    sock.connect((addr, port))
+except socket.timeout:
+    print("  [!] %s:%d 응답 없음 (5초 초과). 방화벽이 조용히 버리는 모양입니다." % (addr, port))
+    done(3)
+except OSError as exc:
+    print("  [!] %s:%d 연결 실패  %s" % (addr, port, exc))
+    done(3)
+
+# 포트가 열렸다고 sshd 인 것은 아니다. 배너를 받아야 확인된다.
+try:
+    banner = sock.recv(128).decode("utf-8", "replace").strip()
+except socket.timeout:
+    print("  [!] %s:%d 는 열려 있지만 SSH 배너가 없습니다. sshd 가 아닌 다른 서비스입니다." % (addr, port))
+    done(4)
+except OSError as exc:
+    print("  [!] 배너를 읽지 못했습니다  %s" % exc)
+    done(4)
+finally:
+    sock.close()
+
+if banner.startswith("SSH-"):
+    print("  [OK] SSH 응답  %s" % banner)
+    done(0)
+print("  [!] 열려 있지만 SSH 가 아닙니다: %r" % banner[:60])
+done(4)
+PYEOF
+
+    log ""
+    log "네트워크 진단   $target:$target_port"
+    log "=============================================="
+
+    # 표식 줄은 화면에서 빼고 판정에만 쓴다.
+    verdict_of() { awk -F= '/^NETCHECK=/{print $2}' "$1" | tail -1; }
+    show()       { grep -v '^NETCHECK=' "$1" || true; }
+
+    log ""
+    log "[1/2] 컨테이너 안에서"
+    out_in="$BUNDLE_DIR/.netcheck.in"
+    rt exec -i "$CONTAINER_NAME" python - "$target" "$target_port" container < "$probe_script" > "$out_in" 2>/dev/null || true
+    show "$out_in"
+    in_rc="$(verdict_of "$out_in")"
+    [ -n "$in_rc" ] || { in_rc=98; warn "컨테이너 안에서 검사를 실행하지 못했습니다."; }
+
+    log ""
+    log "[2/2] 호스트에서"
+    out_host="$BUNDLE_DIR/.netcheck.host"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 "$probe_script" "$target" "$target_port" host > "$out_host" 2>/dev/null || true
+        show "$out_host"
+        host_rc="$(verdict_of "$out_host")"
+        [ -n "$host_rc" ] || host_rc=98
+    else
+        host_rc=99
+        info "호스트에 python3 가 없어 건너뜁니다. 직접 확인하세요:"
+        info "  ssh -p $target_port <계정>@$target"
+    fi
+    rm -f "$probe_script" "$out_in" "$out_host"
+
+    log ""
+    log "=============================================="
+    if [ "$in_rc" = "0" ] && [ "$host_rc" = "0" ]; then
+        ok "컨테이너에서 노드까지 닿습니다. 네트워크는 문제가 아닙니다."
+        info "점검이 계속 실패하면 SSH 계정·키·호스트 키 승인·sudo 권한을 확인하세요."
+        info "  [공급자 연결] > 연결 진단 이 같은 항목을 순서대로 확인해 줍니다."
+    elif [ "$in_rc" = "2" ]; then
+        warn "이름 해석에서 막혔습니다."
+        info "컨테이너는 호스트의 /etc/hosts 를 물려받지 않습니다."
+        info "  [공급자 연결] > 노드 인벤토리 에서 노드 IP 를 직접 넣거나 노드 탐색을 다시 실행하세요."
+        info "  탐색은 Controller 에서 getent 로 IP 를 받아 저장하므로 보통 이것으로 해결됩니다."
+    elif [ "$in_rc" != "0" ] && [ "$host_rc" = "0" ]; then
+        warn "호스트에서는 닿는데 컨테이너에서만 막혔습니다. 브리지 네트워크 문제입니다."
+        info "config.env 에 USE_HOST_NETWORK=yes 를 넣고 ./opsctl.sh restart 하세요."
+        info "  (host 네트워크에서는 HOST_PORT 가 무시되고 8090 을 씁니다)"
+    elif [ "$in_rc" != "0" ] && [ "$host_rc" = "99" ]; then
+        warn "컨테이너에서 막혔습니다. 호스트 쪽은 확인하지 못했습니다."
+        info "호스트에서 ssh -p $target_port <계정>@$target 이 되는지 먼저 보세요."
+        info "  호스트는 되는데 컨테이너만 안 되면 USE_HOST_NETWORK=yes 로 해결됩니다."
+    elif [ "$in_rc" = "4" ] || [ "$host_rc" = "4" ]; then
+        warn "포트는 열려 있으나 SSH 가 아닙니다."
+        info "노드의 SSH 포트가 $target_port 이 맞는지, 앞에 다른 장비가 있는지 확인하세요."
+    else
+        warn "이 서버에서 노드로 가는 경로가 없습니다. 컨테이너 문제가 아닙니다."
+        info "서버 밖을 확인하세요: 라우팅, 방화벽·보안장비, 노드의 sshd 기동 여부."
+        info "  ip route get $target"
+    fi
+    log ""
     ;;
 
 backup)
@@ -131,7 +276,7 @@ restore)
     fi
     tar -xzf "$archive" -C "$BUNDLE_DIR"
     start_container
-    wait_healthy && ok "복원 후 기동 완료: $(server_url)" || die "복원했지만 응답이 없습니다. ./opsctl.sh logs 를 확인하세요."
+    wait_healthy && ok "복원 후 기동 완료: $(server_url)" || { stop_failed_container; die "복원했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
     ;;
 
 remove)

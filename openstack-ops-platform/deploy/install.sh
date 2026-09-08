@@ -43,11 +43,16 @@ fi
 load_config
 info "포트 $HOST_PORT, 시간대 ${TIMEZONE:-Asia/Seoul}, 컨테이너 이름 $CONTAINER_NAME"
 
-if command -v ss >/dev/null 2>&1 && ss -lnt 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$HOST_PORT\$"; then
-    if ! container_running; then
-        die "$HOST_PORT 포트를 이미 다른 프로세스가 쓰고 있습니다.
-  config.env 의 HOST_PORT 를 비어 있는 포트로 바꾸고 다시 실행하세요."
-    fi
+# host 네트워크에서는 HOST_PORT 가 무시되고 컨테이너가 8090 을 그대로 잡으므로 실제 포트로 검사한다.
+# 우리 컨테이너가 이미 그 포트를 쓰고 있는 재설치도 있으므로, 여기서는 알리기만 하고
+# 판정은 기존 컨테이너를 내린 뒤 [5/6] 에서 한다.
+check_port="$(effective_port)"
+if port_in_use "$check_port" && ! container_running; then
+    die "$check_port 포트를 이미 다른 프로세스가 쓰고 있습니다.
+  이 서버에서 돌고 있는 서비스를 건드리지 않도록 설치를 중단합니다.
+  config.env 의 HOST_PORT 를 비어 있는 포트로 바꾸고 다시 실행하세요.$(
+    [ "${USE_HOST_NETWORK:-no}" = "yes" ] && printf '\n  USE_HOST_NETWORK=yes 에서는 HOST_PORT 가 무시되고 8090 을 씁니다.'
+  )"
 fi
 
 # --- 3. 이미지 적재 ---------------------------------------------------------
@@ -93,9 +98,24 @@ log ""
 log "[5/6] 컨테이너 기동"
 
 if container_exists; then
-    info "같은 이름의 컨테이너를 정리합니다: $CONTAINER_NAME"
+    container_is_ours || die "이 서버에 같은 이름의 다른 컨테이너가 있습니다: $CONTAINER_NAME (이미지 $(container_image))
+  이 플랫폼의 것이 아니므로 지우지 않고 중단합니다.
+  config.env 의 CONTAINER_NAME 을 다른 이름으로 바꾸고 다시 실행하세요."
+    info "같은 이름의 이전 컨테이너를 정리합니다: $CONTAINER_NAME"
     rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
+
+# 우리 컨테이너를 내린 뒤에도 포트가 잡혀 있다면 그것은 이 서버의 다른 서비스다.
+# 이 확인을 건너뛰면 컨테이너가 포트를 잡지 못한 채 재시작 루프에 빠지고,
+# 기동 확인은 그 다른 서비스의 응답을 보고 "정상"이라고 답한다.
+if port_in_use "$check_port"; then
+    die "$check_port 포트를 이 서버의 다른 프로세스가 쓰고 있습니다.
+  기동해도 포트를 잡지 못하므로 설치를 중단합니다. 상대 서비스는 건드리지 않았습니다.
+  config.env 의 HOST_PORT 를 비어 있는 포트로 바꾸고 다시 실행하세요.$(
+    [ "${USE_HOST_NETWORK:-no}" = "yes" ] && printf '\n  USE_HOST_NETWORK=yes 에서는 HOST_PORT 가 무시되고 8090 을 씁니다.'
+  )"
+fi
+
 start_container
 ok "컨테이너 시작: $CONTAINER_NAME"
 
@@ -110,7 +130,10 @@ else
     warn "60초 안에 응답하지 않았습니다. 로그를 확인하세요:"
     log ""
     rt logs --tail 30 "$CONTAINER_NAME" 2>&1 | sed 's/^/    /'
-    die "기동 실패."
+    # 재시작 루프를 남기지 않는다. 원인을 고친 뒤 ./install.sh 를 다시 실행하면 된다.
+    stop_failed_container
+    die "기동 실패. 컨테이너는 정지시켰습니다(재시작 루프 방지).
+  원인을 고친 뒤 ./install.sh 를 다시 실행하세요."
 fi
 
 log ""

@@ -21,6 +21,8 @@ const infrastructureProviderSelect = document.querySelector('#infrastructureProv
 const monitoringProviderSelect = document.querySelector('#monitoringProviderSelect');
 const historyProvider = document.querySelector('#historyProvider');
 const historyProviderFilter = document.querySelector('#historyProviderFilter');
+const issueProvider = document.querySelector('#issueProvider');
+const issueProviderFilter = document.querySelector('#issueProviderFilter');
 const alertProviderFilter = document.querySelector('#alertProviderFilter');
 const dailyRunInspection = document.querySelector('#dailyRunInspection');
 const exportInspectionPdf = document.querySelector('#exportInspectionPdf');
@@ -35,15 +37,29 @@ const menuPreferenceKey = 'okestro-visible-menus';
 const configurableMenus = [
   ['dashboard', '대시보드', '운영 현황 요약'], ['providers', '공급자 연결', 'OpenStack 환경 연결 관리'],
   ['infrastructure', '인프라 현황', '노드와 자원 상태'], ['daily-inspection', '일일점검', '클러스터 일일 점검'],
-  ['monitoring', '모니터링', '실시간 메트릭'], ['alerts', '알림 및 장애', '장애와 알림 확인'], ['history', '작업 이력', '운영 작업 기록']
+  ['monitoring', '모니터링', '실시간 메트릭'], ['alerts', '알림 및 장애', '장애와 알림 확인'], ['history', '작업 이력', '운영 작업 기록'],
+  ['issues', '이슈 노트', '문제 정리와 코드 기록']
 ];
 
+// Preferences are stored as the *hidden* list, so a menu added in a later release shows up by default.
+// Older saves only carried a visible list; anything outside the menus that existed then is treated as visible.
+const legacyMenuKeys = ['dashboard', 'providers', 'infrastructure', 'daily-inspection', 'monitoring', 'alerts', 'history'];
+const allMenuKeys = () => configurableMenus.map(menu => menu[0]);
+function visibleFromPreference(preference) {
+  if (preference && Array.isArray(preference.hidden)) return new Set(allMenuKeys().filter(key => !preference.hidden.includes(key)));
+  if (preference && Array.isArray(preference.visible)) return new Set(allMenuKeys().filter(key => preference.visible.includes(key) || !legacyMenuKeys.includes(key)));
+  return new Set(allMenuKeys());
+}
 function loadVisibleMenus() {
   try {
     const saved = JSON.parse(localStorage.getItem(menuPreferenceKey));
-    if (Array.isArray(saved)) return new Set(saved.filter(key => configurableMenus.some(menu => menu[0] === key)));
+    if (Array.isArray(saved)) return visibleFromPreference({visible: saved});
+    if (saved && typeof saved === 'object') return visibleFromPreference(saved);
   } catch (_) { /* Invalid settings fall back to all menus. */ }
-  return new Set(configurableMenus.map(menu => menu[0]));
+  return new Set(allMenuKeys());
+}
+function menuPreferenceValue() {
+  return {visible: [...visibleMenus], hidden: allMenuKeys().filter(key => !visibleMenus.has(key))};
 }
 
 let visibleMenus = loadVisibleMenus();
@@ -60,19 +76,19 @@ function renderMenuSettings() {
 
 let menuSyncTimer = null;
 function saveMenuPreferences() {
-  try { localStorage.setItem(menuPreferenceKey, JSON.stringify([...visibleMenus])); } catch (_) { /* private mode: the server copy still applies */ }
+  try { localStorage.setItem(menuPreferenceKey, JSON.stringify(menuPreferenceValue())); } catch (_) { /* private mode: the server copy still applies */ }
   applyMenuPreferences();
   renderMenuSettings();
   // The server copy makes the choice follow the account to other browsers; localStorage only covers the first paint.
   clearTimeout(menuSyncTimer);
   menuSyncTimer = setTimeout(() => {
-    fetch('/api/settings/ui.menus', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:{visible:[...visibleMenus]}})}).catch(() => {});
+    fetch('/api/settings/ui.menus', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({value:menuPreferenceValue()})}).catch(() => {});
   }, 300);
 }
 function applyServerMenus(value) {
-  if (!value || !Array.isArray(value.visible)) return;
-  visibleMenus = new Set(value.visible.filter(key => configurableMenus.some(menu => menu[0] === key)));
-  try { localStorage.setItem(menuPreferenceKey, JSON.stringify([...visibleMenus])); } catch (_) { /* ignore */ }
+  if (!value || (!Array.isArray(value.visible) && !Array.isArray(value.hidden))) return;
+  visibleMenus = visibleFromPreference(value);
+  try { localStorage.setItem(menuPreferenceKey, JSON.stringify(menuPreferenceValue())); } catch (_) { /* ignore */ }
   applyMenuPreferences();
   renderMenuSettings();
 }
@@ -96,7 +112,7 @@ document.querySelectorAll('[data-page]').forEach(link => link.addEventListener('
 
 // Every provider <select> on the page. The first option of each is its placeholder ("공급자를 선택하세요" / "전체 공급자")
 // and is kept; provider options are rebuilt on every load so registrations and deletions show up without a reload.
-const providerSelects = () => [providerSelect, inspectionProviderSelect, infrastructureProviderSelect, monitoringProviderSelect, alertProviderFilter, historyProvider, historyProviderFilter];
+const providerSelects = () => [providerSelect, inspectionProviderSelect, infrastructureProviderSelect, monitoringProviderSelect, alertProviderFilter, historyProvider, historyProviderFilter, issueProvider, issueProviderFilter];
 let knownProviders = [];
 function fillProviderOptions(select, providers) {
   const previous = select.value;
@@ -145,7 +161,7 @@ async function loadProviders(preferredId = null) {
 const pageRegistry = {
   dashboard: ['dashboardPage', '대시보드'], 'daily-inspection': ['inspectionPage', '일일점검'], providers: ['providersPage', '공급자 연결'],
   infrastructure: ['infrastructurePage', '인프라 현황'], monitoring: ['monitoringPage', '모니터링'], alerts: ['alertsPage', '알림 및 장애'],
-  history: ['historyPage', '작업 이력'], settings: ['settingsPage', '설정']
+  history: ['historyPage', '작업 이력'], issues: ['issuesPage', '이슈 노트'], settings: ['settingsPage', '설정']
 };
 let currentPage = 'dashboard';
 function showPage(page) {
@@ -154,6 +170,7 @@ function showPage(page) {
   Object.entries(pageRegistry).forEach(([key, [id]]) => { document.querySelector(`#${id}`).hidden = key !== page; });
   if (page === 'monitoring') loadMonitoring(); else stopMonitoringAutoRefresh();
   if (page === 'providers') openProvidersPage();
+  if (page === 'issues' && typeof loadIssues === 'function') loadIssues();
   document.querySelector('#currentPageName').textContent = pageRegistry[page][1];
   document.querySelectorAll('[data-page]').forEach(link => link.classList.toggle('active', link.dataset.page === page));
   sidebar.classList.remove('open');

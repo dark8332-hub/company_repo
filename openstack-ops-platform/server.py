@@ -49,6 +49,11 @@ from provider_store import (
 )
 
 from fastapi import File, UploadFile  # work history attachments
+from provider_store import (  # issue notes
+    ISSUE_CATEGORIES, ISSUE_LANGUAGES, ISSUE_SEVERITIES, ISSUE_STATUSES, ISSUE_TRANSITIONS, add_issue_comment, add_issue_snippet,
+    delete_issue, delete_issue_snippet, get_alert as store_get_alert, get_check as store_get_check, get_issue, get_issue_snippet,
+    issue_summary, list_issue_events, list_issue_snippets, list_issues, save_issue, transition_issue, update_issue, update_issue_snippet,
+)
 from provider_store import (  # work history extensions
     WORK_TRANSITIONS, add_work_history_attachment, delete_work_history_attachment, get_work_history_attachment,
     list_work_histories_for_month, list_work_history_attachments, set_work_history_check, transition_work_history,
@@ -282,7 +287,7 @@ RUNTIME = {
     "timezone": os.environ.get("INSPECTION_TIMEZONE", "Asia/Seoul"),
     "audit_max_age_days": env_int("AUDIT_RETENTION_DAYS", 365, 0, 3650),
 }
-MENU_KEYS = ["dashboard", "providers", "infrastructure", "daily-inspection", "monitoring", "alerts", "history"]
+MENU_KEYS = ["dashboard", "providers", "infrastructure", "daily-inspection", "monitoring", "alerts", "history", "issues"]
 COMMON_TIMEZONES = ["Asia/Seoul", "UTC", "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Asia/Ho_Chi_Minh", "Asia/Jakarta", "Asia/Kolkata", "Europe/London", "Europe/Berlin", "America/New_York", "America/Los_Angeles"]
 AUDIT_ACTION_LABELS = {
     "auth.login": "로그인", "auth.logout": "로그아웃", "auth.password_change": "비밀번호 변경",
@@ -297,6 +302,8 @@ AUDIT_ACTION_LABELS = {
     "check.log_exclusion.create": "로그 제외 패턴 등록", "check.log_exclusion.delete": "로그 제외 패턴 삭제",
     "alert.update": "알림 처리", "alert.bulk": "알림 일괄 처리", "alert.comment": "알림 코멘트", "maintenance.create": "정비 시간 창 등록", "maintenance.delete": "정비 시간 창 삭제", "work_history.create": "작업 이력 등록", "work_history.update": "작업 이력 수정", "work_history.delete": "작업 이력 삭제",
     "work_history.transition": "작업 상태 변경", "work_history.check": "작업 전후 점검", "work_history.attachment.add": "작업 첨부 추가", "work_history.attachment.delete": "작업 첨부 삭제", "work_history.export": "작업 이력 내보내기",
+    "issue.create": "이슈 등록", "issue.update": "이슈 수정", "issue.delete": "이슈 삭제", "issue.transition": "이슈 상태 변경", "issue.comment": "이슈 코멘트",
+    "issue.snippet.add": "이슈 코드 추가", "issue.snippet.update": "이슈 코드 수정", "issue.snippet.delete": "이슈 코드 삭제", "issue.export": "이슈 내보내기",
     "settings.update": "설정 변경", "settings.reset": "설정 초기화", "provider.settings.update": "공급자 설정 변경", "provider.settings.reset": "공급자 설정 초기화", "retention.prune": "이력 정리 실행", "report.export": "보고서 내보내기", "inventory.collect": "인벤토리 수집",
     "monitoring.settings.update": "모니터링 수집원 설정", "monitoring.test": "모니터링 연결 테스트", "monitoring.rules.update": "임계치 알림 규칙 변경", "monitoring.rules.reset": "임계치 알림 규칙 초기화", "monitoring.evaluate": "임계치 즉시 평가",
 }
@@ -350,10 +357,15 @@ def validate_setting(key: str, value) -> dict:
             raise HTTPException(400, f"알 수 없는 시간대입니다: {name or '-'}") from exc
         return {"timezone": name}
     if "list_of" in spec:
-        visible = value.get("visible")
+        # Stored as both lists: `hidden` is what the client applies, so a menu added later is visible until
+        # someone hides it; `visible` stays for older clients.
+        visible, hidden = value.get("visible"), value.get("hidden")
+        if isinstance(hidden, list):
+            visible = [item for item in spec["list_of"] if item not in hidden]
         if not isinstance(visible, list):
             raise HTTPException(400, "visible 목록이 필요합니다.")
-        return {"visible": [item for item in spec["list_of"] if item in visible]}
+        visible = [item for item in spec["list_of"] if item in visible]
+        return {"visible": visible, "hidden": [item for item in spec["list_of"] if item not in visible]}
     if spec.get("json"):
         if len(json.dumps(value, ensure_ascii=False)) > 20000:
             raise HTTPException(400, "설정 값이 너무 큽니다.")
@@ -982,6 +994,278 @@ def current_actor() -> str:
     request = CURRENT_REQUEST.get()
     user = getattr(request.state, "user", None) if request else None
     return user["username"] if user else "system"
+
+
+# --- Issue notes ---------------------------------------------------------------------------------
+# A Confluence-style page per issue: Markdown body, code snippets with file path and language, and a
+# timeline of comments and status changes. Issues link to alerts, work histories and check results.
+ISSUE_STATUS_LABELS = {"open": "열림", "in_progress": "진행 중", "on_hold": "보류", "resolved": "해결"}
+ISSUE_SEVERITY_LABELS = {"critical": "치명", "high": "높음", "medium": "보통", "low": "낮음"}
+ISSUE_CATEGORY_LABELS = {"incident": "장애", "bug": "결함", "config": "설정", "performance": "성능", "capacity": "용량", "question": "확인 요청", "improvement": "개선", "other": "기타"}
+
+
+class IssueRequest(BaseModel):
+    provider_id: str | None = None
+    title: str = Field(min_length=1, max_length=200)
+    status: str = "open"
+    severity: str = "medium"
+    category: str = "other"
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    body: str = Field(default="", max_length=60000)
+    assignee: str = Field(default="", max_length=100)
+    target: str = Field(default="", max_length=300)
+    resolution: str = Field(default="", max_length=5000)
+    alert_id: str | None = Field(default=None, max_length=64)
+    work_history_id: str | None = Field(default=None, max_length=64)
+    check_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("status")
+    @classmethod
+    def validate_issue_status(cls, value: str) -> str:
+        if value not in ISSUE_STATUSES:
+            raise ValueError("지원하지 않는 이슈 상태입니다.")
+        return value
+
+    @field_validator("severity")
+    @classmethod
+    def validate_issue_severity(cls, value: str) -> str:
+        if value not in ISSUE_SEVERITIES:
+            raise ValueError("지원하지 않는 심각도입니다.")
+        return value
+
+    @field_validator("category")
+    @classmethod
+    def validate_issue_category(cls, value: str) -> str:
+        if value not in ISSUE_CATEGORIES:
+            raise ValueError("지원하지 않는 분류입니다.")
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def validate_issue_tags(cls, value: list[str]) -> list[str]:
+        return [str(tag).strip()[:40] for tag in value if str(tag).strip()]
+
+
+class IssueTransitionRequest(BaseModel):
+    status: str
+    note: str = Field(default="", max_length=5000)
+
+
+class IssueSnippetRequest(BaseModel):
+    title: str = Field(default="", max_length=200)
+    path: str = Field(default="", max_length=300)
+    language: str = "text"
+    code: str = Field(min_length=1, max_length=200000)
+
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, value: str) -> str:
+        if value not in ISSUE_LANGUAGES:
+            raise ValueError("지원하지 않는 언어입니다.")
+        return value
+
+
+class IssueCommentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+
+
+def issue_or_404(issue_id: str) -> dict:
+    issue = get_issue(issue_id)
+    if not issue:
+        raise HTTPException(404, "이슈를 찾을 수 없습니다.")
+    return issue
+
+
+def validated_issue(request: IssueRequest) -> dict:
+    data = request.model_dump(mode="json")
+    for key in ("title", "body", "assignee", "target", "resolution"):
+        data[key] = data[key].strip()
+    if not data["title"]:
+        raise HTTPException(400, "제목을 입력하세요.")
+    if data["provider_id"] and not get_provider(data["provider_id"]):
+        raise HTTPException(400, "등록된 공급자를 찾을 수 없습니다.")
+    if data["alert_id"] and not store_get_alert(data["alert_id"]):
+        raise HTTPException(400, "연결할 알림을 찾을 수 없습니다.")
+    if data["work_history_id"] and not get_work_history(data["work_history_id"]):
+        raise HTTPException(400, "연결할 작업 이력을 찾을 수 없습니다.")
+    if data["check_id"]:
+        if not data["provider_id"] or not store_get_check(data["provider_id"], data["check_id"]):
+            raise HTTPException(400, "연결할 점검 결과를 찾을 수 없습니다. 공급자와 점검 ID를 확인하세요.")
+    return data
+
+
+def issue_detail_payload(issue: dict) -> dict:
+    """Detail view: the issue with its snippets, timeline and the linked records' short summaries."""
+    detail = dict(issue)
+    detail["snippets"] = list_issue_snippets(issue["id"])
+    detail["events"] = list_issue_events(issue["id"])
+    links = {}
+    if issue.get("alert_id"):
+        alert = store_get_alert(issue["alert_id"])
+        links["alert"] = {"id": alert["id"], "title": alert["title"], "status": alert["status"], "severity": alert["severity"]} if alert else None
+    if issue.get("work_history_id"):
+        history = get_work_history(issue["work_history_id"])
+        links["work_history"] = {"id": history["id"], "title": history["title"], "status": history["status"], "work_type": history["work_type"]} if history else None
+    if issue.get("check_id") and issue.get("provider_id"):
+        check = store_get_check(issue["provider_id"], issue["check_id"])
+        links["check"] = {"id": check["id"], "status": check.get("status"), "created_at": check.get("created_at")} if check else None
+    detail["links"] = links
+    return detail
+
+
+@app.get("/api/issues/meta")
+async def issue_meta():
+    return {"statuses": [{"key": key, "label": ISSUE_STATUS_LABELS[key]} for key in ISSUE_STATUSES],
+            "severities": [{"key": key, "label": ISSUE_SEVERITY_LABELS[key]} for key in ISSUE_SEVERITIES],
+            "categories": [{"key": key, "label": ISSUE_CATEGORY_LABELS[key]} for key in ISSUE_CATEGORIES],
+            "languages": list(ISSUE_LANGUAGES), "transitions": {key: sorted(value) for key, value in ISSUE_TRANSITIONS.items()}}
+
+
+@app.get("/api/issues/summary")
+async def issue_summary_view():
+    return issue_summary()
+
+
+@app.get("/api/issues")
+async def issue_list(provider_id: str = "", status: str = "", severity: str = "", category: str = "", tag: str = Query(default="", max_length=40),
+                     q: str = Query(default="", max_length=200), alert_id: str = "", work_history_id: str = "", check_id: str = ""):
+    return {"issues": list_issues(provider_id, status, severity, category, tag.strip(), q.strip(), alert_id, work_history_id, check_id)}
+
+
+@app.post("/api/issues", status_code=201)
+async def create_issue(request: IssueRequest):
+    issue = save_issue(validated_issue(request), current_actor())
+    audit("issue.create", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"{ISSUE_SEVERITY_LABELS[issue['severity']]} · {ISSUE_CATEGORY_LABELS[issue['category']]}")
+    return issue_detail_payload(issue)
+
+
+@app.get("/api/issues/{issue_id}")
+async def issue_detail(issue_id: str):
+    return issue_detail_payload(issue_or_404(issue_id))
+
+
+@app.put("/api/issues/{issue_id}")
+async def edit_issue(issue_id: str, request: IssueRequest):
+    existing = issue_or_404(issue_id)
+    issue = update_issue(existing["id"], validated_issue(request), current_actor())
+    audit("issue.update", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"{ISSUE_STATUS_LABELS[issue['status']]} · {ISSUE_SEVERITY_LABELS[issue['severity']]}")
+    return issue_detail_payload(issue)
+
+
+@app.delete("/api/issues/{issue_id}")
+async def remove_issue(issue_id: str):
+    existing = issue_or_404(issue_id)
+    delete_issue(existing["id"])
+    audit("issue.delete", "issue", existing["id"], f"{existing['key']} {existing['title']}")
+    return {"deleted": True}
+
+
+@app.post("/api/issues/{issue_id}/transition")
+async def transition_issue_status(issue_id: str, payload: IssueTransitionRequest):
+    existing = issue_or_404(issue_id)
+    if payload.status not in ISSUE_STATUSES:
+        raise HTTPException(400, "지원하지 않는 이슈 상태입니다.")
+    try:
+        issue = transition_issue(existing["id"], payload.status, current_actor(), payload.note.strip())
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    audit("issue.transition", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"→ {ISSUE_STATUS_LABELS[payload.status]}")
+    return issue_detail_payload(issue)
+
+
+@app.get("/api/issues/{issue_id}/events")
+async def issue_events(issue_id: str):
+    issue = issue_or_404(issue_id)
+    return {"events": list_issue_events(issue["id"])}
+
+
+@app.post("/api/issues/{issue_id}/comments", status_code=201)
+async def comment_issue(issue_id: str, payload: IssueCommentRequest):
+    issue = issue_or_404(issue_id)
+    event = add_issue_comment(issue["id"], payload.text.strip(), current_actor())
+    audit("issue.comment", "issue", issue["id"], f"{issue['key']} {issue['title']}", payload.text.strip()[:200])
+    return event
+
+
+@app.get("/api/issues/{issue_id}/snippets")
+async def issue_snippets(issue_id: str):
+    issue = issue_or_404(issue_id)
+    return {"snippets": list_issue_snippets(issue["id"])}
+
+
+@app.post("/api/issues/{issue_id}/snippets", status_code=201)
+async def create_issue_snippet(issue_id: str, payload: IssueSnippetRequest):
+    issue = issue_or_404(issue_id)
+    data = payload.model_dump()
+    data["title"], data["path"] = data["title"].strip(), data["path"].strip()
+    snippet = add_issue_snippet(issue["id"], data, current_actor())
+    audit("issue.snippet.add", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"{data['language']} · {data['path'] or data['title'] or '-'}")
+    return snippet
+
+
+@app.put("/api/issues/{issue_id}/snippets/{snippet_id}")
+async def edit_issue_snippet(issue_id: str, snippet_id: str, payload: IssueSnippetRequest):
+    issue = issue_or_404(issue_id)
+    data = payload.model_dump()
+    data["title"], data["path"] = data["title"].strip(), data["path"].strip()
+    snippet = update_issue_snippet(issue["id"], snippet_id, data, current_actor())
+    if not snippet:
+        raise HTTPException(404, "코드 스니펫을 찾을 수 없습니다.")
+    audit("issue.snippet.update", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"{data['language']} · {data['path'] or data['title'] or '-'}")
+    return snippet
+
+
+@app.delete("/api/issues/{issue_id}/snippets/{snippet_id}")
+async def remove_issue_snippet(issue_id: str, snippet_id: str):
+    issue = issue_or_404(issue_id)
+    snippet = delete_issue_snippet(issue["id"], snippet_id, current_actor())
+    if not snippet:
+        raise HTTPException(404, "코드 스니펫을 찾을 수 없습니다.")
+    audit("issue.snippet.delete", "issue", issue["id"], f"{issue['key']} {issue['title']}", f"{snippet['language']} · {snippet['path'] or snippet['title'] or '-'}")
+    return {"deleted": True}
+
+
+def issue_markdown_document(detail: dict) -> str:
+    """Markdown export that pastes cleanly into Confluence, GitLab or a wiki."""
+    lines = [f"# {detail['key']} {detail['title']}", ""]
+    lines.append(f"- 상태: {ISSUE_STATUS_LABELS.get(detail['status'], detail['status'])} · 심각도: {ISSUE_SEVERITY_LABELS.get(detail['severity'], detail['severity'])} · 분류: {ISSUE_CATEGORY_LABELS.get(detail['category'], detail['category'])}")
+    lines.append(f"- 공급자: {detail.get('provider_name') or '공통'} · 대상: {detail.get('target') or '-'} · 담당: {detail.get('assignee') or '-'} · 등록: {detail.get('reporter') or '-'}")
+    if detail.get("tags"):
+        lines.append("- 태그: " + ", ".join(f"#{tag}" for tag in detail["tags"]))
+    lines.append(f"- 등록 {detail['created_at'][:16].replace('T', ' ')} UTC · 수정 {detail['updated_at'][:16].replace('T', ' ')} UTC" + (f" · 해결 {detail['resolved_at'][:16].replace('T', ' ')} UTC" if detail.get("resolved_at") else ""))
+    links = detail.get("links") or {}
+    if any(links.values()):
+        lines.append("")
+        lines.append("## 연결")
+        if links.get("alert"):
+            lines.append(f"- 알림: {links['alert']['title']} ({links['alert']['status']})")
+        if links.get("work_history"):
+            lines.append(f"- 작업 이력: {links['work_history']['title']} ({links['work_history']['status']})")
+        if links.get("check"):
+            lines.append(f"- 점검 결과: {links['check']['id']} ({links['check'].get('status') or '-'})")
+    lines += ["", "## 내용", "", detail.get("body") or "(내용 없음)"]
+    if detail.get("resolution"):
+        lines += ["", "## 해결 내용", "", detail["resolution"]]
+    if detail.get("snippets"):
+        lines += ["", "## 코드"]
+        for snippet in detail["snippets"]:
+            heading = " · ".join(part for part in (snippet.get("title"), snippet.get("path")) if part) or snippet.get("language", "text")
+            fence = "````" if "```" in snippet["code"] else "```"
+            lines += ["", f"### {heading}", "", f"{fence}{snippet.get('language', 'text')}", snippet["code"].rstrip("\n"), fence]
+    if detail.get("events"):
+        lines += ["", "## 타임라인", ""]
+        for event in reversed(detail["events"]):
+            lines.append(f"- {event['created_at'][:16].replace('T', ' ')} UTC · {event.get('actor') or 'system'} · {event['kind']}: {event.get('text') or '-'}")
+    return "\n".join(lines) + "\n"
+
+
+@app.get("/api/issues/{issue_id}/export")
+async def export_issue(issue_id: str):
+    detail = issue_detail_payload(issue_or_404(issue_id))
+    audit("issue.export", "issue", detail["id"], f"{detail['key']} {detail['title']}")
+    filename = f"{detail['key']}.md"
+    return Response(content=issue_markdown_document(detail).encode("utf-8"), media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename={filename}; filename*=UTF-8''{quote(filename)}", "Cache-Control": "no-store"})
 
 
 CONTROLLER_FAILURE_MARKERS = ("활성 Controller SSH 연결 실패", "활성 Controller root 권한 획득 실패", "SSH 접속 후 OpenStack 명령 실행이", "활성 Controller 연결 실패")
