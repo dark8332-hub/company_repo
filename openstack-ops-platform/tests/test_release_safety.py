@@ -31,7 +31,13 @@ if cmd == 'info': pass
 elif cmd == 'inspect':
     if os.environ.get('INSPECT_FAIL'): sys.exit(1)
     fmt = args[args.index('--format')+1]
-    print(state.get('image', '') if 'Config.Image' in fmt else state.get('label', ''))
+    nerdctl = os.environ.get('RUNTIME_SHAPE') == 'nerdctl'
+    if 'Labels' in fmt: print(state.get('label', ''))
+    elif 'Config.Image' in fmt:
+        # nerdctl has no .Config.Image: it writes a template error and still exits 0.
+        if nerdctl: sys.stderr.write('template parsing error: map has no entry for key "Image"\n')
+        else: print(state.get('image', ''))
+    else: print(state.get('image', '') if nerdctl else 'sha256:0123456789ab')
 elif cmd == 'ps':
     if os.environ.get('PS_FAIL'): sys.exit(1)
     fmt = args[args.index('--format')+1]
@@ -94,9 +100,24 @@ def archive_at(path, entries):
     return path
 
 
+@pytest.mark.parametrize('shape', ['docker','nerdctl'])
+def test_owned_container_is_recognized_on_every_runtime_shape(release_bundle, shape):
+    """nerdctl keeps the image at .Image and answers the docker-style .Config.Image with a
+    template error on stdout-empty/exit-0. Reading that as "not ours" locked the operator out of
+    every command on the runtime the target sites actually use."""
+    bundle = release_bundle
+    current = state(bundle)
+    current.update(image='docker.io/okestro/openstack-ops-platform:1.1.5', label='openstack-ops-platform')
+    (bundle/'state').write_text(json.dumps(current))
+    result = run(bundle, 'backup', RUNTIME_SHAPE=shape)
+    assert result.returncode == 0, result.stdout+result.stderr
+    assert list((bundle/'backup').glob('*.tar.gz'))
+
+
 @pytest.mark.parametrize('command', ['start','stop','restart','backup','restore','remove','logs','shell'])
 @pytest.mark.parametrize('identity', ['foreign','unknown','misleading','foreign-label','inspect-error'])
-def test_foreign_or_unknown_container_never_mutated(release_bundle, command, identity):
+@pytest.mark.parametrize('shape', ['docker','nerdctl'])
+def test_foreign_or_unknown_container_never_mutated(release_bundle, command, identity, shape):
     bundle = release_bundle
     current = state(bundle)
     current['image'] = {'foreign':'other/app:1', 'unknown':'',
@@ -106,7 +127,7 @@ def test_foreign_or_unknown_container_never_mutated(release_bundle, command, ide
     if identity == 'foreign-label': current['label'] = 'another-app'
     (bundle/'state').write_text(json.dumps(current))
     before = (bundle/'data/providers.db').read_bytes()
-    result = run(bundle, command, **({'INSPECT_FAIL':'1'} if identity == 'inspect-error' else {}))
+    result = run(bundle, command, RUNTIME_SHAPE=shape, **({'INSPECT_FAIL':'1'} if identity == 'inspect-error' else {}))
     assert result.returncode != 0
     assert not any(c[0] in {'rm','run','stop','start','rmi','exec'} for c in calls(bundle))
     assert state(bundle) == current and (bundle/'data/providers.db').read_bytes() == before

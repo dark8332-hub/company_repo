@@ -103,8 +103,19 @@ container_running() {
 }
 
 # inspect addresses one exact name; ps --filter name may match several containers.
+# docker and podman carry the image at .Config.Image; nerdctl has it only at the top level and
+# fails the docker-style path with a template error *and exit status 0*, so an empty answer must
+# never be read as "determined". Ask both ways and accept the first non-empty result.
 container_image() {
-    rt inspect --format '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null
+    for image_format in '{{.Config.Image}}' '{{.Image}}'; do
+        image_value="$(rt inspect --format "$image_format" "$CONTAINER_NAME" 2>/dev/null)" || continue
+        image_value="$(printf '%s' "$image_value" | tr -d '\r')"
+        case "$image_value" in
+            ""|"<no value>") ;;
+            *) printf '%s' "$image_value"; return 0 ;;
+        esac
+    done
+    return 1
 }
 container_is_ours() {
     image="$(container_image)" || return 1
