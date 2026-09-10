@@ -6,9 +6,9 @@
 
 - 프로젝트명: OpenStack 운영 지원 플랫폼 (가칭)
 - 시작일: 2026-08-21
-- 현재 단계: 폐쇄망 반입 준비 완료(앱 번들 1.1.3 + 런타임 번들 2.3.5, 컨테이너에서 노드까지의 SSH 진단 포함). 다음 단계는 신규 기능의 실제 환경 검증과 알림 발송 채널·다중 사용자 역할
+- 현재 단계: 폐쇄망 반입 준비 완료(앱 소스 1.1.5 + 런타임 번들 2.3.5, 컨테이너에서 노드까지의 SSH 진단 포함). 다음 단계는 신규 기능의 실제 환경 검증과 알림 발송 채널·다중 사용자 역할
 - 대상 사용자: OpenStack 운영 엔지니어 및 관리자
-- 문서 상태: 2026-09-08 갱신
+- 문서 상태: 2026-09-10 갱신
 
 ## 추진 목표
 
@@ -76,7 +76,7 @@
 - 플랫폼 실행 위치에서 모든 Controller 및 Compute 노드로 직접 SSH 접속할 수 있다.
 - root 로그인을 전제로 하지 않고 sudo 권한이 있는 운영 계정을 사용한다.
 - 읽기 전용 점검 명령은 일반 권한으로 실행하고 필요한 명령만 제한적으로 sudo를 사용한다.
-- 공급자 연결 시 passwordless sudo 여부와 사용 가능한 관리 도구를 자동 탐지한다.
+- 일반 SSH 계정은 sudo 비밀번호를 검증·암호화 저장하고 모든 권한 상승에 사용한다. NOPASSWD 자동 탐지는 제거했다.
 - 운영 적용 시 점검 명령 전용 sudoers 정책을 제공한다.
 
 ## 기술 구성
@@ -87,7 +87,7 @@
 | 프론트엔드 | HTML, CSS, Vanilla JavaScript | 적용 |
 | 기본 화면 테마 | OKESTRO 상징색인 어두운 남색 중심 | 확정 |
 | 세부 색상 팔레트 | 기본색, 강조색, 상태별 색상 코드 정의 필요 | 검토 필요 |
-| 데이터베이스 | SQLite, Fernet 암호화 저장 | 적용 |
+| 데이터베이스 | SQLite(WAL, busy timeout 30초), Fernet 암호화 저장. 스키마 준비는 기동 시 1회 | 적용 |
 | OpenStack 연동 방식 | Controller의 `/root/contrabass-openrc` 및 OpenStack CLI | 적용 |
 | 메트릭 수집 | Prometheus 계열 연동 검토 | 검토 필요 |
 | 용량 계획 | Placement API 우선, 노드 nova.conf 대체. 쿼터는 Nova·Cinder·Neutron REST | 적용 |
@@ -102,7 +102,7 @@
 | SSH 인증 방식 | 개인키 또는 비밀번호 선택 인증 | 확정 |
 | 플랫폼 로그인 | 관리자 단일 계정, scrypt 해시, 서버 세션 + HttpOnly 쿠키 | 적용 |
 | 프론트엔드 구조 | 단일 SPA(`index.html`) + 화면별 12개 JS 모듈, 인라인 스크립트 없음 | 적용 |
-| 테스트 | pytest 회귀 테스트 354개, quickjs 기반 JS 스모크·렌더링, 가짜 런타임·가짜 시스템 도구 위의 배포·런타임 스크립트 테스트 | 적용 |
+| 테스트 | pytest 회귀 테스트 463개, quickjs 기반 JS 스모크·렌더링, 가짜 런타임·가짜 시스템 도구 위의 배포·런타임 스크립트 테스트 | 적용 |
 | 운영 설정 저장 | 환경 변수 기본값 + DB(`app_settings`) 우선, 화면에서 수정 | 적용 |
 | 감사 로그 | `audit_logs` 테이블, 64종 동작 기록, 보관 기간 자동 정리 | 적용 |
 | 보고서 형식 | PDF(fpdf2) + Excel(openpyxl, 운영자 점검표 양식) | 적용 |
@@ -293,6 +293,15 @@
 | 2026-09-08 | 운영 도구 | `./opsctl.sh netcheck <노드> [포트]` 추가: 컨테이너 안과 호스트 양쪽에서 이름 해석·경로·TCP·SSH 배너를 확인하고 막힌 층에 맞는 조치를 제시 | 완료 |
 | 2026-09-08 | 문서 수정 | 이미지에 없는 `nc` 로 진단하라던 안내를 `netcheck` 로 교체(`python:3.12-slim` 에는 nc·ping·ssh·curl 이 없음) | 완료 |
 | 2026-09-08 | 이슈 노트 | 이슈 페이지(상태·심각도·분류·태그·담당), Markdown 본문과 언어별 구문 강조, 코드 스니펫(파일 경로·언어·줄 번호·복사), 타임라인·코멘트, 알림·작업 이력·점검 결과 연결, Markdown 내보내기, 검색·태그 필터 | 완료 |
+| 2026-09-08 | 폐쇄망 배포 | 재부팅 자동 기동 유닛을 손으로 만들던 절차를 `./opsctl.sh install-service`·`uninstall-service` 로 대체(경로 치환·검증·소유 확인·설치 기록). 실제 사이트에서 자리표시자 오타로 `bad unit file setting` 이 난 것을 계기로 추가 | 완료 |
+
+| 2026-09-10 | 성능 | SQLite 스키마 준비를 연결마다에서 프로세스당 1회로, `journal_mode=WAL`·busy timeout 30초 적용 | 완료 |
+| 2026-09-10 | 성능 | 점검 결과 저장·조회(`save_check`·`sync_check_alerts`·`get_check`·`latest_check`)를 `asyncio.to_thread`로 이동, 공급자 목록은 결과 JSON을 읽지 않는 `latest_check_meta`로 교체 | 완료 |
+| 2026-09-10 | 오류 수정 | 이슈 노트의 점검 결과 연결 칩 날짜가 늘 비어 있던 문제(`created_at`을 서버가 준 적 없음) 수정 | 완료 |
+| 2026-09-10 | 배포 안정성 | 정적 자산 캐시 무효화 값을 손으로 올리던 것을 `__ASSET_VERSION__` 자리표시자 + 서버 주입으로 교체 | 완료 |
+| 2026-09-10 | 안정성 | `run_as_root` 스크립트 64KB 상한(`MAX_ARG_STRLEN` 대비)과 로그 제외 패턴 공급자별 16KB 등록 예산 | 완료 |
+| 2026-09-10 | 정리 | 미사용 import 9개·미사용 저장소 함수 3개·죽은 CSS 30개 클래스 제거 | 완료 |
+
 
 ## 2026-08-25 실제 환경 검증 결과
 
@@ -1591,6 +1600,168 @@ iptables 를 새로 받을 수 없으므로, 반쪽 상태로 끝내지 말고 `
 - `deploy/README-DEPLOY.md`, `README.md`
 - `tests/test_runtime_bundle.py`(신규 26개), `tests/test_deploy_scripts.py`(netcheck 8개 추가)
 
+## 2026-09-08 systemd 유닛 설치 명령
+
+반입 사이트에서 재부팅 자동 기동 유닛을 설치하다 실패했다. 안내대로 서식을 `sed` 로 치환했는데
+자리표시자를 `BUNDLE_DIR` 로만 적어(앞뒤 밑줄 두 개가 빠졌다) `WorkingDirectory=__/k8s/openstack-ops-platform-1.1.3__`
+가 들어갔고, systemd 는 `path is not absolute` 로 유닛을 거부했다. 화면에 처음 보이는 것은
+`bad unit file setting` 한 줄뿐이라, 원인은 `journalctl` 을 봐야 나온다.
+
+절차 자체가 틀린 것은 아니었지만, **운영자가 손으로 문자열을 치도록 둔 것이 문제였다.** 사이트마다
+반복되고, 틀렸을 때 알려 주는 쪽이 systemd 라서 원인이 멀다. 명령으로 만들었다.
+
+### `install-service` / `uninstall-service`
+
+```sh
+sudo ./opsctl.sh install-service      # 치환 → 검증 → 설치 → enable → 기동
+sudo ./opsctl.sh uninstall-service    # 유닛만 제거. 컨테이너는 그대로 둔다
+```
+
+- 치환은 `sed` 가 아니라 awk 의 `index`/`substr` 로 글자 그대로 한다. 경로에 `#` 이나 `&` 가 들어가도
+  안전하고, 무엇보다 운영자가 패턴을 칠 일이 없어진다.
+- **놓기 전에 검사한다.** 자리표시자가 남았거나 `WorkingDirectory`·`ExecStart`·`ExecStop` 이 절대경로가
+  아니면 파일을 만들지 않고 중단한다. 이번 실패가 정확히 이 검사에 걸린다.
+- 같은 이름의 유닛이 있고 이 번들이 만든 것이 아니면 덮어쓰지 않고 중단한다. 판별은 서식 첫 줄의
+  표식(`# openstack-ops-platform bundle`)으로 한다. 컨테이너 이름 충돌을 다루는 방식과 같다.
+- 유닛 이름은 `config.env` 의 `CONTAINER_NAME` 을 따른다. 한 서버에 두 벌을 설치할 때 충돌하지 않는다.
+- 놓은 경로를 `installed-service.txt` 에 적고 `uninstall-service` 는 거기 적힌 것만 지운다. 런타임
+  번들의 manifest 와 같은 방식이다.
+- `uninstall-service` 는 `disable` 만 한다. `--now` 를 붙이면 `ExecStop` 이 돌아 컨테이너까지 내려간다.
+  자동 기동만 끄려던 운영자에게 서비스가 멎는 것은 예상 밖의 결과다.
+- `install.sh` 는 런타임이 `docker` 가 아닐 때만 마지막에 이 명령을 안내한다. `docker` 는
+  `--restart unless-stopped` 로 이미 재부팅 후 자동 기동되기 때문이다.
+
+번들이 번들 디렉터리 밖에 파일을 만드는 것은 이 유닛 하나뿐이고, 그것도 운영자가 이 명령을
+실행했을 때만이다. 회귀 테스트의 "번들 밖에 쓰지 않는다" 검사는 이 블록만 예외로 두고,
+그 예외가 유닛 디렉터리 밖으로 넓어지지 않는지를 따로 검사한다.
+
+### 검증 (2026-09-08)
+
+- `tests/test_deploy_scripts.py` 를 44개로 늘렸다(11개 추가). 가짜 `systemctl` 과 임시 `OPS_UNIT_DIR`
+  위에서 실제 `opsctl.sh` 를 돌린다: 절대경로 치환, 남의 유닛 보호, 번들 이동 후 재설치,
+  상대경로 유닛 거부, 표식 없는 서식 거부, root 확인, 기록한 것만 제거, `--now` 미사용,
+  블록이 유닛 디렉터리 밖에 쓰지 않는 것, 서식이 자리표시자와 표식을 유지하는 것.
+- 생성된 유닛을 실제 `systemd-analyze verify` 로 파싱시켜 통과를 확인했다(이 호스트에는 설치하지 않았다).
+- `pytest` 373 통과·1 건너뜀.
+- 번들 1.1.4 를 다시 만들고, 그 안의 `opsctl.sh` 로 설치·제거를 한 번 더 실행했다(스테이징 사본이
+  옛 것으로 남는 일을 막기 위해).
+
+### 변경 파일
+
+- `deploy/opsctl.sh`(`install-service`·`uninstall-service`·`render_unit`), `deploy/install.sh`(마지막 안내)
+- `deploy/systemd/openstack-ops-platform.service.template`(표식, 머리말 재작성)
+- `deploy/README-DEPLOY.md`, `README.md`, `tests/test_deploy_scripts.py`
+
+## 2026-09-10 일반 계정의 sudo 비밀번호 인증으로 통일
+
+- 대상 사이트는 NOPASSWD 계정이 아니라 비밀번호 인증 sudo 계정이라는 사용자 요구를 반영했다. 이전 날짜의 NOPASSWD 검증 기록은 당시 이력이며 현재 실행 정책은 이 절을 따른다.
+- 공급자 등록·수정의 NOPASSWD 탐지와 실행기의 무비밀번호 분기를 제거했다. 일반 계정은 sudo 비밀번호를 검증·암호화 저장한다. SSH 비밀번호 인증에서 sudo 입력을 생략하면 SSH 비밀번호를 검증해 저장한다.
+- 점검·탐색·사용자 정의 점검·연결 진단·인벤토리 수집의 공통 실행기를 비밀번호 방식으로 통일했다. 비밀번호 미등록·인증 실패 시 권한 상승 실패로 처리한다.
+- 비밀번호는 sudo stdin에만 전달하고 스크립트는 별도 bash 인자로 전달한다. 스크립트 stdin은 /dev/null로 고정해 sudo 정책이 바뀌어도 비밀번호가 스크립트로 실행되지 않는다. root UID를 확인한 뒤 성공 마커를 출력한다.
+- 기존 passwordless 공급자는 조회 시 비밀번호 등록 필요로 안내한다. 운영 DB의 자격증명을 임의로 채우지 않는다.
+- 공급자 화면·README·배포 안내·반입 런북(Markdown/HTML)을 갱신했다. 기존 1.1.4 배포 압축 파일에는 이번 소스 수정이 포함되지 않는다.
+- 검증: 전체 pytest 387개 중 386 통과·1 건너뜀. 등록·수정의 비밀번호 검증, 인증 실패·미등록 차단, 이전 passwordless 상태, 특수문자 비밀번호 비노출과 스크립트 분리, 인벤토리 수집 통합 경로를 확인했다.
+- 실제 사이트 sudo 비밀번호 인증 검증은 아직 미실시다.
+
+## 2026-09-10 패키징 전 배포 안정성 보완
+
+- 백업: 권한 600 임시 파일→성공 시 최종 파일 교체. 실패·신호 중단 시 임시 파일 제거와 기존 실행 상태 복구.
+- 복원: `restore_archive.py`에서 전체 아카이브 검증 후 스테이징 추출. data 밖 경로·중복·링크·특수 파일 거부. 서비스 정지 전 검증하며 이전 데이터는 별도 경로에 보존. 호스트 Python 부재 시 앱 이미지 Python 사용.
+- 설치·운영 공통 보호: 정확한 이미지 저장소와 관리 라벨로 소유 확인, 조회 실패 시 중단. restart·restore·remove 등 모든 운영 경로에 적용. 포트 충돌 시 기존 컨테이너를 삭제하지 않고 이전 실행 상태 복구.
+- 런타임 실행 경로와 종류 분리: 절대경로 nerdctl도 전용 namespace·마운트 처리를 유지.
+- 릴리스 버전 1.1.5: VERSION 기반 빌드 기본값, 빌드 인자와 이미지 메타데이터·API·화면 통합. 빌드 커밋·미커밋 여부·UTC 시각 기록.
+- 제거된 인쇄 보고서의 CSS 블록 삭제. sudo 실행은 ssh_privileges.py로, DB 스키마·마이그레이션은 store_schema.py로 분리. Dockerfile import 그래프 검사에 새 모듈 포함.
+- 실제 사이트 sudo 인증과 재부팅 검증은 사이트에서 별도로 필요하다.
+
+## 2026-09-10 패키징 전 코드 점검: 성능·죽은 코드·스크립트 상한
+
+패키징 직전에 전체 코드를 다시 읽고 고친 것들이다. 기능 추가는 없고, 사이트에서 문제로 나타날
+자리만 손봤다.
+
+### 1. 스키마 준비가 연결마다 돌고 있었다
+
+`_connect()` 가 열릴 때마다 `initialize_schema()` 를 불렀다. 이 함수는 `CREATE TABLE IF NOT
+EXISTS` 약 30개와 `PRAGMA table_info` 10여 개, 마이그레이션 조회를 실행한다. 저장소 함수 대부분이
+`with _connect()` 로 매번 새 연결을 열기 때문에 API 요청 한 번에 스키마 문장이 수십에서 수백 번
+실행됐다. 프로세스마다 한 번만 돌도록 바꿨다. 파일이 사라지면(새 설치, 파일을 지우는 테스트) 다시
+돈다. 모든 문장이 멱등이라 두 번 돌아도 해가 없다.
+
+### 2. WAL 과 busy timeout
+
+예약 점검이 메가바이트 단위 결과 JSON 을 쓰는 동안 운영자가 화면을 본다. 기본 rollback journal
+에서는 그 쓰기가 읽기를 막는다. `journal_mode=WAL` 로 바꾸고 busy timeout 을 sqlite3 기본 5초에서
+30초로 올렸다. WAL 은 DB 파일에 남는 설정이라 기존 1.1.4 DB 도 처음 열릴 때 한 번 전환된다.
+`opsctl.sh backup` 은 컨테이너를 멈추고 묶으므로 WAL 이 체크포인트된 뒤에 백업된다.
+
+### 3. 무거운 DB 호출을 이벤트 루프 밖으로
+
+점검 결과 저장·조회는 이 앱에서 가장 큰 DB 작업인데 `async` 핸들러 안에서 동기로 돌고 있었다.
+저장 중에는 다른 사용자의 화면이 멈춘다. 결과 JSON 을 읽고 쓰는 자리만 `asyncio.to_thread` 로
+옮겼다: `save_check`, `sync_check_alerts`, `get_check`, `latest_check`. 나머지 조회는 요약 컬럼만
+읽어 마이크로초 단위라 그대로 뒀다.
+
+옮기는 김에 두 곳은 애초에 큰 JSON 을 읽을 필요가 없었다.
+
+- `GET /api/providers` 는 공급자마다 `latest_check` 로 전체 결과를 읽고 id·status·checked_at 세
+  개만 썼다. 요약 행만 읽는 `latest_check_meta()` 를 새로 두고 바꿨다. 공급자 5개면 결과 JSON
+  5개를 읽던 것이 사라진다.
+- 이슈 노트의 점검 결과 연결도 존재 확인과 표시에만 쓰면서 전체 결과를 읽었다. `check_summary`
+  로 바꿨다. 이 과정에서 화면이 `links.check.created_at` 을 읽는데 서버는 그 키를 준 적이 없어
+  연결 칩의 날짜가 늘 비어 있던 것도 함께 고쳤다(`checked_at` 을 넘긴다).
+
+### 4. 캐시 무효화 문자열을 손으로 올리고 있었다
+
+`index.html` 의 `?v=20260910-2` 를 사람이 고쳐 왔다. 2026-08-26 에 이미 옛 JavaScript 캐시로 점검이
+멈춘 적이 있고, 사이트 업그레이드마다 반복될 자리였다. 페이지에는 `__ASSET_VERSION__` 자리표시자만
+두고 서버가 채운다. 값은 이미지에서는 `버전-커밋`, 소스 체크아웃에서는 `버전-자산 최신 mtime` 이다.
+회귀 테스트가 두 페이지에 손으로 쓴 값이 다시 들어오지 못하게 막는다.
+
+### 5. 스크립트 길이 상한
+
+`bash -c '<스크립트>'` 로 스크립트 전체를 인자 하나에 담으므로 Linux 의 `MAX_ARG_STRLEN`(128KB)
+가 걸린다. 내장 스크립트는 약 11KB 라 여유가 있지만, 로그 제외 패턴은 공급자가 계속 추가할 수
+있어 무한히 자란다. 넘치면 커널이 `Argument list too long` 만 돌려주는데 이것으로는 원인을 알 수
+없다.
+
+- `run_as_root` 에 64KB 상한을 두고 원인을 한글로 말한다. root 계정은 stdin 으로 넘겨 이 한도가
+  없지만 같은 상한을 적용한다. 계정 종류에 따라 되고 안 되고가 갈리는 쪽이 더 나쁘다.
+- 로그 제외 패턴은 등록할 때 공급자별 16KB 예산으로 막는다. 점검 도중이 아니라 등록하는 자리에서
+  알려주기 위해서다.
+
+### 6. 죽은 코드 정리
+
+- `server.py` 의 쓰지 않는 import 6개(`ROOT_MARKER`·`SUDO_PASSWORD_COMMAND`·`secrets`·
+  `list_settings`·`get_maintenance_window`·`get_issue_snippet`)와 잡히지 않는 예외 변수 1개
+- `provider_store.py` 에서 아무 데서도 부르지 않던 `list_settings`·`active_maintenance_windows`·
+  `delete_provider_inventories`
+- `styles.css` 에서 08-21 목업 대시보드와 삭제된 Keystone·`provider.html` 화면의 잔재 30개
+  클래스(약 3.9KB). `tok-${}`·`severity-${}`·`status-${}` 처럼 동적으로 만드는 이름은 남겼다
+- 테스트 3개 파일의 쓰지 않는 import
+
+### 검증 (2026-09-10)
+
+- `pytest` 463개 중 462 통과·1 건너뜀(변경 전 449개). 이번에 14개를 늘렸다: 스크립트 상한(계정
+  종류별, 경계값), 로그 제외 예산, 자산 버전 자리표시자와 실제 응답, WAL·busy timeout, 스키마가
+  연결마다 돌지 않는 것, 파일이 사라지면 다시 도는 것.
+- `pyflakes` 가 소스·배포·테스트 전체에서 경고 없음.
+- 서비스를 재기동해 `/api/health` 가 1.1.5 를 응답하고 로그인 페이지 자산 URL 이
+  `?v=1.1.5-<빌드>` 로 채워지는 것, DB 가 `journal_mode=wal` 로 전환된 것을 확인했다.
+
+### 손대지 않은 것
+
+- `Dockerfile` 의 `USER`. 컨테이너가 root 로 돈다. 비 root 로 바꾸면 기존 1.1.4 설치의 `data/`
+  소유권 마이그레이션이 따라오므로 배포 동작 변경이다. 다음 릴리스로 미룬다.
+- `server.py` 5,000줄의 `APIRouter` 분할과 `js/inspection.js` 의 긴 줄. 패키징 직전에 할 변경이
+  아니다.
+
+### 변경 파일
+
+- `provider_store.py`(`_connect`, `latest_check_meta`, 미사용 함수 3개 제거), `server.py`,
+  `ssh_privileges.py`(`MAX_SCRIPT_BYTES`), `styles.css`, `index.html`, `login.html`
+- `tests/test_asset_versioning.py`(신규), `tests/test_sudo_password.py`, `tests/test_inventory.py`,
+  `tests/test_node_host_keys.py`, `tests/test_js_capacity.py`
+
+
 ## 결정사항
 
 - 진행사항은 이 문서에 지속적으로 누적한다.
@@ -1634,6 +1805,8 @@ iptables 를 새로 받을 수 없으므로, 반쪽 상태로 끝내지 말고 `
 - 셸 스크립트의 비트 연산은 쓰지 않는다. `and()` 는 gawk 전용이고 Ubuntu 의 기본 awk 는 mawk 다.
 - 컨테이너 안에서 실행한 명령의 결과는 종료 코드가 아니라 출력으로 받는다. `nerdctl exec` 는 종료 코드를 전달하지 않는다.
 - 운영자에게 안내하는 진단 명령은 이미지 안에 실제로 있는 것만 쓴다. 이미지는 `python:3.12-slim` 이라 `nc`·`ping`·`ssh`·`curl` 이 없다.
+- 운영자가 손으로 문자열을 치도록 남겨 둔 절차는 명령으로 바꾼다. 틀렸을 때 알려 주는 쪽이 systemd 나 런타임이면 원인이 멀다.
+- 시스템 파일을 놓기 전에 우리가 먼저 검사한다. 놓고 나서 실패를 읽는 것보다 낫다.
 
 ## 확인이 필요한 사항
 
@@ -1673,6 +1846,7 @@ iptables 를 새로 받을 수 없으므로, 반쪽 상태로 끝내지 말고 `
 16. 앞단 TLS. 현재 HTTP로 서비스하므로 로그인 비밀번호가 평문으로 오간다. 폐쇄망이라도 사내망 도청은 남는 위험이다
 18. 배포 번들의 `docker`·`podman` 경로 실제 확인. 여기서는 nerdctl 로만 전 과정을 돌렸다
 19. 런타임 번들을 런타임이 **없는** 서버에서 실제 설치·제거 검증. 이 서버는 이미 런타임이 있어 스크립트가 스스로 중단하므로, 설치 경로는 가짜 시스템 도구 위에서만 확인했다. 브리지 대역 충돌 안내, `--no-bridge` + `USE_HOST_NETWORK=yes`, 재부팅 뒤 모듈·커널 파라미터 유지도 실제 서버 확인이 남았다
+21. `install-service` 로 만든 유닛이 실제 재부팅 후 컨테이너를 올리는지 사이트에서 확인. 여기서는 `systemd-analyze verify` 와 가짜 `systemctl` 까지만 했다
 20. 이 서버의 검증 잔재 정리: 옛 이미지 태그, 테스트 컨테이너 `ops-sshtest`, 빈 namespace, 고아 CNI iptables 체인. 아울러 `opsctl.sh remove` 가 제거 시 자기 컨테이너의 SNAT 체인까지 정리하도록 보완
 17. 이슈 노트 브라우저 표시 확인과 후속: 이슈 첨부 파일(작업 이력의 첨부 구조 재사용), 이슈 목록 일괄 Markdown 내보내기, 대시보드 「오늘의 할 일」에 담당 이슈 표시
 
@@ -1763,3 +1937,4 @@ iptables 를 새로 받을 수 없으므로, 반쪽 상태로 끝내지 말고 `
 | 2026-09-08 | 배포 스크립트가 nerdctl 2.x 에서 그대로 동작함을 실제 바이너리로 확인 |
 | 2026-09-08 | `opsctl.sh netcheck` 추가(컨테이너·호스트 양쪽 SSH 경로 진단)와 이미지에 없는 `nc` 를 안내하던 문서 수정, `nerdctl exec` 가 종료 코드를 전달하지 않는 문제 회피, 테스트 8개 |
 | 2026-09-08 | 런타임 설치를 패키지가 없는 서버 기준으로 보강(iptables 필수 확인, `br_netfilter`·`bridge-nf-call-iptables`, 재부팅 뒤 유지)과 회귀 테스트 9개 추가 |
+| 2026-09-08 | 재부팅 자동 기동 유닛 설치를 `./opsctl.sh install-service`·`uninstall-service` 로 대체(치환·검증·소유 확인·설치 기록), 번들 1.1.4, 테스트 11개 추가 |

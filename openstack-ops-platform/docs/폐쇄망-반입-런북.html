@@ -1,0 +1,547 @@
+<title>폐쇄망 반입 런북</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@300;400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #f4f6f8;
+    --surface: #ffffff;
+    --surface-sunk: #eef1f5;
+    --ink: #151b24;
+    --ink-soft: #4a5665;
+    --ink-faint: #6f7c8d;
+    --rule: #d7dde5;
+    --rule-soft: #e6eaf0;
+    --navy: #1e3a5f;
+    --link: #1e3a5f;
+    --copper: #9d5a1c;
+    --stop: #a02a2e;
+    --go: #1a6349;
+    --code-bg: #141b26;
+    --code-ink: #e2e8f2;
+    --code-dim: #8b97a8;
+    --shadow: 0 1px 2px rgba(20, 30, 45, .06), 0 8px 24px -18px rgba(20, 30, 45, .5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #0f141b;
+      --surface: #161d27;
+      --surface-sunk: #1c242f;
+      --ink: #e3e9f1;
+      --ink-soft: #a9b5c4;
+      --ink-faint: #8593a4;
+      --rule: #2b3542;
+      --rule-soft: #232c38;
+      --navy: #8fb4e0;
+      --link: #8fb4e0;
+      --copper: #d9974d;
+      --stop: #e08084;
+      --go: #62b894;
+      --code-bg: #0b1017;
+      --code-ink: #dde5f0;
+      --code-dim: #78889c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 26px -20px rgba(0, 0, 0, .9);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0f141b;
+    --surface: #161d27;
+    --surface-sunk: #1c242f;
+    --ink: #e3e9f1;
+    --ink-soft: #a9b5c4;
+    --ink-faint: #8593a4;
+    --rule: #2b3542;
+    --rule-soft: #232c38;
+    --navy: #8fb4e0;
+    --link: #8fb4e0;
+    --copper: #d9974d;
+    --stop: #e08084;
+    --go: #62b894;
+    --code-bg: #0b1017;
+    --code-ink: #dde5f0;
+    --code-dim: #78889c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 26px -20px rgba(0, 0, 0, .9);
+  }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "IBM Plex Sans KR", system-ui, -apple-system, "Malgun Gothic", sans-serif;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .shell { max-width: 1020px; margin: 0 auto; padding: 0 24px 96px; }
+  p, li { max-width: 74ch; }
+  a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; border-radius: 2px; }
+
+  /* --- masthead ------------------------------------------------------- */
+  .masthead { padding: 56px 0 32px; border-bottom: 1px solid var(--rule); }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--copper); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 4.4vw, 44px); line-height: 1.18; font-weight: 600;
+    letter-spacing: -.02em; margin: 0 0 16px; text-wrap: balance;
+  }
+  .standfirst { font-size: 18px; font-weight: 300; color: var(--ink-soft); margin: 0; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 26px 0 0;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12.5px; color: var(--ink-faint);
+  }
+  .meta b { font-weight: 500; color: var(--ink-soft); }
+
+  /* --- premise ---------------------------------------------------------- */
+  .premise { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); margin: 28px 0 0; }
+  .premise div {
+    border-left: 2px solid var(--copper); padding: 4px 0 4px 16px;
+  }
+  .premise h3 {
+    margin: 0 0 4px; font-size: 12px; font-weight: 500; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .premise p { margin: 0; font-size: 15px; color: var(--ink-soft); }
+
+  /* --- sections --------------------------------------------------------- */
+  section { padding-top: 56px; }
+  h2 {
+    font-size: 24px; font-weight: 600; letter-spacing: -.01em; margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  h2 .num {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px;
+    color: var(--copper); margin-right: 12px; font-weight: 500;
+  }
+  h3 { font-size: 17px; font-weight: 600; margin: 34px 0 8px; }
+  .lede { color: var(--ink-soft); margin: 0 0 20px; }
+
+  /* --- steps ------------------------------------------------------------ */
+  .step { display: grid; grid-template-columns: 44px 1fr; gap: 20px; padding: 26px 0; border-top: 1px solid var(--rule-soft); }
+  .step:first-of-type { border-top: 0; }
+  .step-n {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 15px; font-weight: 500;
+    color: var(--surface); background: var(--navy);
+    width: 30px; height: 30px; border-radius: 50%;
+    display: grid; place-items: center; margin-top: 4px;
+  }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .step p { margin: 0 0 14px; color: var(--ink-soft); }
+  @media (max-width: 640px) { .step { grid-template-columns: 1fr; gap: 10px; } }
+
+  /* --- code ------------------------------------------------------------- */
+  .cmd { position: relative; margin: 0 0 16px; }
+  .cmd pre {
+    margin: 0; background: var(--code-bg); color: var(--code-ink);
+    border-radius: 6px; padding: 16px 56px 16px 18px; overflow-x: auto;
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13.5px; line-height: 1.75;
+  }
+  .cmd .c { color: var(--code-dim); }
+  .copy {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(255, 255, 255, .08); color: #cfd8e6; border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 4px; padding: 3px 9px; font-size: 11.5px; cursor: pointer;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  .copy:hover { background: rgba(255, 255, 255, .16); color: #fff; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .89em;
+    background: var(--surface-sunk); padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* --- tables ----------------------------------------------------------- */
+  .scroll { overflow-x: auto; min-width: 0; margin: 0 0 8px; }
+  table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11.5px; font-weight: 500;
+    letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint);
+    border-bottom: 1px solid var(--rule);
+  }
+  td.mono, .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  /* --- notes ------------------------------------------------------------ */
+  .note {
+    border-left: 3px solid var(--rule); background: var(--surface); box-shadow: var(--shadow);
+    border-radius: 0 6px 6px 0; padding: 16px 20px; margin: 20px 0;
+  }
+  .note.stop { border-left-color: var(--stop); }
+  .note.watch { border-left-color: var(--copper); }
+  .note.ok { border-left-color: var(--go); }
+  .note p { margin: 0; font-size: 15px; }
+  .note p + p { margin-top: 10px; }
+  .note .tag {
+    display: block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .note.stop .tag { color: var(--stop); }
+  .note.watch .tag { color: var(--copper); }
+  .note.ok .tag { color: var(--go); }
+
+  ul { padding-left: 20px; }
+  li { margin: 6px 0; }
+  li::marker { color: var(--ink-faint); }
+
+  .verdict td:first-child, .verdict th:first-child { padding-right: 18px; }
+  .pill {
+    display: inline-block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; padding: 1px 8px; border-radius: 10px; border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .pill.stop { color: var(--stop); }
+  .pill.go { color: var(--go); }
+  .pill.watch { color: var(--copper); }
+
+  footer {
+    margin-top: 72px; padding-top: 24px; border-top: 1px solid var(--rule);
+    font-size: 13.5px; color: var(--ink-faint);
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="shell">
+
+  <header class="masthead">
+    <p class="eyebrow">Deploy runbook · 2026-09-10</p>
+    <h1>폐쇄망 반입 런북</h1>
+    <p class="standfirst">컨테이너 런타임이 없는 배포 서버에 OpenStack 운영 지원 플랫폼을 올리고, root 로그인이 막힌 노드를 점검하기까지.</p>
+    <div class="meta">
+      <span><b>플랫폼</b> 1.1.5</span>
+      <span><b>런타임</b> nerdctl-full 2.3.5</span>
+      <span><b>대상</b> linux/amd64</span>
+      <span><b>반입 용량</b> 361MB</span>
+    </div>
+
+    <div class="premise">
+      <div>
+        <h3>전제 1 · 노드</h3>
+        <p>점검 대상 노드는 root 로그인이 차단되어 있고, sudo 권한이 있는 일반 계정만 SSH를 허용합니다.</p>
+      </div>
+      <div>
+        <h3>전제 2 · 배포 서버</h3>
+        <p>배포 서버에 docker·podman·nerdctl이 하나도 없습니다. 런타임부터 반입합니다.</p>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="num">01</span>반입하는 파일</h2>
+    <p class="lede">두 개입니다. 성격이 다르므로 따로 묶여 있습니다 — 런타임 설치는 시스템 작업이고, 플랫폼 설치는 아닙니다. 이미 런타임이 있는 사이트는 두 번째 파일만 가져가면 됩니다.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>파일</th><th>용량</th><th>내용</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mono">openstack-ops-runtime-<br>2.3.5-offline.tar.gz</td>
+            <td class="mono">274MB</td>
+            <td>상위 배포처의 <code>nerdctl-full</code> 압축 파일을 <strong>다시 묶지 않고 그대로</strong> 담습니다. 사이트에서 상위 배포처의 SHA256으로 직접 검증할 수 있어야 하기 때문입니다. 설치·제거 스크립트와 안내서가 함께 들어 있습니다.</td>
+          </tr>
+          <tr>
+            <td class="mono">openstack-ops-platform-<br>1.1.5-offline.tar.gz</td>
+            <td class="mono">87MB</td>
+            <td>docker-archive 형식 이미지 tar(적재 후 약 273MB) + <code>install.sh</code>·<code>opsctl.sh</code>·<code>lib.sh</code>·<code>config.env.example</code>·<code>systemd/</code>·안내서.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>런타임 번들 구성</h3>
+    <p>rpm·deb가 아니라 전부 정적 바이너리입니다. RHEL·Rocky·Ubuntu에서 같은 절차로 끝납니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>구성</th><th>버전</th><th>구성</th><th>버전</th></tr></thead>
+        <tbody>
+          <tr><td>nerdctl</td><td class="mono">v2.3.5</td><td>CNI plugins</td><td class="mono">v1.9.1</td></tr>
+          <tr><td>containerd</td><td class="mono">v2.3.3</td><td>BuildKit</td><td class="mono">v0.31.2</td></tr>
+          <tr><td>runc</td><td class="mono">v1.5.1</td><td>fuse-overlayfs</td><td class="mono">v1.17</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>플랫폼 이미지 구성</h3>
+    <p><code>python:3.12-slim</code> 베이스에 파이썬 패키지 8개뿐입니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>패키지</th><th>버전</th><th>패키지</th><th>버전</th></tr></thead>
+        <tbody>
+          <tr><td>fastapi</td><td class="mono">0.116.1</td><td>httpx</td><td class="mono">0.28.1</td></tr>
+          <tr><td>uvicorn[standard]</td><td class="mono">0.35.0</td><td>fpdf2</td><td class="mono">2.8.8</td></tr>
+          <tr><td>asyncssh</td><td class="mono">2.21.0</td><td>openpyxl</td><td class="mono">3.1.5</td></tr>
+          <tr><td>cryptography</td><td class="mono">50.0.0</td><td>python-multipart</td><td class="mono">0.0.32</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <p><span class="tag">알아 둘 것</span>노드 SSH는 <code>asyncssh</code>(파이썬 라이브러리)로 직접 말합니다. 이미지에 <code>openssh-client</code>가 필요 없고, 그래서 <code>nc</code>·<code>ping</code>·<code>ssh</code>·<code>curl</code>도 없습니다. 컨테이너 안 진단은 <code>./opsctl.sh netcheck</code>로 합니다.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">02</span>배포 서버에 이미 있어야 하는 것</h2>
+    <p class="lede">우리가 설치하지 않는 것들입니다. 없으면 설치가 그 자리에서 멈춥니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>항목</th><th>없으면</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">x86_64</td><td><span class="pill stop">중단</span> 이 번들은 amd64 전용입니다</td></tr>
+          <tr><td class="mono">systemd</td><td><span class="pill stop">중단</span> containerd를 서비스로 등록할 수 없습니다</td></tr>
+          <tr><td class="mono">iptables</td><td><span class="pill stop">중단</span> 아래 설명 참조</td></tr>
+          <tr><td class="mono">overlayfs</td><td><span class="pill watch">경고</span> 스냅샷터가 느린 대체 경로로 떨어집니다</td></tr>
+          <tr><td class="mono">tar · sha256sum · awk</td><td><span class="pill stop">중단</span> 압축 해제와 체크섬 검증에 씁니다</td></tr>
+          <tr><td class="mono">root 또는 sudo</td><td><span class="pill stop">중단</span> 런타임 설치는 시스템 작업입니다</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note stop">
+      <p><span class="tag">iptables가 특히 중요합니다</span>브리지 네트워크의 포트 매핑은 CNI portmap의 DNAT이고, 밖으로 나가는 트래픽은 MASQUERADE입니다. 둘 다 iptables로 이뤄집니다. 없으면 <strong>컨테이너는 뜨는데 화면이 열리지 않고 점검도 노드에 닿지 못하는</strong> 반쪽 상태가 됩니다. 폐쇄망 서버는 그 자리에서 iptables를 받을 수 없으므로, 설치를 끝내지 않고 멈추면서 <code>--no-bridge</code> 경로를 안내합니다.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">03</span>설치 순서</h2>
+    <p class="lede">런타임 → 플랫폼 → (선택) 자동 기동. 순서가 바뀌면 플랫폼 설치가 “런타임이 없다”며 멈춥니다.</p>
+
+    <div class="step">
+      <div class="step-n">1</div>
+      <div>
+        <h3>런타임 <span class="mono" style="font-weight:400;color:var(--ink-faint)">— root 필요</span></h3>
+        <p>정적 바이너리를 풀고 containerd를 서비스로 등록합니다. 이 단계만 시스템을 고칩니다.</p>
+        <div class="cmd"><button class="copy" type="button">복사</button><pre><code>tar -xzf openstack-ops-runtime-2.3.5-offline.tar.gz
+cd openstack-ops-runtime-2.3.5
+sudo ./install-runtime.sh
+
+<span class="c"># 브리지 대역(기본 10.4.0.0/24)이 사내망과 겹치면</span>
+sudo ./install-runtime.sh --cni-subnet 172.31.240.0/24
+
+<span class="c"># 또는 브리지를 아예 만들지 않고 host 네트워크로 (04장 참조)</span>
+sudo ./install-runtime.sh --no-bridge</code></pre></div>
+        <p style="margin-bottom:0">설치 전에 <code>ip route</code>와 브리지 대역이 겹치는지 계산합니다. 겹치면 중단합니다 — 겹친 채로 두면 <strong>일부 노드만 점검에 실패하는</strong> 형태로 나타나 원인을 찾기 어렵습니다.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">2</div>
+      <div>
+        <h3>플랫폼</h3>
+        <p>이미지를 적재하고 컨테이너 하나를 띄웁니다. 번들 디렉터리 밖에는 아무것도 만들지 않습니다.</p>
+        <div class="cmd"><button class="copy" type="button">복사</button><pre><code>cd .. &amp;&amp; tar -xzf openstack-ops-platform-1.1.5-offline.tar.gz
+cd openstack-ops-platform-1.1.5
+cp config.env.example config.env      <span class="c"># HOST_PORT · TIMEZONE · 필요하면 USE_HOST_NETWORK</span>
+
+sudo env "PATH=$PATH" ./install.sh</code></pre></div>
+        <div class="note watch">
+          <p><span class="tag">env "PATH=$PATH"가 핵심입니다</span>nerdctl은 <code>/usr/local/bin</code>에 있는데 <code>sudo</code>가 PATH를 좁혀 그 경로를 못 보면, 설치 스크립트가 “런타임이 없다”며 멈춥니다. 런타임을 방금 깐 서버에서 가장 흔한 실패입니다.</p>
+        </div>
+        <p style="margin-bottom:0">6단계(<span class="mono">실행 환경 → 설정 → 이미지 적재 → 데이터 → 기동 → 동작 확인</span>)로 진행하고, 마지막에 접속 주소와 계정을 찍습니다. 초기 비밀번호는 <code>Okestro2018@</code>이며 첫 로그인에서 변경을 강제합니다.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-n">3</div>
+      <div>
+        <h3>재부팅 자동 기동 <span class="mono" style="font-weight:400;color:var(--ink-faint)">— 선택</span></h3>
+        <p>부팅 직후 컨테이너는 꺼져 있고 자기 자신을 켤 수 없습니다. 켜 줄 것을 하나 둡니다.</p>
+        <div class="cmd"><button class="copy" type="button">복사</button><pre><code>sudo ./opsctl.sh install-service      <span class="c"># 치환 → 검증 → 설치 → enable → 기동</span>
+sudo ./opsctl.sh uninstall-service    <span class="c"># 유닛만 제거. 컨테이너는 그대로</span></code></pre></div>
+        <p>서식의 자리표시자를 번들 절대경로로 바꾸고, <strong>파일을 놓기 전에</strong> 결과를 검사합니다. 자리표시자가 남았거나 경로가 절대경로가 아니면 설치하지 않고 멈춥니다. 같은 이름의 유닛이 이 번들의 것이 아니면 덮어쓰지 않습니다. 놓은 경로는 <code>installed-service.txt</code>에 적히고, 제거는 거기 적힌 것만 지웁니다.</p>
+        <div class="note">
+          <p><span class="tag">1.1.3 이하에서는</span>이 명령이 없어 서식을 손으로 치환해야 합니다. 자리표시자는 밑줄 두 개를 포함한 <code>__BUNDLE_DIR__</code> <strong>전체</strong>입니다. <code>BUNDLE_DIR</code>만 바꾸면 <code>__/경로__</code>가 남아 systemd가 <span class="mono">path is not absolute</span>로 유닛을 거부합니다.</p>
+          <p><span class="tag" style="color:var(--ink-faint)">이 단계가 꼭 필요한가</span>컨테이너는 <code>--restart unless-stopped</code>로 떠 있고 nerdctl은 이를 containerd의 restart 플러그인에 맡깁니다. 그 플러그인이 켜져 있고 containerd가 부팅 시 뜨면 유닛 없이도 복구될 수 있습니다. 다만 <strong>실제 재부팅으로는 확인하지 않았습니다.</strong> 재부팅 창이 있으면 유닛 없이 한 번 확인해 보고, 없으면 유닛을 두는 쪽이 확실합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">04</span>네트워크 선택 — 브리지 vs host</h2>
+    <p class="lede">플랫폼은 컨테이너 안에서 점검 대상 노드로 SSH를 나갑니다. 여기서 막히면 화면은 멀쩡한데 점검만 전부 실패합니다. 먼저 정하고 가는 편이 낫습니다.</p>
+
+    <div class="scroll">
+      <table>
+        <thead><tr><th>선택</th><th>설정</th><th>이럴 때</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>브리지</strong><br><span class="mono" style="color:var(--ink-faint)">기본값</span></td>
+            <td class="mono">USE_HOST_NETWORK=no<br>HOST_PORT 자유</td>
+            <td>노드가 배포 서버와 같은 대역에 있고, 포트를 8090 말고 다른 값으로 쓰고 싶을 때.</td>
+          </tr>
+          <tr>
+            <td><strong>host</strong><br><span class="mono" style="color:var(--ink-faint)">권장</span></td>
+            <td class="mono">USE_HOST_NETWORK=yes<br>포트 8090 고정</td>
+            <td>노드가 사설망 곳곳에 흩어져 있거나, 노드 방화벽이 출발지 IP 기준일 때. 브리지·NAT·포워딩이 통째로 빠지고 컨테이너가 배포 서버 네트워크를 그대로 씁니다. 노드 쪽 허용 규칙도 <strong>서버 IP 하나</strong>로 끝납니다. 런타임 설치의 <code>--no-bridge</code>와 짝입니다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>막혔을 때 어느 층인지 보는 법</h3>
+    <p>컨테이너 안과 호스트 양쪽에서 <span class="mono">이름 해석 → 경로 → TCP 22 → SSH 배너</span>를 확인하고, 두 결과의 조합으로 조치를 정합니다.</p>
+    <div class="cmd"><button class="copy" type="button">복사</button><pre><code>./opsctl.sh netcheck 10.255.191.11        <span class="c"># 기본 포트 22</span>
+./opsctl.sh netcheck controller-01 2222</code></pre></div>
+
+    <div class="scroll">
+      <table class="verdict">
+        <thead><tr><th>컨테이너</th><th>호스트</th><th>결론과 조치</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill go">성공</span></td><td><span class="pill go">성공</span></td><td>네트워크는 문제가 아닙니다. 계정·키·호스트 키 승인·sudo를 봅니다.</td></tr>
+          <tr><td><span class="pill stop">실패</span></td><td><span class="pill go">성공</span></td><td>브리지가 사설망에 닿지 못합니다. <code>USE_HOST_NETWORK=yes</code> → <code>./opsctl.sh restart</code></td></tr>
+          <tr><td><span class="pill watch">이름 해석 실패</span></td><td>—</td><td>컨테이너는 호스트 <code>/etc/hosts</code>를 물려받지 않습니다. 노드 인벤토리에 <strong>IP를 직접</strong> 넣으세요.</td></tr>
+          <tr><td><span class="pill stop">실패</span></td><td><span class="pill stop">실패</span></td><td>서버 밖 문제입니다. 라우팅·방화벽·노드 sshd를 봅니다. 컨테이너 문제가 아닙니다.</td></tr>
+          <tr><td colspan="2"><span class="pill watch">열림, SSH 아님</span></td><td>포트가 다르거나 앞에 다른 장비가 있습니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>출발지 주소도 함께 찍습니다. <code>10.4.x</code>로 나가면 브리지를 거쳐 NAT된다는 뜻이라, 둘째 줄을 읽는 근거가 됩니다.</p>
+  </section>
+
+  <section>
+    <h2><span class="num">05</span>노드 접속 — root 차단, sudo 계정만</h2>
+    <p class="lede">점검 대상 노드에는 <strong>아무것도 설치하지 않습니다.</strong> 에이전트도 없습니다. 이미 있는 명령(<code>systemctl</code>·<code>pcs</code>·<code>mysql</code>·<code>rabbitmqctl</code>·<code>openstack</code>·<code>ceph</code>·<code>ovs-vsctl</code>·<code>virsh</code>·<code>mount</code>)을 셸 스크립트로 실행할 뿐입니다.</p>
+
+    <h3>공급자 등록 시 넣는 것</h3>
+    <ul>
+      <li>계정명</li>
+      <li>개인키 <em>또는</em> 비밀번호</li>
+      <li>sudo 비밀번호 — 일반 계정은 등록 필요</li>
+    </ul>
+    <p>자격증명은 Fernet으로 암호화되어 <code>data/providers.db</code>에 저장되고, 키는 <code>data/.master_key</code>입니다. 화면과 로그에는 절대 나오지 않습니다.</p>
+
+    <h3>권한 상승이 일어나는 순서</h3>
+    <p>접속 후 <code>run_as_root()</code>가 처리합니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th style="width:34px">#</th><th>동작</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">1</td><td>저장된 sudo 비밀번호를 확인하고 없으면 중단합니다.</td></tr>
+          <tr><td class="mono">2</td><td><code>sudo -S -p '' -k -H bash -c</code>로 실행합니다. 비밀번호는 stdin, 스크립트는 별도 인자로 전달합니다.</td></tr>
+          <tr><td class="mono">3</td><td>스크립트 stdin을 /dev/null로 고정하고 실제 root 권한을 확인합니다. NOPASSWD 자동 선택은 사용하지 않습니다.</td></tr>
+          <tr><td class="mono">4</td><td>출력 첫 줄의 root 마커를 확인합니다. 없으면 실패로 처리합니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note stop">
+      <p><span class="tag">비특권 실행으로 대체하지 않습니다</span>권한 상승에 실패하면 일반 권한으로 조용히 실행하지 않고 확인 불가로 표시합니다. 비특권 실행은 서비스 로그를 읽지 못한 채 <strong>“정상”으로 오판</strong>하기 때문입니다. 점검 결과가 틀리는 것보다 안 나오는 편이 낫습니다.</p>
+    </div>
+
+    <p>실패 사유는 화면에 구분해서 나옵니다 — <span class="mono">sudo 비밀번호 불일치</span> / <span class="mono">sudoers 미등록</span> / <span class="mono">requiretty로 비대화형 sudo 차단</span> / <span class="mono">비밀번호 필요</span>.</p>
+
+    <h3>노드 쪽에 필요한 것은 셋뿐</h3>
+    <ul>
+      <li>그 계정의 SSH 로그인</li>
+      <li>그 계정의 sudo 권한과 sudo 인증 비밀번호</li>
+      <li>sudoers에 <code>requiretty</code>가 없을 것</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2><span class="num">06</span>서버에 남는 것과 되돌리기</h2>
+
+    <h3>런타임이 남기는 것</h3>
+    <p>전부 <code>installed-manifest.txt</code>에 기록되고, <code>uninstall-runtime.sh</code>가 <strong>그 목록만</strong> 되돌립니다. 같은 디렉터리에 있던 남의 파일은 건드리지 않습니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>경로 · 설정</th><th>제거 시</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">/usr/local/{bin, libexec/cni, lib/systemd}</td><td>tar 내용 그대로 삭제</td></tr>
+          <tr><td class="mono">/etc/systemd/system/containerd.service</td><td>삭제</td></tr>
+          <tr><td class="mono">/etc/cni/net.d/nerdctl-bridge.conflist</td><td>삭제 <span style="color:var(--ink-faint)">(이미 있었으면 애초에 건드리지 않음)</span></td></tr>
+          <tr><td class="mono">/etc/modules-load.d · /etc/sysctl.d 각 1개</td><td>삭제</td></tr>
+          <tr><td class="mono">net.ipv4.ip_forward<br>net.bridge.bridge-nf-call-iptables</td><td>0이었던 것만 0으로 복원</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>플랫폼이 남기는 것</h3>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>변화</th><th>되돌리기</th></tr></thead>
+        <tbody>
+          <tr><td>컨테이너 1개 · 이미지 1개</td><td class="mono">./opsctl.sh remove</td></tr>
+          <tr><td>번들 안 <code>data/</code> (공급자 DB + 마스터 키)</td><td class="mono">./opsctl.sh remove --all</td></tr>
+          <tr><td>systemd 유닛 1개 <span style="color:var(--ink-faint)">— 03단계를 실행했을 때만</span></td><td class="mono">sudo ./opsctl.sh uninstall-service</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>전체 제거 (설치의 역순)</h3>
+    <div class="cmd"><button class="copy" type="button">복사</button><pre><code>cd /경로/openstack-ops-platform-1.1.5
+sudo ./opsctl.sh uninstall-service     <span class="c"># 유닛부터</span>
+./opsctl.sh backup                     <span class="c"># 데이터를 남기려면 먼저</span>
+./opsctl.sh remove --all               <span class="c"># 컨테이너 · 이미지 · 데이터</span>
+cd .. &amp;&amp; sudo rm -rf openstack-ops-platform-1.1.5
+
+cd /경로/openstack-ops-runtime-2.3.5
+sudo ./uninstall-runtime.sh            <span class="c"># 돌고 있는 컨테이너가 있으면 스스로 중단</span></code></pre></div>
+    <div class="note watch">
+      <p><span class="tag">백업 파일 취급</span><code>backup</code>이 만드는 tar.gz에는 SSH·MySQL 비밀번호를 푸는 <strong>마스터 키가 들어 있습니다.</strong> 접근 통제된 곳에 두거나, 남길 필요가 없으면 함께 지우세요. <code>data/</code>는 컨테이너가 root로 쓰므로 디렉터리 삭제에 sudo가 필요합니다.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">07</span>확인된 동작</h2>
+    <p class="lede">이 서버(운영 서비스가 8090을 쓰는 중)에서 실제로 돌려 본 결과입니다.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>시나리오</th><th>결과</th></tr></thead>
+        <tbody>
+          <tr><td>빈 포트 8099로 설치</td><td><span class="pill go">정상</span> 로그인·이슈 노트 API 모두 200. 운영 8090은 그대로 200</td></tr>
+          <tr><td>운영 중 포트 변경 (8099 → 8098)</td><td><span class="pill go">정상</span> <code>config.env</code> 한 줄 + <code>restart</code>. 8099 닫힘, 데이터(<span class="mono">providers.db 260KB</span>) 보존</td></tr>
+          <tr><td>이미 쓰는 포트(8090)로 설치</td><td><span class="pill stop">중단</span> 운영 서비스 무영향, 컨테이너 생성 안 됨</td></tr>
+          <tr><td>같은 이름의 남의 컨테이너 존재</td><td><span class="pill stop">중단</span> 그 컨테이너 살아남음</td></tr>
+          <tr><td>같은 포트를 다른 이름으로 재설치</td><td><span class="pill stop">중단</span> 고치기 전에는 둘 다 떠서 포트를 나눠 가졌음</td></tr>
+          <tr><td>k8s 노드 영향</td><td><span class="pill go">없음</span> 전용 namespace(<span class="mono">openstack-ops</span>) 사용, <span class="mono">k8s.io</span> 그대로</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note ok">
+      <p><span class="tag">기동 확인은 컨테이너 안에서</span>호스트 포트로 확인하면 <strong>같은 포트를 쓰는 다른 서비스가 대신 응답</strong>해 기동 실패를 성공으로 보고합니다. 실제로 그랬고, 지금은 컨테이너가 살아 있고 그 안의 앱이 답할 때만 성공으로 봅니다. 기동에 실패하면 컨테이너를 정지시킵니다 — <code>--restart unless-stopped</code>가 실패를 무한 재시작으로 바꾸지 않도록.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">08</span>설치 후 첫 30분</h2>
+    <div class="cmd"><button class="copy" type="button">복사</button><pre><code>./opsctl.sh status                     <span class="c"># 런타임 · 컨테이너 · 데이터 한눈에</span>
+./opsctl.sh netcheck &lt;컨트롤러 VIP&gt;     <span class="c"># 로그인 전에 SSH 경로부터</span>
+./opsctl.sh logs -f                    <span class="c"># 기동이 이상하면</span>
+./opsctl.sh restart                    <span class="c"># config.env 를 고친 뒤</span>
+./opsctl.sh backup                     <span class="c"># 공급자 등록을 마쳤으면</span></code></pre></div>
+    <ol>
+      <li><code>http://&lt;서버IP&gt;:&lt;포트&gt;/</code> 접속 → <code>admin</code> / <code>Okestro2018@</code> → 비밀번호 변경(강제)</li>
+      <li><strong>공급자 연결</strong>에서 대표 VIP·SSH 계정 등록 → SSH 지문 승인 → <strong>연결 진단</strong>으로 VIP·권한 상승·OpenRC·Prometheus 한 번에 확인</li>
+      <li><strong>일일점검</strong>에서 클러스터 노드 탐색 → 점검 실행</li>
+    </ol>
+    <p>노드 이름이 해석되지 않는 사이트라면 탐색 대신 <strong>노드 인벤토리에 IP를 직접</strong> 넣으면 됩니다. 컨테이너는 호스트의 <code>/etc/hosts</code>를 물려받지 않습니다.</p>
+  </section>
+
+  <footer>
+    <p>OpenStack 운영 지원 플랫폼 · 플랫폼 번들 1.1.5 · 런타임 번들 2.3.5 · 2026-09-10 기준<br>
+    자세한 내용은 번들 안의 <code>README-DEPLOY.md</code>와 <code>README-RUNTIME.md</code>에 있습니다.</p>
+  </footer>
+
+</div>
+
+<script>
+  document.querySelectorAll(".copy").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var text = button.parentElement.querySelector("code").innerText;
+      navigator.clipboard.writeText(text).then(function () {
+        button.textContent = "복사됨";
+        setTimeout(function () { button.textContent = "복사"; }, 1600);
+      }, function () {
+        button.textContent = "복사 실패";
+        setTimeout(function () { button.textContent = "복사"; }, 1600);
+      });
+    });
+  });
+</script>

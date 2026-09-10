@@ -364,7 +364,6 @@ function resetFingerprint() {
 function showError(message) { errorBox.textContent = message; errorBox.hidden = false; errorBox.scrollIntoView({behavior:'smooth', block:'nearest'}); }
 function sudoModeText(mode) {
   if (mode === 'root') return 'root 계정으로 직접 실행';
-  if (mode === 'passwordless') return '비밀번호 없이 sudo 사용 가능';
   if (mode === 'password') return 'sudo 비밀번호 인증 확인됨';
   return 'sudo 인증 필요';
 }
@@ -391,8 +390,8 @@ async function loadSavedProviders() {
       if (provider.username === 'root') {
         sudoControl = '<span class="manage-database is-root" title="root 계정으로 등록되어 sudo가 필요하지 않습니다.">root 계정</span>';
       } else {
-        const sudoState = provider.sudo_password_configured ? 'sudo 인증 완료' : (provider.sudo_mode === 'passwordless' ? 'sudo NOPASSWD' : 'sudo 비밀번호 등록');
-        const sudoClass = provider.sudo_password_configured || provider.sudo_mode === 'passwordless' ? 'configured' : 'attention';
+        const sudoState = provider.sudo_password_configured ? 'sudo 인증 완료' : 'sudo 비밀번호 등록';
+        const sudoClass = provider.sudo_password_configured ? 'configured' : 'attention';
         sudoControl = `<button class="manage-database manage-sudo ${sudoClass}" type="button" data-manage-sudo="${escapeHtml(provider.id)}" data-provider-name="${escapeHtml(provider.name)}" data-username="${escapeHtml(provider.username)}">${sudoState}</button>`;
       }
       const profile = provider.profile || {};
@@ -473,8 +472,6 @@ async function openSudoCredentialManager(providerId, providerName, username) {
   const status = document.querySelector('#sudoCredentialStatus');
   if (data.sudo_password_configured) {
     status.textContent = '암호화된 sudo 비밀번호가 등록되어 있습니다. 비밀번호는 화면에 표시되지 않으며, 새로 저장하면 교체됩니다.';
-  } else if (data.sudo_mode === 'passwordless') {
-    status.textContent = '이 계정은 비밀번호 없이 sudo를 사용할 수 있어 별도 등록이 필요하지 않습니다. 노드별로 정책이 다르면 비밀번호를 등록해 두세요.';
   } else {
     status.textContent = 'sudo 비밀번호가 없어 일일점검이 root 권한을 얻지 못합니다. 비밀번호를 등록하면 저장 전에 VIP의 Controller에서 검증합니다.';
   }

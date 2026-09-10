@@ -34,8 +34,8 @@ docker compose down
 빌드 환경에서 번들을 만듭니다.
 
 ```bash
-./build-offline-bundle.sh 1.0.0
-# → dist/openstack-ops-platform-1.0.0-offline.tar.gz
+./build-offline-bundle.sh
+# → dist/openstack-ops-platform-1.1.5-offline.tar.gz
 ```
 
 번들에는 컨테이너 이미지(docker-archive, `docker`·`podman`·`nerdctl` 모두 `load` 가능),
@@ -45,8 +45,8 @@ docker compose down
 대상 서버에 파일을 올린 뒤 실행합니다.
 
 ```bash
-tar -xzf openstack-ops-platform-1.0.0-offline.tar.gz
-cd openstack-ops-platform-1.0.0
+tar -xzf openstack-ops-platform-1.1.5-offline.tar.gz
+cd openstack-ops-platform-1.1.5
 ./install.sh
 ```
 
@@ -55,6 +55,7 @@ cd openstack-ops-platform-1.0.0
 컨테이너 하나와 이미지 하나, 그리고 번들 아래 `data/` 뿐입니다.
 
 이후 운영은 `./opsctl.sh {status|logs|restart|stop|backup|restore|remove}`로 합니다.
+재부팅 후 자동 기동은 `sudo ./opsctl.sh install-service`로 systemd 유닛을 설치합니다(`docker`는 `--restart unless-stopped`로 이미 자동 기동되므로 필요 없습니다).
 컨테이너에서 점검 대상 노드로 SSH가 나가지 못할 때는 `./opsctl.sh netcheck <노드IP>`가
 이름 해석·경로·TCP 22·SSH 배너를 컨테이너 안과 호스트 양쪽에서 확인해 어느 층이 막혔는지 알려 줍니다.
 자세한 절차·설정·문제 해결은 번들 안의 `README-DEPLOY.md`(원본은 `deploy/README-DEPLOY.md`)를 보세요.
@@ -92,6 +93,13 @@ sudo ./install-runtime.sh          # 이후 플랫폼 번들의 ./install.sh
 > 공급자를 새로 등록하는 것이 정상이며, 이는 사이트별 SSH·MySQL 자격증명이 다른 사이트로
 > 넘어가지 않게 하려는 의도입니다.
 
+## 릴리스 정보
+
+현재 소스 버전은 `VERSION`의 **1.1.5**입니다. `./build-offline-bundle.sh`는 이 값을 기본으로 사용하며,
+인자로 버전을 지정하면 이미지·번들·API 버전에 동일하게 반영합니다. 빌드 커밋, 미커밋 변경 포함 여부,
+UTC 빌드 시각은 번들 `VERSION`, 이미지의 `build-info.json`, 로그인 후 `/api/health`의 `build`에서 확인합니다.
+사이드바 버전 정보에 마우스를 올려도 빌드 정보를 볼 수 있습니다.
+
 ## 구성 파일
 
 - `index.html`: 전체 화면(대시보드·일일점검·공급자 연결·인프라 현황·모니터링·알림·작업 이력·이슈 노트·설정)을 담은 단일 페이지
@@ -99,6 +107,9 @@ sudo ./install-runtime.sh          # 이후 플랫폼 번들의 ./install.sh
 - `js/`: 화면별 모듈. `core.js`(공통 상태·페이지 전환), `dashboard.js`, `inspection.js`, `providers.js`, `infrastructure.js`, `monitoring.js`, `alerts.js`, `history.js`, `issues.js`(이슈 노트·코드 하이라이트), `settings.js`, `runbooks.js`, `main.js`(초기화)
 - `login.html`, `login.js`: 관리자 로그인 및 첫 로그인 비밀번호 변경 화면
 - `server.py`: API와 정적 화면 제공, SSH 점검·탐색 실행
+- `ssh_privileges.py`: 비밀번호 sudo 실행과 실패 판정 공통 모듈
+- `store_schema.py`: SQLite 스키마 생성·호환 마이그레이션
+- `app_metadata.py`, `VERSION`: 소스 버전과 이미지 빌드 정보
 - `provider_store.py`: 공급자 인증정보 암호화 저장, 점검 이력·요약·예약 설정, 알림·작업 이력·정비 시간 창, 관리자 계정·로그인 세션, 운영 설정과 감사 로그 관리
 - `inventory_collector.py`: 노드 인벤토리 수집 스크립트와 파서, 오버커밋·쿼터 계산(네트워크 비의존)
 - `inspection_report.py`: 점검 내용·이상 항목 보고서 PDF 생성(fpdf2)
@@ -188,10 +199,10 @@ Placement·쿼터 조회는 `openstack` CLI 대신 활성 Controller에서 `curl
 
 root SSH 접속이 차단된 환경에서는 sudo 권한이 있는 운영 계정으로 공급자를 등록합니다. 일일점검 명령(로그 파일 읽기, `pcs`, `rabbitmqctl`, `virsh`, `ovs-vsctl`, `smartctl`, `dmesg` 등)은 root 권한이 필요하므로 서버가 모든 점검 스크립트를 `sudo`로 실행합니다. 등록 계정이 root이면 기존과 같이 직접 실행됩니다.
 
-- 노드에서 비밀번호 없는 sudo(NOPASSWD)가 허용되면 별도 설정 없이 `sudo -n`으로 실행됩니다.
-- NOPASSWD가 허용되지 않으면 등록 화면의 `sudo 비밀번호`를 입력합니다. 비밀번호 인증 계정은 비워두면 SSH 비밀번호로 sudo를 시도합니다. 등록 시 VIP의 Controller에서 `sudo -S -k true`로 비밀번호를 검증한 뒤 SSH 인증정보와 함께 암호화 저장하며 화면과 API에 반환하지 않습니다.
-- 등록 후에는 공급자 목록의 `sudo 비밀번호 등록` 버튼(`sudo 인증 관리`)에서 비밀번호를 등록·교체·삭제할 수 있습니다.
-- 점검 시 노드마다 `sudo -k -n true`로 NOPASSWD 여부를 먼저 확인하고, 비밀번호가 필요한 노드에서만 `sudo -S -p '' -k -H bash -s`의 표준입력 첫 줄로 비밀번호를 전달합니다. root 권한을 얻지 못한 노드는 일반 권한으로 대신 실행하지 않고 `SSH 점검 실패: root 권한 획득 실패` 사유와 함께 확인 불가로 표시됩니다. 일반 권한으로 실행하면 읽지 못한 로그가 오류 0건(정상)으로 잘못 판정되기 때문입니다.
+- root가 아닌 계정은 sudo 비밀번호 인증을 사용합니다. 등록 화면에서 sudo 비밀번호를 입력하세요. SSH 비밀번호 인증에서는 비워두면 SSH 비밀번호로 sudo 인증을 확인하고 저장합니다.
+- 기존 공급자는 `sudo 인증 관리`에서 비밀번호를 등록·교체·삭제합니다. 이전 NOPASSWD 공급자도 비밀번호 등록이 필요합니다.
+- 등록·수정 시 Controller에서 `sudo -S -p '' -k -H true`로 확인한 비밀번호를 암호화 저장합니다.
+- 모든 점검·탐색·진단·인벤토리 수집은 `sudo -S -p '' -k -H bash -c`로 권한을 올립니다. 비밀번호는 표준입력으로만, 스크립트는 별도 인자로 전달합니다. 점검 스크립트의 표준입력은 `/dev/null`로 고정합니다. 권한 상승 실패 시 일반 권한으로 실행하지 않고 확인 불가로 표시합니다.
 - 대상 노드의 sudoers에 `requiretty`가 설정되어 있으면 비대화형 sudo가 차단되므로 해당 계정에 `Defaults:<계정> !requiretty`를 적용해야 합니다. OpenStack CLI는 `sudo -H`로 `HOME=/root`가 되어 `/root/contrabass-openrc`를 그대로 사용합니다.
 
 ## 일일점검 실행과 확인

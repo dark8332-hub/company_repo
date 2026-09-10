@@ -46,26 +46,28 @@ detect_runtime() {
   설치돼 있는데도 찾지 못한다면 PATH 를 확인하세요 (sudo 는 PATH 를 좁힙니다)."
     fi
 
-    if [ "$RUNTIME" = "nerdctl" ]; then
+    RUNTIME_KIND="${RUNTIME##*/}"
+    case "$RUNTIME_KIND" in docker|podman|nerdctl) ;; *) die "지원하지 않는 런타임: $RUNTIME" ;; esac
+    if [ "$RUNTIME_KIND" = "nerdctl" ]; then
         RUNTIME_ARGS="--namespace $NERDCTL_NAMESPACE"
     else
         RUNTIME_ARGS=""
     fi
 
     # 데몬이 실제로 응답하는지. docker 는 깔려 있어도 소켓 권한이 없으면 여기서 걸린다.
-    if ! $RUNTIME $RUNTIME_ARGS info >/dev/null 2>&1; then
+    if ! "$RUNTIME" $RUNTIME_ARGS info >/dev/null 2>&1; then
         die "$RUNTIME 이(가) 응답하지 않습니다.
   데몬이 떠 있는지(systemctl status docker), 현재 계정에 권한이 있는지 확인하세요.
   root 가 아니라면 sudo 로 실행하거나 계정을 docker 그룹에 넣어야 합니다."
     fi
 }
 
-rt() { $RUNTIME $RUNTIME_ARGS "$@"; }
+rt() { "$RUNTIME" $RUNTIME_ARGS "$@"; }
 
 # SELinux 가 enforcing 이면 바인드 마운트에 :Z 가 없을 때 컨테이너가 data 디렉터리를 못 읽는다.
 # RHEL·Rocky 계열에서 흔한 함정이라 자동으로 붙인다.
 mount_suffix() {
-    if [ "$RUNTIME" = "nerdctl" ]; then printf ''; return; fi
+    if [ "$RUNTIME_KIND" = "nerdctl" ]; then printf ''; return; fi
     if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null)" = "Enforcing" ]; then
         printf ':Z'
     else
@@ -88,24 +90,61 @@ load_config() {
 # 대괄호를 떼고 한 줄에 하나씩 펼쳐서 세 런타임을 같은 방식으로 다룬다. 이 처리를 빼면
 # nerdctl 에서 "컨테이너 없음"으로 잘못 판단해 restart 가 이름 충돌로 실패한다.
 container_names() {
-    rt ps "$@" --format '{{.Names}}' 2>/dev/null | tr -d '[]' | tr ' ,' '\n\n' | grep -v '^$' || true
+    container_list="$(rt ps "$@" --format '{{.Names}}' 2>/dev/null)" || return 2
+    printf '%s\n' "$container_list" | tr -d '[]' | tr ' ,' '\n\n' | grep -v '^$' || true
+}
+container_exists() {
+    container_list="$(container_names -a)" || die "컨테이너 목록 조회 실패. 변경하지 않고 중단합니다."
+    printf '%s\n' "$container_list" | grep -Fqx "$CONTAINER_NAME"
+}
+container_running() {
+    container_list="$(container_names)" || die "실행 중 컨테이너 조회 실패. 변경하지 않고 중단합니다."
+    printf '%s\n' "$container_list" | grep -Fqx "$CONTAINER_NAME"
 }
 
-container_exists() { container_names -a | grep -qx "$CONTAINER_NAME"; }
-container_running() { container_names | grep -qx "$CONTAINER_NAME"; }
-
-# 같은 이름의 컨테이너가 우리 것인지 확인한다. 이름만 보고 지우면 배포 서버에서 이미 돌고 있는
-# 남의 컨테이너를 날릴 수 있다. 이미지 이름을 읽지 못하는 런타임이면 빈 값을 돌려준다.
+# inspect addresses one exact name; ps --filter name may match several containers.
 container_image() {
-    rt ps -a --filter "name=$CONTAINER_NAME" --format '{{.Image}}' 2>/dev/null | head -n 1 || true
+    rt inspect --format '{{.Config.Image}}' "$CONTAINER_NAME" 2>/dev/null
 }
 container_is_ours() {
-    image="$(container_image)"
-    [ -z "$image" ] && return 0   # 판별 불가 - 기존 동작(재설치)으로 둔다
+    image="$(container_image)" || return 1
     case "$image" in
-        *"$IMAGE_REPO"*) return 0 ;;
+        "$IMAGE_REPO":?*|"$IMAGE_REPO"@sha256:?*|"docker.io/$IMAGE_REPO":?*|"docker.io/$IMAGE_REPO"@sha256:?*) ;;
         *) return 1 ;;
     esac
+    managed="$(rt inspect --format '{{index .Config.Labels "io.okestro.managed"}}' "$CONTAINER_NAME" 2>/dev/null)" || return 1
+    # Legacy bundles did not set labels; retain exact-repository compatibility.
+    case "$managed" in ""|"<no value>"|"openstack-ops-platform") return 0 ;; *) return 1 ;; esac
+}
+require_owned_container() {
+    if container_exists; then
+        container_is_ours || die "컨테이너 소유를 확인하지 못했습니다: $CONTAINER_NAME. 다른 컨테이너를 변경하지 않도록 중단합니다."
+    fi
+}
+remove_owned_container() {
+    require_owned_container
+    if container_exists; then rt rm -f "$CONTAINER_NAME" >/dev/null; fi
+}
+require_free_port() {
+    check_port="$(effective_port)"
+    port_in_use "$check_port" && die "$check_port 포트가 이미 사용 중입니다. HOST_PORT 또는 host 네트워크 설정을 확인하세요."
+    return 0
+}
+# Stop first, but keep the old container so a port collision can restore its state.
+prepare_replacement() {
+    require_owned_container
+    replacement_was_running=no
+    if container_running; then
+        replacement_was_running=yes
+        rt stop "$CONTAINER_NAME" >/dev/null
+    fi
+    if port_in_use "$(effective_port)"; then
+        if [ "$replacement_was_running" = yes ]; then
+            rt start "$CONTAINER_NAME" >/dev/null || warn "기존 컨테이너 재기동 실패. logs를 확인하세요."
+        fi
+        die "$(effective_port) 포트가 이미 사용 중입니다. 기존 컨테이너는 삭제하지 않았습니다."
+    fi
+    remove_owned_container
 }
 
 start_container() {
@@ -114,6 +153,7 @@ start_container() {
 
     set -- \
         --name "$CONTAINER_NAME" \
+        --label "io.okestro.managed=openstack-ops-platform" \
         --restart unless-stopped \
         --volume "$DATA_DIR:/app/data$suffix" \
         --env "TZ=${TIMEZONE:-Asia/Seoul}" \
@@ -132,7 +172,12 @@ start_container() {
         set -- "$@" --publish "${BIND_ADDRESS:-0.0.0.0}:$HOST_PORT:8090"
     fi
 
-    rt run --detach "$@" "$IMAGE_REPO:$IMAGE_TAG" >/dev/null
+    require_free_port
+    if ! rt run --detach "$@" "$IMAGE_REPO:$IMAGE_TAG" >/dev/null; then
+        # Only stop a container which this attempt actually owns.
+        if container_exists && container_is_ours; then stop_failed_container; fi
+        die "컨테이너 생성 실패. 포트·이미지·런타임 로그를 확인하세요."
+    fi
 }
 
 # host 네트워크에서는 컨테이너 포트가 곧 호스트 포트다.

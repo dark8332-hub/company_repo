@@ -23,6 +23,12 @@ FAKE_RUNTIME = """#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_LOG"
 case "$1" in
   info) exit 0 ;;
+  inspect)
+    [ "${FAKE_INSPECT_FAIL:-0}" = 0 ] || exit 1
+    case "$*" in
+      *Config.Image*) printf '%s\\n' "${FAKE_PS_IMAGE:-}" ;;
+      *Labels*) printf '%s\\n' "${FAKE_LABEL:-}" ;;
+    esac ;;
   ps)
     case "$*" in
       *Ports*)    printf '%s\\n' "${FAKE_PS_PORTS:-}" ;;
@@ -38,10 +44,12 @@ exit 0
 @pytest.fixture()
 def bundle(tmp_path: Path) -> Path:
     """A bundle directory laid out the way build-offline-bundle.sh produces it."""
-    for name in ("lib.sh", "install.sh", "opsctl.sh"):
+    for name in ("lib.sh", "install.sh", "opsctl.sh", "restore_archive.py"):
         shutil.copy(DEPLOY / name, tmp_path / name)
         (tmp_path / name).chmod(0o755)
     (tmp_path / "config.env").write_text("IMAGE_TAG=1.0.0\nHOST_PORT=8090\nCONTAINER_NAME=openstack-ops-platform\n")
+    (tmp_path / "systemd").mkdir()
+    shutil.copy(DEPLOY / "systemd" / "openstack-ops-platform.service.template", tmp_path / "systemd")
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     (fake_bin / "docker").write_text(FAKE_RUNTIME)
@@ -91,17 +99,18 @@ def test_our_own_container_is_recognised(bundle: Path):
         assert result.stdout.strip() == "OURS", (image, result.stderr)
 
 
-def test_unknown_image_keeps_the_reinstall_path(bundle: Path):
-    """A runtime that cannot print the image must not block a legitimate reinstall."""
+def test_unknown_image_blocks_reinstall(bundle: Path):
+    """Unknown identity must never authorize removal."""
     result = run_lib(bundle, "container_is_ours && echo OURS || echo FOREIGN", FAKE_PS_IMAGE="")
-    assert result.stdout.strip() == "OURS", result.stderr
+    assert result.stdout.strip() == "FOREIGN", result.stderr
 
 
 def test_install_refuses_before_removing_a_foreign_container():
     install = (DEPLOY / "install.sh").read_text()
-    guard = install.index("container_is_ours || die")
-    removal = install.index('rt rm -f "$CONTAINER_NAME"')
-    assert guard < removal, "the ownership check must come before the force removal"
+    lib = (DEPLOY / "lib.sh").read_text()
+    assert install.index("prepare_replacement") < install.index("\nstart_container")
+    removal = lib[lib.index("remove_owned_container() {"):lib.index("require_free_port() {")]
+    assert removal.index("require_owned_container") < removal.index('rt rm -f "$CONTAINER_NAME"')
 
 
 # --- nerdctl name output, still the same for the new helper ---------------------------------
@@ -145,14 +154,11 @@ def test_failed_start_stops_the_container(bundle: Path):
     assert opsctl.count("stop_failed_container") == 3, "start, restart and restore all need it"
 
 
-def test_install_rechecks_the_port_after_removing_its_own_container():
-    """The early check exempts a running instance of ours, so the decisive check has to happen
-    once that instance is gone - otherwise a reinstall walks straight into somebody else's port."""
-    install = (DEPLOY / "install.sh").read_text()
-    removal = install.index('rt rm -f "$CONTAINER_NAME"')
-    recheck = install.index('if port_in_use "$check_port"; then', removal)
-    start = install.index("\nstart_container", removal)
-    assert removal < recheck < start, "the port re-check belongs between the removal and the start"
+def test_install_checks_port_before_removing_its_own_container():
+    lib = (DEPLOY / "lib.sh").read_text()
+    replacement = lib[lib.index("prepare_replacement() {"):lib.index("start_container() {")]
+    assert replacement.index('rt stop "$CONTAINER_NAME"') < replacement.index("port_in_use")
+    assert replacement.index("port_in_use") < replacement.index("remove_owned_container")
 
 
 # 65432 throughout: high enough that no real listener on the test host answers, so the verdict
@@ -203,10 +209,21 @@ WRITE = re.compile(r"(?:^|[|;&(]\s*)(?:mkdir|rm|cp|mv|tee|chmod|chown|touch|ln)\
 ABSOLUTE = re.compile(r"(?<![\w$/\"'])/(?:etc|usr|var|opt|srv|lib|bin|sbin|boot|root|home)\b")
 
 
+def without_service_block(script: str) -> str:
+    """The bundle's promise is that nothing lands outside it. `install-service` is the one
+    declared exception (a single systemd unit, opt-in, root only), so the invariants below read
+    the script with that block removed and it is covered by its own tests instead."""
+    text = (DEPLOY / script).read_text()
+    if "install-service)" not in text:
+        return text
+    start = text.index("install-service)")
+    return text[:start] + text[text.index("\n*)", start):]
+
+
 @pytest.mark.parametrize("script", ["install.sh", "opsctl.sh", "lib.sh"])
 def test_no_writes_to_system_paths(script: str):
     """Every write in the deploy scripts must land under the bundle directory."""
-    for line in (DEPLOY / script).read_text().splitlines():
+    for line in without_service_block(script).splitlines():
         code = line.split("#", 1)[0] if not line.lstrip().startswith("#") else ""
         for command in WRITE.findall(code):
             assert not ABSOLUTE.search(command), f"{script}: writes outside the bundle: {command.strip()}"
@@ -215,7 +232,7 @@ def test_no_writes_to_system_paths(script: str):
 @pytest.mark.parametrize("script", ["install.sh", "opsctl.sh", "lib.sh"])
 def test_no_package_installs_or_service_changes(script: str):
     """Installing packages or enabling services would change the deploy server itself."""
-    for line in (DEPLOY / script).read_text().splitlines():
+    for line in without_service_block(script).splitlines():
         code = line.split("#", 1)[0] if not line.lstrip().startswith("#") else ""
         if code.strip().startswith(("log ", "info ", "warn ", "die ", "ok ")) or '"' in code and "systemctl status" in code:
             continue
@@ -237,6 +254,7 @@ def test_scripts_are_posix_sh(script: str):
 NETCHECK_RUNTIME = """#!/bin/sh
 case "$1" in
   info) exit 0 ;;
+  inspect) case "$*" in *Config.Image*) echo okestro/openstack-ops-platform:1.0.0;; esac ;;
   ps)   printf '%s\\n' "$FAKE_CONTAINER" ;;
   exec) cat "$FAKE_EXEC_OUT" ;;
 esac
@@ -337,3 +355,186 @@ def test_netcheck_probe_does_not_need_tools_missing_from_the_image(bundle: Path)
     for tool in ("nc ", "ncat ", "ping ", "telnet ", "curl "):
         assert f"rt exec -i \"$CONTAINER_NAME\" {tool}" not in netcheck
     assert 'rt exec -i "$CONTAINER_NAME" python' in netcheck
+
+
+# --- install-service: the systemd unit, without hand-typed sed -------------------------------
+
+# The unit used to be installed by hand:
+#   sed "s#__BUNDLE_DIR__#$(pwd)#" systemd/...template | sudo tee /etc/systemd/system/...
+# An operator dropped the underscores, wrote `WorkingDirectory=__/k8s/bundle__`, and systemd
+# refused the unit with "bad unit file setting" - a message that names neither the placeholder
+# nor the command that produced it. `install-service` does the substitution and checks the
+# result before the file is placed.
+
+FAKE_SYSTEMCTL = """#!/bin/sh
+printf '%s\\n' "$*" >> "$SYSTEMCTL_LOG"
+exit 0
+"""
+
+
+def service_env(bundle: Path, unit_dir: Path, *, uid: str = "0") -> dict:
+    fake_bin = bundle / "bin"
+    (fake_bin / "systemctl").write_text(FAKE_SYSTEMCTL)
+    (fake_bin / "systemctl").chmod(0o755)
+    if uid != "0":
+        # The check is `[ "$(id -u)" = "0" ]`; tests run as root here, so `id` is replaced.
+        (fake_bin / "id").write_text(f'#!/bin/sh\nprintf \'{uid}\\n\'\n')
+        (fake_bin / "id").chmod(0o755)
+    return {
+        "PATH": f"{fake_bin}:/usr/bin:/bin",
+        "FAKE_LOG": str(bundle / "calls.log"),
+        "FAKE_PS_RUNNING": "openstack-ops-platform",
+        "SYSTEMCTL_LOG": str(bundle / "systemctl.log"),
+        "OPS_UNIT_DIR": str(unit_dir),
+    }
+
+
+def run_service(bundle: Path, unit_dir: Path, command: str, *, uid: str = "0") -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["/bin/sh", str(bundle / "opsctl.sh"), command],
+        capture_output=True, text=True, env=service_env(bundle, unit_dir, uid=uid),
+    )
+
+
+@pytest.fixture()
+def unit_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "systemd-system"
+    d.mkdir()
+    return d
+
+
+def test_install_service_writes_absolute_paths_into_the_unit(bundle: Path, unit_dir: Path):
+    result = run_service(bundle, unit_dir, "install-service")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    unit = unit_dir / "openstack-ops-platform.service"
+    text = unit.read_text()
+    assert "__BUNDLE_DIR__" not in text, "an unsubstituted placeholder is what systemd rejects"
+    assert f"WorkingDirectory={bundle}" in text
+    assert f"ExecStart={bundle}/opsctl.sh start" in text
+    assert f"ExecStop={bundle}/opsctl.sh stop" in text
+    for key in ("WorkingDirectory", "ExecStart", "ExecStop"):
+        value = next(line.split("=", 1)[1] for line in text.splitlines() if line.startswith(key + "="))
+        assert value.startswith("/"), f"{key} must be absolute, got {value}"
+
+    calls = (bundle / "systemctl.log").read_text().split("\n")
+    assert "daemon-reload" in calls
+    assert "enable openstack-ops-platform" in calls
+    assert "start openstack-ops-platform" in calls
+    assert (bundle / "installed-service.txt").read_text().strip() == str(unit)
+    assert not (bundle / ".unit.rendered").exists(), "the working copy must not be left behind"
+
+
+def test_install_service_refuses_to_overwrite_a_unit_that_is_not_ours(bundle: Path, unit_dir: Path):
+    """Same reasoning as container_is_ours: a name collision on a shared deploy server must not
+    cost somebody else their service."""
+    unit = unit_dir / "openstack-ops-platform.service"
+    foreign = "[Unit]\nDescription=Someone else\n[Service]\nExecStart=/opt/other/run.sh\n"
+    unit.write_text(foreign)
+
+    result = run_service(bundle, unit_dir, "install-service")
+    assert result.returncode != 0
+    assert unit.read_text() == foreign, "the foreign unit must be left exactly as it was"
+    assert not (bundle / "systemctl.log").exists(), "systemd must not be touched at all"
+    assert not (bundle / "installed-service.txt").exists()
+
+
+def test_install_service_replaces_its_own_unit_when_the_bundle_moves(bundle: Path, unit_dir: Path):
+    """Upgrading unpacks a new bundle directory; re-running must point the unit at it."""
+    unit = unit_dir / "openstack-ops-platform.service"
+    unit.write_text("# openstack-ops-platform bundle\n[Service]\nWorkingDirectory=/k8s/old-bundle\n")
+    assert run_service(bundle, unit_dir, "install-service").returncode == 0
+    assert f"WorkingDirectory={bundle}" in unit.read_text()
+    assert "/k8s/old-bundle" not in unit.read_text()
+
+
+def test_install_service_stops_before_writing_a_unit_systemd_would_reject(bundle: Path, unit_dir: Path):
+    """This is the failure being prevented: a relative path in the rendered unit. Catching it here
+    beats `systemctl status` saying only "bad unit file setting"."""
+    template = bundle / "systemd" / "openstack-ops-platform.service.template"
+    template.write_text(template.read_text().replace("WorkingDirectory=__BUNDLE_DIR__", "WorkingDirectory=relative/path"))
+
+    result = run_service(bundle, unit_dir, "install-service")
+    assert result.returncode != 0
+    assert "절대경로" in result.stdout + result.stderr, "the message must name the actual problem"
+    assert not (unit_dir / "openstack-ops-platform.service").exists(), "nothing may be placed"
+    assert not (bundle / ".unit.rendered").exists()
+
+
+def test_install_service_requires_a_template_carrying_the_bundle_marker(bundle: Path, unit_dir: Path):
+    """The marker is what later tells our unit from a stranger's, so a template without it must
+    not be installed - otherwise uninstall-service would refuse to remove what we just wrote."""
+    template = bundle / "systemd" / "openstack-ops-platform.service.template"
+    template.write_text(template.read_text().replace("# openstack-ops-platform bundle\n", "", 1))
+
+    result = run_service(bundle, unit_dir, "install-service")
+    assert result.returncode != 0
+    assert not (unit_dir / "openstack-ops-platform.service").exists()
+
+
+def test_service_commands_require_root(bundle: Path, unit_dir: Path):
+    for command in ("install-service", "uninstall-service"):
+        result = run_service(bundle, unit_dir, command, uid="1000")
+        assert result.returncode != 0, command
+        assert "sudo" in result.stdout + result.stderr, "the message must say how to retry"
+        assert not (unit_dir / "openstack-ops-platform.service").exists()
+
+
+def test_uninstall_service_removes_the_unit_it_recorded(bundle: Path, unit_dir: Path):
+    assert run_service(bundle, unit_dir, "install-service").returncode == 0
+    (bundle / "systemctl.log").unlink()
+
+    result = run_service(bundle, unit_dir, "uninstall-service")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (unit_dir / "openstack-ops-platform.service").exists()
+    assert not (bundle / "installed-service.txt").exists()
+
+    calls = (bundle / "systemctl.log").read_text()
+    assert "disable openstack-ops-platform" in calls
+    assert "daemon-reload" in calls
+
+
+def test_uninstall_service_leaves_the_container_running(bundle: Path, unit_dir: Path):
+    """`disable --now` would run ExecStop and take the platform down. Turning off autostart is not
+    a request to stop serving."""
+    assert run_service(bundle, unit_dir, "install-service").returncode == 0
+    (bundle / "systemctl.log").unlink()
+    run_service(bundle, unit_dir, "uninstall-service")
+
+    calls = (bundle / "systemctl.log").read_text()
+    assert "--now" not in calls, "stopping the service is a separate, explicit step"
+    assert "stop openstack-ops-platform" not in (bundle / "calls.log").read_text()
+
+
+def test_uninstall_service_refuses_a_unit_it_did_not_write(bundle: Path, unit_dir: Path):
+    unit = unit_dir / "openstack-ops-platform.service"
+    foreign = "[Unit]\nDescription=Someone else\n"
+    unit.write_text(foreign)
+
+    result = run_service(bundle, unit_dir, "uninstall-service")
+    assert result.returncode != 0
+    assert unit.read_text() == foreign
+
+
+def test_service_block_touches_only_the_unit_directory(bundle: Path, unit_dir: Path):
+    """The carve-out in the invariants above is bounded: inside the block, the only path outside
+    the bundle is the unit directory, and its default is the systemd one."""
+    opsctl = (DEPLOY / "opsctl.sh").read_text()
+    block = opsctl[opsctl.index("install-service)"):opsctl.index("\n*)", opsctl.index("install-service)"))]
+    for line in block.splitlines():
+        code = line.split("#", 1)[0] if not line.lstrip().startswith("#") else ""
+        for command in WRITE.findall(code):
+            assert not ABSOLUTE.search(command), f"writes to a fixed system path: {command.strip()}"
+    assert 'UNIT_DIR="${OPS_UNIT_DIR:-/etc/systemd/system}"' in opsctl
+    assert 'unit="$UNIT_DIR/$CONTAINER_NAME.service"' in block, "the unit name follows CONTAINER_NAME"
+
+
+def test_shipped_template_keeps_the_placeholder_and_the_marker():
+    """Both installation paths depend on these: install-service substitutes the placeholder and
+    checks the marker, and the manual sed in README-DEPLOY.md replaces the same string."""
+    template = (DEPLOY / "systemd" / "openstack-ops-platform.service.template").read_text()
+    assert template.startswith("# openstack-ops-platform bundle\n")
+    assert template.count("__BUNDLE_DIR__") == 4, "Documentation, WorkingDirectory, ExecStart, ExecStop"
+    readme = (DEPLOY / "README-DEPLOY.md").read_text()
+    assert "sudo ./opsctl.sh install-service" in readme
+    assert 's#__BUNDLE_DIR__#$(pwd)#' in readme, "the manual fallback must show the full placeholder"

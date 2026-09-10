@@ -7,7 +7,6 @@ columns are exercised the way the browser would, without a browser.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 import quickjs

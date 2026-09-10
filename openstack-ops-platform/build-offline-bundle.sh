@@ -8,10 +8,16 @@
 # 이미지는 docker-archive 형식으로 저장하므로 docker, podman, nerdctl 어디서든 load 된다.
 set -euo pipefail
 
-VERSION="${1:-1.0.0}"
+
 APP="openstack-ops-platform"
 IMAGE="okestro/$APP"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
+VERSION="${1:-$(cat "$ROOT/VERSION")}"
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "잘못된 버전: $VERSION" >&2; exit 1; }
+REVISION="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || printf unknown)"
+SOURCE_DIRTY=false
+[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=normal -- . 2>/dev/null)" ] || SOURCE_DIRTY=true
+BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 STAGING="$ROOT/dist/$APP-$VERSION"
 NS="openstack-ops-build"
 
@@ -37,7 +43,7 @@ build() { "$BUILDER" "${BUILDER_ARGS[@]}" "$@"; }
 echo
 echo "[1/5] 사전 검사"
 if [ -x .venv/bin/python ]; then
-    .venv/bin/python -m pytest tests/test_offline_packaging.py -q \
+    .venv/bin/python -m pytest tests/test_offline_packaging.py tests/test_deploy_scripts.py tests/test_release_safety.py -q \
         || { echo "오프라인 패키징 검사 실패. 고치고 다시 실행하세요." >&2; exit 1; }
     echo "  [OK] 오프라인 패키징 검사"
 else
@@ -47,7 +53,10 @@ fi
 # --- 이미지 ---------------------------------------------------------------
 echo
 echo "[2/5] 이미지 빌드"
-build build -t "$IMAGE:$VERSION" -t "$IMAGE:latest" . >/dev/null
+build build --platform linux/amd64 \
+    --build-arg "APP_VERSION=$VERSION" --build-arg "VCS_REF=$REVISION" \
+    --build-arg "BUILD_TIME=$BUILD_TIME" --build-arg "SOURCE_DIRTY=$SOURCE_DIRTY" \
+    -t "$IMAGE:$VERSION" -t "$IMAGE:latest" . >/dev/null
 echo "  [OK] $IMAGE:$VERSION"
 
 echo
@@ -61,7 +70,7 @@ echo "  [OK] $(du -h "$STAGING/image/$APP-$VERSION.tar" | awk '{print $1}')"
 # --- 스크립트와 문서 -------------------------------------------------------
 echo
 echo "[4/5] 번들 구성"
-cp deploy/install.sh deploy/opsctl.sh deploy/lib.sh "$STAGING/"
+cp deploy/install.sh deploy/opsctl.sh deploy/lib.sh deploy/restore_archive.py "$STAGING/"
 cp deploy/README-DEPLOY.md "$STAGING/"
 mkdir -p "$STAGING/systemd"
 cp deploy/systemd/openstack-ops-platform.service.template "$STAGING/systemd/"
@@ -74,8 +83,9 @@ sed "s/__IMAGE_TAG__/$VERSION/" deploy/compose.yaml.template > "$STAGING/compose
 
 cat > "$STAGING/VERSION" <<EOF
 $APP $VERSION
-빌드 시각  $(date -Iseconds)
-빌드 호스트 $(hostname)
+빌드 시각  $BUILD_TIME
+소스 커밋  $REVISION
+미커밋 변경 $SOURCE_DIRTY
 이미지     $IMAGE:$VERSION (linux/amd64)
 EOF
 echo "  [OK] $(find "$STAGING" -type f | wc -l)개 파일"

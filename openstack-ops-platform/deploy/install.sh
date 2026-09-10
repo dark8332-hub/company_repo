@@ -97,24 +97,7 @@ fi
 log ""
 log "[5/6] 컨테이너 기동"
 
-if container_exists; then
-    container_is_ours || die "이 서버에 같은 이름의 다른 컨테이너가 있습니다: $CONTAINER_NAME (이미지 $(container_image))
-  이 플랫폼의 것이 아니므로 지우지 않고 중단합니다.
-  config.env 의 CONTAINER_NAME 을 다른 이름으로 바꾸고 다시 실행하세요."
-    info "같은 이름의 이전 컨테이너를 정리합니다: $CONTAINER_NAME"
-    rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-fi
-
-# 우리 컨테이너를 내린 뒤에도 포트가 잡혀 있다면 그것은 이 서버의 다른 서비스다.
-# 이 확인을 건너뛰면 컨테이너가 포트를 잡지 못한 채 재시작 루프에 빠지고,
-# 기동 확인은 그 다른 서비스의 응답을 보고 "정상"이라고 답한다.
-if port_in_use "$check_port"; then
-    die "$check_port 포트를 이 서버의 다른 프로세스가 쓰고 있습니다.
-  기동해도 포트를 잡지 못하므로 설치를 중단합니다. 상대 서비스는 건드리지 않았습니다.
-  config.env 의 HOST_PORT 를 비어 있는 포트로 바꾸고 다시 실행하세요.$(
-    [ "${USE_HOST_NETWORK:-no}" = "yes" ] && printf '\n  USE_HOST_NETWORK=yes 에서는 HOST_PORT 가 무시되고 8090 을 씁니다.'
-  )"
-fi
+prepare_replacement
 
 start_container
 ok "컨테이너 시작: $CONTAINER_NAME"
@@ -155,6 +138,10 @@ log "    3. [일일점검]에서 클러스터 노드를 탐색한 뒤 점검을 
 log ""
 log "  운영 명령    ./opsctl.sh {status|logs|restart|stop|backup|remove}"
 log "  설정 변경    config.env 수정 후 ./opsctl.sh restart"
+if [ "$RUNTIME_KIND" != "docker" ]; then
+    # docker 만 --restart unless-stopped 로 재부팅 후 자동 기동한다. podman·nerdctl 은 유닛이 필요하다.
+    log "  자동 기동    sudo ./opsctl.sh install-service   ($RUNTIME 은 재부팅 후 자동 기동되지 않습니다)"
+fi
 log ""
 if [ -n "${ADMIN_PASSWORD:-}" ]; then
     warn "config.env 에 초기 비밀번호가 평문으로 남아 있습니다."

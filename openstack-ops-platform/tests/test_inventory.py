@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import shlex
 from types import SimpleNamespace
 
-import pytest
 
 import inventory_collector as ic
 import provider_store
 import server
+import ssh_privileges
 
 
 def section(name: str, output: str, rc: int = 0) -> str:
@@ -348,8 +349,7 @@ def test_collect_conflicts_while_running(auth_client, provider_id):
 
 
 class FakeConnection:
-    """Runs the scripts on localhost. Non-root providers go through run_as_root's sudo path, which is
-    answered here by treating the NOPASSWD probe as successful and executing `bash -s` directly."""
+    """Runs scripts locally while simulating password consumption by sudo."""
 
     def __init__(self, host: str, fail: bool = False):
         self.host = host
@@ -364,10 +364,14 @@ class FakeConnection:
         return False
 
     async def run(self, command: str, input: str | None = None, check: bool = False, timeout: int | None = None):
-        if command == server.SUDO_PROBE_COMMAND:
-            return SimpleNamespace(stdout="", stderr="", exit_status=0)
-        assert command in {"bash -s", server.SUDO_NOPASSWD_COMMAND}, command
-        process = await asyncio.create_subprocess_exec("bash", "-s", stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        if command.startswith(ssh_privileges.SUDO_PASSWORD_COMMAND):
+            assert input == "test-sudo-password\n"
+            args = ["bash", "-c", shlex.split(command)[-1]]
+            input = None
+        else:
+            assert command == "bash -s", command
+            args = ["bash", "-s"]
+        process = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         stdout, stderr = await asyncio.wait_for(process.communicate((input or "").encode()), timeout=timeout or 120)
         return SimpleNamespace(stdout=stdout.decode("utf-8", errors="replace"), stderr=stderr.decode("utf-8", errors="replace"), exit_status=process.returncode)
 
@@ -379,6 +383,8 @@ def test_collect_end_to_end_with_fake_ssh(auth_client, provider_id, monkeypatch)
     """The real node and controller scripts run against localhost through the fake connection; one node
     is made unreachable to exercise the failure path, and `openstack` is absent here so the controller
     side must degrade gracefully."""
+    provider_store.update_provider_sudo(provider_id, "test-sudo-password", "password")
+
     def fake_connect(host, **options):
         return FakeConnection(host, fail=host == "192.0.2.12")
 

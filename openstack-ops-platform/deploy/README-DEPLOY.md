@@ -25,6 +25,7 @@
 | 이미지 1개 | 런타임 이미지 저장소 (약 273MB) | `./opsctl.sh remove` |
 | 포트 1개 | `HOST_PORT`(기본 8090) LISTEN. docker는 이때 NAT 규칙을 자동으로 넣습니다 | 컨테이너 제거 시 함께 사라짐 |
 | `data/` | 번들 안. 컨테이너가 root로 쓰므로 파일 소유자는 root입니다 | `./opsctl.sh remove --all` |
+| systemd 유닛 1개 | **선택.** `sudo ./opsctl.sh install-service` 를 실행했을 때만 생깁니다 | `sudo ./opsctl.sh uninstall-service` |
 
 `nerdctl`을 쓰는 서버에서는 전용 namespace(`openstack-ops`)를 쓰므로 k8s 노드의 기존
 이미지·컨테이너와 섞이지 않습니다. `docker`·`podman`은 namespace 개념이 없어 이미지가
@@ -37,7 +38,7 @@
   매핑해 LISTEN 소켓이 없으므로 `ss`만으로는 보이지 않기 때문입니다. 이미 쓰이고 있으면
   **설치를 중단합니다**(상대 서비스는 건드리지 않습니다). `USE_HOST_NETWORK=yes`에서는
   `HOST_PORT`가 무시되고 8090을 쓰므로 8090을 기준으로 확인합니다.
-- **컨테이너 이름**: 같은 이름의 컨테이너가 있으면 이미지를 확인해 **이 플랫폼의 것이 아니면
+- **컨테이너 이름**: 같은 이름의 컨테이너가 있으면 이미지 저장소를 정확히 비교하고 관리 라벨을 확인해 **이 플랫폼의 것이 아니거나 식별에 실패하면
   지우지 않고 중단합니다**. 재설치 시에만 기존 컨테이너를 교체합니다.
 - **기동 확인**: 컨테이너 *안에서* 확인합니다. 호스트 포트로만 확인하면 같은 포트를 쓰는 다른
   서비스가 대신 응답해 기동 실패를 성공으로 오판합니다.
@@ -103,7 +104,7 @@ cd openstack-ops-platform-<버전>
 | 대표 VIP 주소, SSH 포트 | |
 | SSH 계정 | `root` 또는 sudo 권한이 있는 운영 계정 |
 | 인증 수단 | 개인키 또는 비밀번호 |
-| sudo 방식 | NOPASSWD 또는 sudo 비밀번호 |
+| sudo 방식 | sudo 비밀번호 인증 |
 | MySQL 계정 | Middleware 점검용 (선택) |
 | Prometheus 주소 | 모니터링 연동용 (선택) |
 
@@ -123,6 +124,9 @@ cd openstack-ops-platform-<버전>
 ./opsctl.sh remove --all    # data 까지 삭제
 
 ./opsctl.sh netcheck <노드IP> [포트]   # 컨테이너에서 노드까지 닿는지 단계별 확인
+
+sudo ./opsctl.sh install-service     # 재부팅 후 자동 기동 (systemd 유닛 설치)
+sudo ./opsctl.sh uninstall-service   # 그 유닛 제거
 ```
 
 ### 백업
@@ -135,10 +139,40 @@ cd openstack-ops-platform-<버전>
 `./opsctl.sh backup`은 컨테이너를 잠시 멈춰 SQLite 일관성을 확보한 뒤 둘을 함께 묶습니다.
 **백업 파일에는 마스터 키가 들어 있으므로 접근 통제된 곳에 보관하세요.**
 
+### 백업 실패·복원 검증
+
+- 백업은 권한 600의 임시 파일에 생성한 뒤 성공했을 때만 최종 파일로 바꿉니다. 실패·중단 시 부분 파일을 지우고, 원래 실행 중이던 서비스는 다시 기동하고 응답을 확인합니다. 원래 정지 상태였다면 정지 상태를 유지합니다.
+- 복원은 서비스 정지 전에 전체 경로와 파일 유형을 검사합니다. `data/` 밖의 항목, 경로 이동(`..`), 중복 경로, 심볼릭 링크·하드 링크·특수 파일은 거부합니다. 유효한 일반 파일과 디렉터리만 임시 위치에 풀고 교체합니다.
+- 호스트에 Python이 없으면 이미 반입한 앱 이미지의 Python을 네트워크 없이 실행해 검증합니다. 추가 패키지 다운로드는 없습니다.
+- 교체 전 데이터는 `data.before-restore.<임의값>/`에 남습니다. 복원 후 기동에 실패하면 이 경로와 로그를 확인해 이전 데이터로 되돌릴 수 있습니다.
+- 설치·재시작·복원은 포트 충돌을 확인하며, 기존 컨테이너가 있으면 삭제 전에 소유를 확인합니다. 소유를 판단할 수 없으면 중단합니다. 기존 라벨 없는 번들은 정확한 이미지 저장소 이름으로 식별합니다.
+
 ### 재부팅 후 자동 기동
 
 `docker`는 `--restart unless-stopped` 로 자동 기동됩니다. `podman`과 `nerdctl`은 그렇지 않으므로
-아래 유닛을 설치하세요. 이것이 번들 디렉터리 밖에 파일을 만드는 유일한 선택 사항입니다.
+아래 명령으로 `systemd` 유닛을 설치하세요. 이것이 번들 디렉터리 밖에 파일을 만드는 유일한 선택 사항입니다.
+
+```sh
+sudo ./opsctl.sh install-service     # 유닛 설치 + 부팅 시 자동 기동 등록 + 기동
+sudo ./opsctl.sh uninstall-service   # 유닛 제거 (컨테이너는 그대로 둡니다)
+```
+
+`install-service`가 하는 일은 이렇습니다.
+
+- `systemd/openstack-ops-platform.service.template`의 `__BUNDLE_DIR__`을 이 번들의 절대경로로 바꿉니다.
+- 바뀐 결과를 검사합니다. 자리표시자가 남았거나 `WorkingDirectory`·`ExecStart`가 절대경로가 아니면
+  **설치하지 않고 중단합니다**. systemd는 이런 유닛을 `bad unit file setting`으로만 알려 주기 때문에,
+  파일을 놓기 전에 잡는 편이 낫습니다.
+- 같은 이름의 유닛이 이미 있는데 이 번들이 만든 것이 아니면 **덮어쓰지 않고 중단합니다**.
+- 놓은 유닛 경로를 `installed-service.txt`에 적고, `uninstall-service`는 **거기 적힌 것만** 지웁니다.
+- 유닛 이름은 `config.env`의 `CONTAINER_NAME`을 따릅니다(기본 `openstack-ops-platform`).
+  한 서버에 두 벌을 설치한다면 이름을 다르게 두세요.
+
+`uninstall-service`는 `disable`만 하고 컨테이너는 내리지 않습니다. 자동 기동만 끄려던 것이지
+서비스를 멈추려던 것이 아니기 때문입니다. 함께 내리려면 `./opsctl.sh stop`을 쓰세요.
+
+손으로 만들어야 한다면 자리표시자는 밑줄 두 개를 포함한 `__BUNDLE_DIR__` 전체입니다.
+`BUNDLE_DIR`만 바꾸면 `__/경로__`가 남아 systemd가 유닛을 거부합니다.
 
 ```sh
 sed "s#__BUNDLE_DIR__#$(pwd)#" systemd/openstack-ops-platform.service.template \

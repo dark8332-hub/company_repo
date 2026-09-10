@@ -1,15 +1,18 @@
-[Unit]
-# 서버 재기동 후 자동으로 올라오게 하려면 이 유닛을 설치합니다.
+# openstack-ops-platform bundle
 #
-#   sed 's#__BUNDLE_DIR__#'"$(pwd)"'#' systemd/openstack-ops-platform.service.template \
-#     | sudo tee /etc/systemd/system/openstack-ops-platform.service
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now openstack-ops-platform
+# 서버 재기동 후 자동으로 올라오게 하는 유닛입니다. 이 파일은 서식이며, 번들 경로를 채워
+# /etc/systemd/system 에 놓는 일은 다음 명령이 합니다.
+#
+#   sudo ./opsctl.sh install-service      설치 (경로 치환 · 검증 · enable · 기동)
+#   sudo ./opsctl.sh uninstall-service    제거 (컨테이너는 그대로 둡니다)
+#
+# 손으로 만들 수도 있지만, 자리표시자의 밑줄을 빠뜨리면 systemd 가 경로를 절대경로가 아니라고
+# 거부합니다(bad unit file setting). 그때는 위 명령을 쓰세요. 자세한 것은 README-DEPLOY.md.
 #
 # 이 유닛을 쓰지 않아도 docker 는 --restart unless-stopped 로 재부팅 후 자동 기동합니다.
 # podman 과 nerdctl 은 그렇지 않으므로, 두 런타임을 쓴다면 이 유닛을 설치하세요.
-#
-# 제거: sudo systemctl disable --now openstack-ops-platform && sudo rm /etc/systemd/system/openstack-ops-platform.service
+
+[Unit]
 Description=OpenStack 운영 지원 플랫폼
 Documentation=file://__BUNDLE_DIR__/README-DEPLOY.md
 After=network-online.target docker.service containerd.service

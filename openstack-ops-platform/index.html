@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OKESTRO Cloud Operations</title>
   <link rel="stylesheet" href="/fonts/fonts.css">
-  <link rel="stylesheet" href="styles.css?v=20260908-2">
+  <link rel="stylesheet" href="styles.css?v=__ASSET_VERSION__">
 </head>
 <body>
   <div class="app-shell">
@@ -225,7 +225,7 @@
             <fieldset class="auth-selector"><legend>SSH 인증 방식</legend><label><input type="radio" name="auth_method" value="private_key" checked><span>개인키</span></label><label><input type="radio" name="auth_method" value="password"><span>비밀번호</span></label></fieldset>
             <div id="keyFields"><label>SSH 개인키<input id="privateKey" type="file" accept=".pem,.key,.txt" required><small>OpenSSH 또는 PEM 형식 · 등록 후 암호화하여 저장합니다.</small></label><label>개인키 암호 <span>(선택)</span><input name="passphrase" type="password" placeholder="암호화된 키인 경우 입력"></label></div>
             <div id="passwordFields" hidden><label>SSH 비밀번호<input name="password" type="password" autocomplete="new-password" placeholder="SSH 계정 비밀번호"><small>등록 후 master key로 암호화하여 저장하며 화면과 API에 반환하지 않습니다.</small></label></div>
-            <div id="sudoFields" hidden><label>sudo 비밀번호 <span>(root가 아닌 계정)</span><input name="sudo_password" type="password" autocomplete="new-password" maxlength="1024" placeholder="NOPASSWD sudo가 아닌 경우 입력"><small>root SSH 접속이 막힌 환경에서 sudo 권한 계정으로 점검할 때 사용합니다. 점검 명령은 <code>sudo</code>로 root 권한에서 실행되며, 비밀번호 인증에서 비워두면 SSH 비밀번호로 sudo를 시도합니다.</small></label></div>
+            <div id="sudoFields" hidden><label>sudo 비밀번호 <span>(root가 아닌 계정)</span><input name="sudo_password" type="password" autocomplete="new-password" maxlength="1024" placeholder="sudo 인증에 사용할 비밀번호"><small>root SSH 접속이 막힌 환경에서 sudo 권한 계정으로 점검할 때 사용합니다. 점검 명령은 <code>sudo</code>로 root 권한에서 실행되며, 비밀번호 인증에서 비워두면 SSH 비밀번호로 sudo를 시도합니다.</small></label></div>
             <div id="fingerprintBox" class="fingerprint-box" hidden><span>SSH 호스트 키 지문</span><code id="fingerprint"></code><p>대상 서버에서 확인한 지문과 일치할 때만 연결하세요.</p><button id="confirmFingerprint" type="button">이 지문을 신뢰하고 연결</button></div><div class="form-error" id="formError" hidden></div><div class="form-success" id="formSuccess" hidden></div>
             <div class="form-actions"><a href="#dashboard" data-page="dashboard">취소</a><button class="primary-button" id="connectButton" type="submit">VIP 연결 확인</button></div>
           </div></form>
@@ -405,17 +405,17 @@
   </div>
 
   <div class="toast" id="toast"><span>✓</span><div><strong>일일점검을 시작했습니다.</strong><small>완료되면 알림으로 알려드립니다.</small></div></div>
-  <script src="js/core.js?v=20260908-2"></script>
-  <script src="js/settings.js?v=20260908-2"></script>
-  <script src="js/inspection.js?v=20260908-2"></script>
-  <script src="js/providers.js?v=20260908-2"></script>
-  <script src="js/infrastructure.js?v=20260908-2"></script>
-  <script src="js/monitoring.js?v=20260908-2"></script>
-  <script src="js/dashboard.js?v=20260908-2"></script>
-  <script src="js/runbooks.js?v=20260908-2"></script>
-  <script src="js/alerts.js?v=20260908-2"></script>
-  <script src="js/history.js?v=20260908-2"></script>
-  <script src="js/issues.js?v=20260908-2"></script>
-  <script src="js/main.js?v=20260908-2"></script>
+  <script src="js/core.js?v=__ASSET_VERSION__"></script>
+  <script src="js/settings.js?v=__ASSET_VERSION__"></script>
+  <script src="js/inspection.js?v=__ASSET_VERSION__"></script>
+  <script src="js/providers.js?v=__ASSET_VERSION__"></script>
+  <script src="js/infrastructure.js?v=__ASSET_VERSION__"></script>
+  <script src="js/monitoring.js?v=__ASSET_VERSION__"></script>
+  <script src="js/dashboard.js?v=__ASSET_VERSION__"></script>
+  <script src="js/runbooks.js?v=__ASSET_VERSION__"></script>
+  <script src="js/alerts.js?v=__ASSET_VERSION__"></script>
+  <script src="js/history.js?v=__ASSET_VERSION__"></script>
+  <script src="js/issues.js?v=__ASSET_VERSION__"></script>
+  <script src="js/main.js?v=__ASSET_VERSION__"></script>
 </body>
 </html>

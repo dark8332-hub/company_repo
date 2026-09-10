@@ -1,9 +1,33 @@
 #!/bin/sh
 # OpenStack 운영 지원 플랫폼 - 운영 명령
-# 사용법: ./opsctl.sh {start|stop|restart|status|logs|shell|backup|restore|remove}
+# 사용법: ./opsctl.sh {start|stop|restart|status|logs|shell|backup|restore|remove|install-service}
 
 set -eu
 . "$(cd "$(dirname "$0")" && pwd)/lib.sh"
+
+# systemd 유닛을 놓는 자리. 환경 변수로 바꿀 수 있는 것은 회귀 테스트를 위한 것으로 보통은
+# 건드리지 않는다(런타임 번들의 install-runtime.sh 와 같은 방식이다).
+UNIT_DIR="${OPS_UNIT_DIR:-/etc/systemd/system}"
+SERVICE_RECORD="$BUNDLE_DIR/installed-service.txt"
+# 이 줄이 있는 유닛만 우리 것으로 본다. 같은 이름의 남의 유닛을 덮어쓰지 않기 위한 표식이다.
+SERVICE_MARKER="# openstack-ops-platform bundle"
+
+# 유닛 서식의 __BUNDLE_DIR__ 을 이 번들 경로로 바꾼다. sed 가 아니라 awk 의 index/substr 로
+# 글자 그대로 바꾼다. 경로에 sed 구분자나 & 가 들어가도 안전하고, 무엇보다 운영자가 손으로
+# sed 를 칠 때 자리표시자의 밑줄을 빠뜨려 `__/경로__` 가 박힌 유닛이 만들어지는 일을 없앤다.
+# systemd 는 그런 유닛을 bad-setting 으로 거부하며, 그 원인은 로그를 봐야만 알 수 있다.
+render_unit() {
+    awk -v dir="$BUNDLE_DIR" '
+        {
+            line = $0; out = ""
+            while ((i = index(line, "__BUNDLE_DIR__")) > 0) {
+                out = out substr(line, 1, i - 1) dir
+                line = substr(line, i + 14)
+            }
+            print out line
+        }
+    ' "$1"
+}
 
 usage() {
     cat <<'EOF'
@@ -26,6 +50,10 @@ usage() {
   remove            컨테이너와 이미지를 지웁니다. data 디렉터리는 남깁니다
   remove --all      data 디렉터리까지 지웁니다 (되돌릴 수 없습니다)
 
+  install-service   재부팅 후 자동 기동되도록 systemd 유닛을 설치합니다 (root 필요).
+                    번들 디렉터리 밖에 파일을 만드는 유일한 명령입니다
+  uninstall-service 그 유닛을 제거합니다. 컨테이너는 그대로 둡니다 (root 필요)
+
 EOF
 }
 
@@ -38,6 +66,10 @@ esac
 
 detect_runtime
 load_config
+# All actions targeting a container share the same ownership check.
+case "$COMMAND" in
+    start|stop|restart|backup|restore|remove|logs|shell|netcheck|install-service) require_owned_container ;;
+esac
 
 case "$COMMAND" in
 
@@ -75,7 +107,7 @@ status)
 
 start)
     container_running && { info "이미 실행 중입니다."; exit 0; }
-    if container_exists; then rt start "$CONTAINER_NAME" >/dev/null; else start_container; fi
+    if container_exists; then require_free_port; rt start "$CONTAINER_NAME" >/dev/null; else start_container; fi
     wait_healthy && ok "기동 완료: $(server_url)" || { stop_failed_container; die "기동했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
     ;;
 
@@ -88,7 +120,7 @@ stop)
 restart)
     # config.env 를 고쳤을 수 있으므로 start/stop 이 아니라 컨테이너를 다시 만든다.
     # 환경 변수와 포트는 생성 시점에 고정되기 때문이다.
-    container_exists && rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    prepare_replacement
     start_container
     wait_healthy && ok "재기동 완료: $(server_url)" || { stop_failed_container; die "재기동했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
     ;;
@@ -253,34 +285,79 @@ backup)
     [ -d "$DATA_DIR" ] || die "데이터 디렉터리가 없습니다."
     target="${1:-$BUNDLE_DIR/backup/$APP_NAME-data-$(date +%Y%m%d-%H%M%S).tar.gz}"
     mkdir -p "$(dirname "$target")"
-    # SQLite 가 쓰는 중에 복사하면 깨질 수 있어 잠시 멈춘다.
+    umask 077
+    partial="$(mktemp "$target.partial.XXXXXX")"
     was_running=no
-    if container_running; then was_running=yes; rt stop "$CONTAINER_NAME" >/dev/null; info "일관성을 위해 잠시 정지"; fi
-    tar -czf "$target" -C "$BUNDLE_DIR" data
-    chmod 600 "$target"
-    [ "$was_running" = yes ] && rt start "$CONTAINER_NAME" >/dev/null && info "재기동"
+    backup_cleanup() {
+        backup_rc=$?
+        trap - 0 HUP INT TERM
+        rm -f "$partial"
+        if [ "$was_running" = yes ]; then
+            if rt start "$CONTAINER_NAME" >/dev/null && wait_healthy 10; then
+                info "기존 서비스 재기동 완료"
+            else
+                warn "기존 서비스 재기동 실패. ./opsctl.sh logs 를 확인하세요."
+                backup_rc=1
+            fi
+        fi
+        exit "$backup_rc"
+    }
+    trap backup_cleanup 0
+    trap 'exit 1' HUP INT TERM
+    if container_running; then
+        was_running=yes
+        rt stop "$CONTAINER_NAME" >/dev/null
+        info "일관성을 위해 잠시 정지"
+    fi
+    tar -czf "$partial" -C "$BUNDLE_DIR" data
+    mv "$partial" "$target"
     ok "백업: $target ($(du -h "$target" | awk '{print $1}'))"
-    warn "이 파일에는 SSH·MySQL 비밀번호를 푸는 마스터 키가 들어 있습니다. 접근 통제된 곳에 보관하세요."
+    warn "이 파일에는 자격증명을 푸는 마스터 키가 들어 있습니다. 접근 통제된 곳에 보관하세요."
     ;;
 
 restore)
     [ $# -ge 1 ] || die "복원할 파일을 지정하세요: ./opsctl.sh restore <파일>"
     archive="$1"
     [ -f "$archive" ] || die "파일이 없습니다: $archive"
-    tar -tzf "$archive" | grep -q '^data/' || die "이 파일에는 data/ 가 없습니다. 백업 파일이 맞는지 확인하세요."
-    container_exists && rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    if [ -d "$DATA_DIR" ]; then
-        keep="$DATA_DIR.before-restore-$(date +%Y%m%d-%H%M%S)"
-        mv "$DATA_DIR" "$keep"
-        info "기존 데이터를 $keep 로 옮겼습니다."
+    archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+    umask 077
+    stage="$(mktemp -d "$BUNDLE_DIR/.restore.XXXXXX")"
+    restore_cleanup() {
+        restore_rc=$?
+        trap - 0 HUP INT TERM
+        rm -rf "$stage"
+        exit "$restore_rc"
+    }
+    trap restore_cleanup 0
+    trap 'exit 1' HUP INT TERM
+    # Validate and extract before stopping the service or touching its data.
+    if command -v python3 >/dev/null 2>&1; then
+        python3 "$BUNDLE_DIR/restore_archive.py" "$archive" "$stage"
+    else
+        # The app image already contains Python. No host package installation needed.
+        suffix="$(mount_suffix)"
+        rt run --rm --network none --entrypoint python \
+            --volume "$archive:/backup.tar.gz:ro${suffix:+,Z}" \
+            --volume "$BUNDLE_DIR/restore_archive.py:/restore_archive.py:ro${suffix:+,Z}" \
+            --volume "$stage:/restore$suffix" \
+            "$IMAGE_REPO:$IMAGE_TAG" /restore_archive.py /backup.tar.gz /restore
     fi
-    tar -xzf "$archive" -C "$BUNDLE_DIR"
+    [ -d "$stage/data" ] || die "검증된 복원 데이터가 없습니다."
+    prepare_replacement
+    keep=""
+    if [ -d "$DATA_DIR" ]; then
+        keep="$(mktemp -d "$BUNDLE_DIR/data.before-restore.XXXXXX")"
+        rmdir "$keep"
+        mv "$DATA_DIR" "$keep"
+        info "기존 데이터 보존: $keep"
+    fi
+    mv "$stage/data" "$DATA_DIR"
     start_container
-    wait_healthy && ok "복원 후 기동 완료: $(server_url)" || { stop_failed_container; die "복원했지만 응답이 없습니다(컨테이너는 정지). ./opsctl.sh logs 를 확인하세요."; }
+    wait_healthy && ok "복원 후 기동 완료: $(server_url)" || { stop_failed_container; die "복원했지만 응답이 없습니다. 기존 데이터: $keep"; }
     ;;
 
 remove)
-    container_exists && rt rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    remove_owned_container
     ok "컨테이너 제거"
     rt rmi "$IMAGE_REPO:$IMAGE_TAG" >/dev/null 2>&1 && ok "이미지 제거" || info "이미지는 없거나 다른 곳에서 쓰고 있습니다."
     if [ "${1:-}" = "--all" ]; then
@@ -293,6 +370,100 @@ remove)
         info "데이터는 남겨 두었습니다: $DATA_DIR"
         info "완전히 지우려면 ./opsctl.sh remove --all"
     fi
+    ;;
+
+# --- systemd 유닛 ---------------------------------------------------------------------------
+# 이 두 명령만 번들 디렉터리 밖(유닛 파일 하나)에 손을 댄다. 선택 사항이며, 무엇을 놓았는지
+# installed-service.txt 에 적어 두고 uninstall-service 는 거기 적힌 것만 지운다.
+#
+# 서식을 손으로 sed 치던 절차를 대신한다. 자리표시자를 잘못 치면 systemd 가 경로를 절대경로가
+# 아니라고 거부하는데(bad-setting), 그 원인은 journal 을 봐야 보인다. 여기서 미리 잡는다.
+
+install-service)
+    [ "$(id -u)" = "0" ] || die "root 권한이 필요합니다: sudo ./opsctl.sh install-service"
+    command -v systemctl >/dev/null 2>&1 || die "systemd 가 없습니다. 이 서버에서는 유닛을 쓸 수 없습니다.
+  docker 라면 --restart unless-stopped 로 재부팅 후에도 자동 기동됩니다."
+
+    template="$BUNDLE_DIR/systemd/$APP_NAME.service.template"
+    [ -f "$template" ] || die "유닛 서식이 없습니다: $template"
+
+    unit="$UNIT_DIR/$CONTAINER_NAME.service"
+    if [ -f "$unit" ] && ! grep -q "^$SERVICE_MARKER\$" "$unit"; then
+        die "같은 이름의 유닛이 이미 있고 이 번들이 만든 것이 아닙니다: $unit
+  남의 서비스를 덮어쓰지 않기 위해 중단합니다.
+  이 유닛이 무엇인지 확인하거나, config.env 의 CONTAINER_NAME 을 다른 이름으로 바꾸세요."
+    fi
+
+    rendered="$BUNDLE_DIR/.unit.rendered"
+    render_unit "$template" > "$rendered"
+
+    # 치환이 제대로 됐는지 우리가 먼저 본다. 남은 자리표시자나 상대경로는 systemd 가
+    # unit will not be started 로만 알려 주므로, 여기서 걸러 내는 편이 낫다.
+    if grep -q '__BUNDLE_DIR__' "$rendered"; then
+        rm -f "$rendered"
+        die "유닛 서식의 자리표시자를 바꾸지 못했습니다. 서식이 손상됐는지 확인하세요: $template"
+    fi
+    for key in WorkingDirectory ExecStart ExecStop; do
+        value="$(grep "^$key=" "$rendered" | head -n 1 | cut -d= -f2-)"
+        case "$value" in
+            /*) ;;
+            *) rm -f "$rendered"; die "$key 가 절대경로가 아닙니다: $value" ;;
+        esac
+    done
+    grep -q "^$SERVICE_MARKER\$" "$rendered" || {
+        rm -f "$rendered"
+        die "유닛 서식에 이 번들의 표식이 없습니다: $template"
+    }
+
+    mkdir -p "$UNIT_DIR"
+    cat "$rendered" > "$unit"
+    chmod 644 "$unit"
+    rm -f "$rendered"
+    printf '%s\n' "$unit" > "$SERVICE_RECORD"
+    ok "유닛 설치: $unit"
+    info "기록: $SERVICE_RECORD (uninstall-service 는 여기 적힌 것만 지웁니다)"
+
+    systemctl daemon-reload
+    systemctl enable "$CONTAINER_NAME" >/dev/null 2>&1 \
+        || die "systemctl enable 실패: systemctl status $CONTAINER_NAME 을 확인하세요."
+    ok "부팅 시 자동 기동 등록"
+
+    if systemctl start "$CONTAINER_NAME"; then
+        ok "기동 완료: $(server_url)"
+    else
+        warn "유닛은 설치했지만 기동에 실패했습니다."
+        info "  systemctl status $CONTAINER_NAME --no-pager"
+        info "  ./opsctl.sh logs"
+        exit 1
+    fi
+    log ""
+    log "  확인   systemctl status $CONTAINER_NAME --no-pager"
+    log "  제거   sudo ./opsctl.sh uninstall-service"
+    log ""
+    ;;
+
+uninstall-service)
+    [ "$(id -u)" = "0" ] || die "root 권한이 필요합니다: sudo ./opsctl.sh uninstall-service"
+    command -v systemctl >/dev/null 2>&1 || die "systemd 가 없습니다."
+
+    if [ -f "$SERVICE_RECORD" ]; then
+        unit="$(head -n 1 "$SERVICE_RECORD")"
+    else
+        unit="$UNIT_DIR/$CONTAINER_NAME.service"
+    fi
+    [ -f "$unit" ] || die "설치된 유닛이 없습니다: $unit"
+    grep -q "^$SERVICE_MARKER\$" "$unit" \
+        || die "이 번들이 만든 유닛이 아닙니다: $unit
+  지우지 않고 중단합니다."
+
+    # disable 만 한다. --now 를 붙이면 ExecStop 이 돌아 컨테이너까지 내려간다. 자동 기동만
+    # 끄려던 운영자에게는 서비스가 멎는 것이 예상 밖의 결과다.
+    systemctl disable "$(basename "$unit" .service)" >/dev/null 2>&1 || true
+    rm -f "$unit"
+    systemctl daemon-reload
+    rm -f "$SERVICE_RECORD"
+    ok "유닛 제거: $unit"
+    info "컨테이너는 그대로 돌고 있습니다. 함께 내리려면 ./opsctl.sh stop"
     ;;
 
 *)

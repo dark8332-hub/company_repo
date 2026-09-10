@@ -37,7 +37,11 @@ async function loadServerHealth() {
     const running = data.running_checks || 0;
     connection.className = `connection${running ? ' busy' : ''}`;
     connection.innerHTML = `<i></i>${running ? `점검 실행 중 ${running}건` : '서버 연결 정상'}`;
-    if (info) info.textContent = `v${data.version || '-'} · ${data.timezone || '-'} · 공급자 ${data.providers ?? 0}개`;
+    if (info) {
+      info.textContent = `v${data.version || '-'} · ${data.timezone || '-'} · 공급자 ${data.providers ?? 0}개`;
+      const build = data.build;
+      info.title = build ? `커밋 ${build.revision || 'unknown'}${build.source_dirty ? ' (미커밋 변경 포함)' : ''} · 빌드 ${build.built_at || '소스 실행'}` : '';
+    }
   } catch (error) {
     connection.className = 'connection offline';
     connection.innerHTML = '<i></i>서버 연결 끊김';

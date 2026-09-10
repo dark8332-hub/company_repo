@@ -1,3 +1,5 @@
+from app_metadata import APP_VERSION, BUILD_INFO
+from ssh_privileges import PrivilegeError, SUDO_PASSWORD_CHECK_COMMAND, run_as_root, sudo_failure_reason
 import asyncio
 import base64
 import ipaddress
@@ -5,7 +7,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shlex
 import socket
 import subprocess
@@ -13,9 +14,9 @@ import tempfile
 import uuid
 from collections import Counter
 from contextvars import ContextVar
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -29,14 +30,14 @@ from inspection_excel import build_inspection_workbook, inspection_workbook_file
 from runbooks import effective_runbook
 from provider_store import (
     database_credentials_status, delete_check_exception, delete_database_credentials, delete_provider, delete_provider_host_key, get_provider, latest_check, list_check_exceptions,
-    is_provider_host_key_trusted, list_host_key_events, list_provider_host_keys, list_provider_nodes,
+    is_provider_host_key_trusted, latest_check_meta, list_host_key_events, list_provider_host_keys, list_provider_nodes,
     provider_host_key_material,
     list_providers, mark_provider_host_key_seen, save_check, save_check_exception, save_provider,
     delete_provider_node, update_provider, update_provider_node, upsert_provider_node,
     save_database_credentials, save_provider_nodes, sudo_password_configured, sudo_status, trust_provider_host_key, update_provider_sudo,
     delete_work_history, get_work_history, list_work_histories, save_work_history, update_work_history,
     alert_summary, get_alert, list_alerts, sync_check_alerts, update_alert,
-    add_alert_comment, alert_stats, bulk_update_alerts, delete_maintenance_window, get_maintenance_window, is_active_alert, list_alert_events,
+    add_alert_comment, alert_stats, bulk_update_alerts, delete_maintenance_window, is_active_alert, list_alert_events,
     list_maintenance_windows, save_maintenance_window,
     delete_custom_check, list_custom_checks, save_custom_check,
     check_summary, get_check, get_check_schedule, list_checks, list_enabled_check_schedules, previous_check_summary,
@@ -44,14 +45,14 @@ from provider_store import (
     check_storage_stats, delete_log_exclusion, list_log_exclusions, prune_check_results, save_log_exclusion,
     active_session_count, admin_account_info, change_admin_password, create_session, delete_other_sessions, delete_session,
     ensure_admin_account, get_session, purge_expired_sessions, reset_admin_password, verify_admin_password,
-    audit_log_facets, delete_setting, get_setting, get_setting_info, list_audit_logs, list_settings, prune_audit_logs, record_audit, set_setting,
+    audit_log_facets, delete_setting, get_setting, get_setting_info, list_audit_logs, prune_audit_logs, record_audit, set_setting,
     decrypt_secret, encrypt_secret, list_open_monitoring_alert_keys, resolve_monitoring_alert, upsert_monitoring_alert,
 )
 
 from fastapi import File, UploadFile  # work history attachments
 from provider_store import (  # issue notes
     ISSUE_CATEGORIES, ISSUE_LANGUAGES, ISSUE_SEVERITIES, ISSUE_STATUSES, ISSUE_TRANSITIONS, add_issue_comment, add_issue_snippet,
-    delete_issue, delete_issue_snippet, get_alert as store_get_alert, get_check as store_get_check, get_issue, get_issue_snippet,
+    delete_issue, delete_issue_snippet, get_alert as store_get_alert, get_issue,
     issue_summary, list_issue_events, list_issue_snippets, list_issues, save_issue, transition_issue, update_issue, update_issue_snippet,
 )
 from provider_store import (  # work history extensions
@@ -60,7 +61,31 @@ from provider_store import (  # work history extensions
 )
 
 BASE_DIR = Path(__file__).resolve().parent
-app = FastAPI(title="OKESTRO OpenStack Operations API", version="0.1.0")
+app = FastAPI(title="OKESTRO OpenStack Operations API", version=APP_VERSION)
+# index.html / login.html carry this placeholder in every script and stylesheet query string.
+# The value used to be typed by hand and went stale; in 2026-08-26 a browser kept running a
+# cached inspection.js after an upgrade and inspections silently stopped starting.
+ASSET_VERSION_PLACEHOLDER = "__ASSET_VERSION__"
+
+
+def asset_version() -> str:
+    """Release identity for cache busting: version + commit when packaged, newest mtime in a checkout."""
+    revision = str(BUILD_INFO.get("revision") or "unknown")
+    if revision != "unknown" and not BUILD_INFO.get("source_dirty", True):
+        return f"{APP_VERSION}-{revision[:7]}"
+    sources = [BASE_DIR / name for name in ("index.html", "login.html", "styles.css", "login.js")]
+    sources += sorted((BASE_DIR / "js").glob("*.js"))
+    newest = max((path.stat().st_mtime_ns for path in sources if path.is_file()), default=0)
+    return f"{APP_VERSION}-{newest // 1_000_000_000:x}"
+
+
+@lru_cache(maxsize=4)
+def rendered_page(name: str) -> str:
+    return (BASE_DIR / name).read_text(encoding="utf-8").replace(ASSET_VERSION_PLACEHOLDER, asset_version())
+
+
+def page_response(name: str) -> Response:
+    return Response(rendered_page(name), media_type="text/html; charset=utf-8", headers={"Cache-Control": "no-store, max-age=0"})
 CHECK_PROGRESS: dict[str, dict] = {}
 CHECK_TASKS: dict[str, asyncio.Task] = {}
 BACKGROUND_TASKS: set[asyncio.Task] = set()
@@ -526,12 +551,7 @@ def flag_host_key_change(provider_id: str, fingerprint: str) -> None:
     except Exception:  # noqa: BLE001
         logger.exception("host key change alert failed for %s", provider_id)
 
-# sudo escalation for non-root SSH accounts (see run_as_root)
-SUDO_PROBE_COMMAND = "sudo -k -n true"
-SUDO_NOPASSWD_COMMAND = "sudo -n -H bash -s"
-SUDO_PASSWORD_COMMAND = "sudo -S -p '' -k -H bash -s"
-SUDO_PASSWORD_CHECK_COMMAND = "sudo -S -p '' -k -H true"
-ROOT_MARKER = "__OKESTRO_ROOT_SHELL__"
+
 
 CHECK_KEYS = {
     "cpu", "memory", "disk", "chrony", "bonding", "mount", "pcs", "vip", "rabbitmq", "mysql",
@@ -593,6 +613,10 @@ def validate_custom_command(command: str) -> list[str]:
     if parts[0] == "mount" and len(parts) != 1:
         raise ValueError("mount는 현재 마운트 목록 조회만 허용됩니다.")
     return parts
+
+
+# Exclusion patterns are shell-quoted into the node script; keep well clear of MAX_SCRIPT_BYTES.
+LOG_EXCLUSION_BUDGET_BYTES = 16 * 1024
 
 
 class LogExclusionRequest(BaseModel):
@@ -763,6 +787,7 @@ async def health(request: Request):
     payload = {"status": "ok", "version": app.version, "server_time": datetime.now(timezone.utc).isoformat(), "authenticated": bool(request.state.user)}
     if request.state.user:
         payload.update({
+            "build": BUILD_INFO,
             "timezone": str(schedule_timezone()), "providers": len(list_providers()),
             "running_checks": sum(1 for progress in CHECK_PROGRESS.values() if progress.get("running")),
         })
@@ -1089,7 +1114,8 @@ def validated_issue(request: IssueRequest) -> dict:
     if data["work_history_id"] and not get_work_history(data["work_history_id"]):
         raise HTTPException(400, "연결할 작업 이력을 찾을 수 없습니다.")
     if data["check_id"]:
-        if not data["provider_id"] or not store_get_check(data["provider_id"], data["check_id"]):
+        # Existence only: the summary row avoids loading the check's full result JSON.
+        if not data["provider_id"] or not check_summary(data["provider_id"], data["check_id"]):
             raise HTTPException(400, "연결할 점검 결과를 찾을 수 없습니다. 공급자와 점검 ID를 확인하세요.")
     return data
 
@@ -1107,8 +1133,8 @@ def issue_detail_payload(issue: dict) -> dict:
         history = get_work_history(issue["work_history_id"])
         links["work_history"] = {"id": history["id"], "title": history["title"], "status": history["status"], "work_type": history["work_type"]} if history else None
     if issue.get("check_id") and issue.get("provider_id"):
-        check = store_get_check(issue["provider_id"], issue["check_id"])
-        links["check"] = {"id": check["id"], "status": check.get("status"), "created_at": check.get("created_at")} if check else None
+        check = check_summary(issue["provider_id"], issue["check_id"])
+        links["check"] = {"id": check["id"], "status": check.get("status"), "created_at": check.get("checked_at")} if check else None
     detail["links"] = links
     return detail
 
@@ -1489,9 +1515,9 @@ async def edit_alert(alert_id: str, request: AlertUpdateRequest):
 @app.on_event("startup")
 async def backfill_latest_check_alerts():
     for provider in list_providers():
-        check = latest_check(provider["id"])
+        check = await asyncio.to_thread(latest_check, provider["id"])
         if check:
-            sync_check_alerts(provider["id"], check["id"], check["result"].get("items", {}))
+            await asyncio.to_thread(sync_check_alerts, provider["id"], check["id"], check["result"].get("items", {}))
 
 
 async def scan_ssh_host_key(host: str, port: int):
@@ -1582,7 +1608,7 @@ async def connect_provider(request: DiscoveryRequest):
                 "printf 'hostname='; hostname; "
                 "printf 'user='; id -un; "
                 "if [ \"$(id -u)\" = 0 ]; then echo 'sudo=root'; "
-                f"elif {SUDO_PROBE_COMMAND} >/dev/null 2>&1; then echo 'sudo=passwordless'; else echo 'sudo=authentication_required'; fi; "
+                "else echo 'sudo=authentication_required'; fi; "
                 "for cmd in openstack systemctl docker podman pcs ceph ansible; do "
                 "if command -v \"$cmd\" >/dev/null 2>&1; then echo \"tool=$cmd\"; fi; done"
             )
@@ -1601,12 +1627,12 @@ async def connect_provider(request: DiscoveryRequest):
                     probe[key] = value
             sudo_mode = probe.get("sudo", "unknown")
             sudo_password = None
-            if sudo_mode == "authentication_required":
-                # Non-root login without NOPASSWD: the checks need root, so verify a sudo password now
+            if sudo_mode != "root":
+                # Every non-root login requires a stored sudo password; verify it now
                 # instead of registering an account that would later report every item as unavailable.
                 candidate = request.sudo_password or (request.password if request.auth_method == "password" else None)
-                if not candidate or "\n" in candidate or "\r" in candidate:
-                    raise HTTPException(400, f"{probe.get('user', request.username)} 계정은 root가 아니며 비밀번호 없는 sudo가 허용되지 않습니다. 일일점검에 root 권한이 필요하므로 sudo 비밀번호를 입력하세요.")
+                if not candidate or any(char in candidate for char in "\r\n\x00"):
+                    raise HTTPException(400, f"{probe.get('user', request.username)} 계정은 sudo 비밀번호 인증이 필요합니다. 일일점검에 root 권한이 필요하므로 sudo 비밀번호를 입력하세요.")
                 verification = await connection.run(SUDO_PASSWORD_CHECK_COMMAND, input=f"{candidate}\n", check=False, timeout=20)
                 if verification.exit_status != 0:
                     source = "입력한 sudo 비밀번호" if request.sudo_password else "SSH 비밀번호"
@@ -1642,8 +1668,7 @@ async def connect_provider(request: DiscoveryRequest):
 async def providers_list():
     providers = list_providers()
     for provider in providers:
-        check = latest_check(provider["id"])
-        provider["latest_check"] = {key: check[key] for key in ("id", "status", "checked_at")} if check else None
+        provider["latest_check"] = latest_check_meta(provider["id"])
         provider["database_credentials_configured"] = database_credentials_status(provider["id"])["configured"]
         provider["sudo_password_configured"] = sudo_password_configured(provider["id"])
         provider["profile"] = provider_setting(provider["id"], "profile")
@@ -1793,7 +1818,7 @@ async def remove_provider_host_key(provider_id: str, key_id: str):
 async def provider_latest_check(provider_id: str):
     if not get_provider(provider_id):
         raise HTTPException(404, "등록된 공급자를 찾을 수 없습니다.")
-    return {"latest_check": latest_check(provider_id)}
+    return {"latest_check": await asyncio.to_thread(latest_check, provider_id)}
 
 
 def provider_ssh_options(provider: dict) -> dict:
@@ -1808,10 +1833,6 @@ def provider_ssh_options(provider: dict) -> dict:
     else:
         options.update(client_keys=None, password=credentials.get("password"), preferred_auth="password,keyboard-interactive")
     return options
-
-
-class PrivilegeError(RuntimeError):
-    """The login account could not obtain root on the target node."""
 
 
 class AddressResolutionError(OSError):
@@ -1861,47 +1882,6 @@ def node_failure_reason(exc: Exception) -> str:
     if isinstance(exc, socket.gaierror):
         return "접속 주소를 IP로 해석하지 못했습니다"
     return type(exc).__name__
-
-
-def sudo_failure_reason(stderr: str, exit_status: int | None) -> str:
-    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
-    message = lines[-1] if lines else f"exit {exit_status}"
-    if "incorrect password" in message or "Sorry, try again" in message:
-        return "sudo 비밀번호가 일치하지 않습니다"
-    if "not in the sudoers" in message or "not allowed" in message:
-        return f"sudo 권한이 없습니다 ({message})"
-    if "tty" in message:
-        return f"sudoers의 requiretty 설정으로 비대화형 sudo가 차단되었습니다 ({message})"
-    if "password is required" in message:
-        return "sudo 비밀번호가 필요합니다"
-    return f"sudo 실행 실패 ({message})"
-
-
-async def run_as_root(connection, provider: dict, script: str, timeout: int):
-    """Run a check script as root on an established SSH connection.
-
-    A root login runs the script unchanged. Any other account is escalated with sudo:
-    NOPASSWD when the node allows it, otherwise the stored sudo password is written to
-    sudo's stdin (`-S`) ahead of the script, which `bash -s` then reads. `-k` forces a
-    fresh authentication so the password line is always consumed by sudo, and `-H`
-    makes `$HOME` resolve to /root for OpenRC discovery. The script is never silently
-    executed without privileges: an unprivileged run cannot read service logs and would
-    misreport them as healthy, so a failed escalation raises PrivilegeError instead.
-    """
-    if provider["username"] == "root":
-        return await connection.run("bash -s", input=script, check=False, timeout=timeout)
-    payload = f"printf '%s\\n' {ROOT_MARKER}\n{script}"
-    probe = await connection.run(SUDO_PROBE_COMMAND, check=False, timeout=20)
-    if probe.exit_status == 0:
-        result = await connection.run(SUDO_NOPASSWD_COMMAND, input=payload, check=False, timeout=timeout)
-    else:
-        sudo_password = provider["credentials"].get("sudo_password")
-        if not sudo_password:
-            raise PrivilegeError(f"{provider['username']} 계정: {sudo_failure_reason(probe.stderr, probe.exit_status)} (공급자 화면에서 sudo 비밀번호를 등록하세요)")
-        result = await connection.run(SUDO_PASSWORD_COMMAND, input=f"{sudo_password}\n{payload}", check=False, timeout=timeout)
-    if not result.stdout.startswith(ROOT_MARKER + "\n"):
-        raise PrivilegeError(f"{provider['username']} 계정: {sudo_failure_reason(result.stderr, result.exit_status)}")
-    return SimpleNamespace(stdout=result.stdout[len(ROOT_MARKER) + 1:], stderr=result.stderr, exit_status=result.exit_status)
 
 
 @app.get("/api/providers/{provider_id}/nodes")
@@ -2048,7 +2028,7 @@ async def edit_provider(provider_id: str, request: ProviderUpdateRequest):
     probe_command = (
         "PATH=\"$PATH:/usr/local/sbin:/usr/sbin:/sbin\"; printf 'hostname='; hostname; printf 'user='; id -un; "
         "if [ \"$(id -u)\" = 0 ]; then echo 'sudo=root'; "
-        f"elif {SUDO_PROBE_COMMAND} >/dev/null 2>&1; then echo 'sudo=passwordless'; else echo 'sudo=authentication_required'; fi; "
+        "else echo 'sudo=authentication_required'; fi; "
         "for cmd in openstack systemctl docker podman pcs ceph ansible; do if command -v \"$cmd\" >/dev/null 2>&1; then echo \"tool=$cmd\"; fi; done"
     )
     try:
@@ -2063,10 +2043,10 @@ async def edit_provider(provider_id: str, request: ProviderUpdateRequest):
                 key, value = line.split("=", 1)
                 (tools.append(value) if key == "tool" else probe.__setitem__(key, value))
             sudo_mode = probe.get("sudo", "unknown")
-            if sudo_mode == "authentication_required":
+            if sudo_mode != "root":
                 secret = credentials.get("sudo_password") or (credentials.get("password") if auth_method == "password" else None)
-                if not secret:
-                    raise HTTPException(400, f"{probe.get('user', username)} 계정은 root가 아니며 비밀번호 없는 sudo가 허용되지 않습니다. sudo 비밀번호를 입력하세요.")
+                if not secret or any(char in secret for char in "\r\n\x00"):
+                    raise HTTPException(400, f"{probe.get('user', username)} 계정은 sudo 비밀번호 인증이 필요합니다. sudo 비밀번호를 입력하세요.")
                 verification = await connection.run(SUDO_PASSWORD_CHECK_COMMAND, input=f"{secret}\n", check=False, timeout=20)
                 if verification.exit_status != 0:
                     raise HTTPException(400, f"sudo 인증에 실패했습니다: {sudo_failure_reason(verification.stderr, verification.exit_status)}")
@@ -2559,6 +2539,11 @@ async def create_log_exclusion(provider_id: str, request: LogExclusionRequest):
     reason = request.reason.strip()
     if not reason:
         raise HTTPException(400, "제외 사유를 입력하세요.")
+    # Every pattern is written into the node check script, which run_as_root caps at
+    # MAX_SCRIPT_BYTES. Refuse here so the limit is reported at registration, not mid-inspection.
+    existing_bytes = sum(len(rule["pattern"].encode("utf-8")) + 3 for rule in list_log_exclusions(provider_id))
+    if existing_bytes + len(pattern.encode("utf-8")) + 3 > LOG_EXCLUSION_BUDGET_BYTES:
+        raise HTTPException(400, f"로그 제외 패턴의 전체 길이가 상한({LOG_EXCLUSION_BUDGET_BYTES // 1024}KB)을 넘습니다. 쓰지 않는 패턴을 삭제하세요.")
     exclusion = save_log_exclusion(provider_id, service, pattern, reason)
     audit("check.log_exclusion.create", "provider", provider_id, provider_label(provider_id), f"{service or '전체 로그'} · {pattern[:150]} · {reason[:150]}")
     return exclusion
@@ -2885,7 +2870,7 @@ async def execute_provider_check(provider_id: str, request: CheckRequest | None,
         raise HTTPException(400, f"지원하지 않는 점검 항목: {', '.join(sorted(invalid_items))}")
     if not selected_items:
         raise HTTPException(400, "점검할 항목을 하나 이상 선택하세요.")
-    previous_check = latest_check(provider_id)
+    previous_check = await asyncio.to_thread(latest_check, provider_id)
     node_check_keys = {
         "cpu", "memory", "disk", "chrony", "bonding", "mount", "nova_compute", "virtualization",
         "failed_units", "kernel_errors", "nic_state", "ovs_state", "kvm_acceleration", "libvirt_state",
@@ -3253,7 +3238,7 @@ exit 0
                     cluster_items[key] = describe_cluster_item(key, item_status, int(count), output, rc, duration_ms, provider["controller_hostname"], controller_target)
     except HTTPException:
         raise
-    except TimeoutError as exc:
+    except TimeoutError:
         reason = f"활성 Controller 명령 실행 제한시간 초과 ({controller_script_timeout}초)"
         cluster_items = {
             key: {
@@ -3531,8 +3516,9 @@ exit 0
     result = {"nodes": node_results, "node_summary": node_summary, "items": items, "selected_items": sorted(selected_items), "metrics": first_metrics, "warnings": warnings,
               "started_at": started.isoformat(), "finished_at": finished.isoformat(), "duration_seconds": round((finished - started).total_seconds(), 1), "trigger": trigger, "timing": timing,
               "maintenance_nodes": maintenance_nodes}
-    check_id = save_check(provider_id, overall_status, result)
-    sync_check_alerts(provider_id, check_id, items)
+    # Writing the result JSON and rebuilding alerts are the heaviest database calls in the app.
+    check_id = await asyncio.to_thread(save_check, provider_id, overall_status, result)
+    await asyncio.to_thread(sync_check_alerts, provider_id, check_id, items)
     update_progress("completed", "일일점검이 완료되었습니다.", [], 100, False)
     return {"check_id": check_id, "provider_id": provider_id, "status": overall_status, **result}
 
@@ -3560,7 +3546,7 @@ async def provider_overview(provider_id: str):
             continue
         if loaded >= 10:
             break
-        full = get_check(provider_id, entry["id"])
+        full = await asyncio.to_thread(get_check, provider_id, entry["id"])
         loaded += 1
         if not full:
             continue
@@ -3680,7 +3666,7 @@ async def list_provider_checks(provider_id: str, limit: int = Query(default=30, 
 async def get_provider_check(provider_id: str, check_id: str):
     if not get_provider(provider_id):
         raise HTTPException(404, "등록된 공급자를 찾을 수 없습니다.")
-    check = get_check(provider_id, check_id)
+    check = await asyncio.to_thread(get_check, provider_id, check_id)
     if not check:
         raise HTTPException(404, "점검 결과를 찾을 수 없습니다.")
     return {"check": check}
@@ -3822,7 +3808,7 @@ async def get_provider_check_timing(provider_id: str, limit: int = Query(10, ge=
     phases = {"nodes": [], "controller": [], "total": []}
     sampled = 0
     for entry in entries:
-        full = get_check(provider_id, entry["id"])
+        full = await asyncio.to_thread(get_check, provider_id, entry["id"])
         if not full:
             continue
         result = full["result"]
@@ -4349,7 +4335,7 @@ async def provider_monitoring(provider_id: str, range: str = Query(default="6h")
     inspection = await asyncio.to_thread(inspection_resource_history, provider_id, 20 if prometheus["status"] != "connected" else 10)
     latest_nodes = None
     if prometheus["status"] != "connected":
-        latest = latest_check(provider_id)
+        latest = await asyncio.to_thread(latest_check, provider_id)
         if latest:
             latest_nodes = {"checked_at": latest["checked_at"], "nodes": [
                 {"hostname": node.get("hostname"), "role": node.get("role"), "reachable": node.get("reachable", False),
@@ -5066,7 +5052,7 @@ async def test_keystone(request: KeystoneRequest):
 
 
 @app.get("/")
-async def dashboard(): return FileResponse(BASE_DIR / "index.html", headers={"Cache-Control": "no-store, max-age=0"})
+async def dashboard(): return page_response("index.html")
 
 @app.get("/providers")
 async def providers():
@@ -5077,7 +5063,7 @@ async def providers():
 async def login_page(request: Request):
     if request.state.user:
         return RedirectResponse("/", status_code=302, headers={"Cache-Control": "no-store"})
-    return FileResponse(BASE_DIR / "login.html", headers={"Cache-Control": "no-store, max-age=0"})
+    return page_response("login.html")
 
 @app.get("/js/{asset_name}")
 async def static_script(asset_name: str):
