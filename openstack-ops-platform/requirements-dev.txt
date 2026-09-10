@@ -1,0 +1,4 @@
+# 개발·테스트·문서 생성 도구. 이미지에는 들어가지 않는다 (requirements.txt 가 그쪽).
+pytest==9.1.1
+quickjs==1.19.4
+python-docx==1.2.0
