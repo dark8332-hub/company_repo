@@ -43,7 +43,10 @@ build() { "$BUILDER" "${BUILDER_ARGS[@]}" "$@"; }
 echo
 echo "[1/5] 사전 검사"
 if [ -x .venv/bin/python ]; then
-    .venv/bin/python -m pytest tests/test_offline_packaging.py tests/test_deploy_scripts.py tests/test_release_safety.py -q \
+    # 런북 검사를 함께 돌린다. 번들에 들어가는 .docx 는 마크다운에서 생성한 것이라,
+    # 마크다운만 고치고 tools/build_runbook.py 를 안 돌렸으면 낡은 안내서가 사이트로 나간다.
+    .venv/bin/python -m pytest tests/test_offline_packaging.py tests/test_deploy_scripts.py \
+        tests/test_release_safety.py tests/test_runbook_build.py -q \
         || { echo "오프라인 패키징 검사 실패. 고치고 다시 실행하세요." >&2; exit 1; }
     echo "  [OK] 오프라인 패키징 검사"
 else
@@ -72,6 +75,14 @@ echo
 echo "[4/5] 번들 구성"
 cp deploy/install.sh deploy/opsctl.sh deploy/lib.sh deploy/restore_archive.py "$STAGING/"
 cp deploy/README-DEPLOY.md "$STAGING/"
+
+# 반입 가이드. 사이트에서 Word 로 여는 쪽이 많아 .docx 를, 브라우저만 있는 서버를 위해 자급식
+# .html 을 함께 넣는다. 둘 다 tools/build_runbook.py 가 마크다운에서 만든 것이고 그림이 안에
+# 들어 있다. 원본 마크다운과 images/ 는 넣지 않는다 - 같은 내용이 세 번 들어갈 뿐이다.
+for doc in docs/폐쇄망-반입-런북.docx docs/폐쇄망-반입-런북.html; do
+    [ -f "$doc" ] || { echo "반입 가이드가 없습니다: $doc (tools/build_runbook.py 를 실행하세요)" >&2; exit 1; }
+    cp "$doc" "$STAGING/"
+done
 mkdir -p "$STAGING/systemd"
 cp deploy/systemd/openstack-ops-platform.service.template "$STAGING/systemd/"
 sed "s/__IMAGE_TAG__/$VERSION/" deploy/config.env.example > "$STAGING/config.env.example"

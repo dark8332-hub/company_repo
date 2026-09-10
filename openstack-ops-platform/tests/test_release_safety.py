@@ -227,6 +227,9 @@ def test_release_version_and_required_files_ship():
     build = (ROOT/'build-offline-bundle.sh').read_text()
     assert 'deploy/restore_archive.py' in build
     assert '--platform linux/amd64' in build
+    # 반입 가이드가 번들에 들어가야 하고, 낡은 산출물이 실려 나가지 않도록 생성 검사도 함께 돈다.
+    assert 'docs/폐쇄망-반입-런북.docx' in build
+    assert 'tests/test_runbook_build.py' in build
 
 
 def test_restore_uses_bundled_python_when_host_has_none(release_bundle):
